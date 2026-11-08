@@ -5,23 +5,25 @@ export function ReaderDialog({
   close,
   children,
   busy = false,
+  className = '',
 }: {
   title: string;
   close: () => void;
   children: ReactNode;
   busy?: boolean;
+  className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = ref.current!;
     dialog.showModal();
-    dialog.querySelector<HTMLInputElement>('[data-initial-focus]')?.focus({ preventScroll: true });
+    dialog.querySelector<HTMLElement>('[data-initial-focus]')?.focus({ preventScroll: true });
     return () => dialog.close();
   }, []);
   return (
     <dialog
       ref={ref}
-      className="reader-dialog"
+      className={'reader-dialog' + (className ? ' ' + className : '')}
       aria-label={title}
       onCancel={(e) => {
         e.preventDefault();
@@ -34,8 +36,14 @@ export function ReaderDialog({
       <div>
         <header>
           <h3>{title}</h3>
-          <button aria-label="Cerrar" disabled={busy} onClick={close}>
-            <X size={18} />
+          <button
+            type="button"
+            className="rd-dlg-x"
+            aria-label="Cerrar"
+            disabled={busy}
+            onClick={close}
+          >
+            <X size={16} />
           </button>
         </header>
         {children}

@@ -227,7 +227,20 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
   }
   if (shortcut === 'idea')
     return <NoteEditor initial={fresh(null)} close={onClose} saved={() => saved('idea')} />;
-  if (shortcut === 'link') return <SaveLink close={onClose} saved={() => saved('link')} />;
+  if (shortcut === 'link')
+    return (
+      <SaveLink
+        close={onClose}
+        saved={() => saved('link')}
+        savedMany={(n) => {
+          window.dispatchEvent(new Event('nexo:link-saved'));
+          notify(
+            n === 1 ? 'Enlace disponible en Lecturas.' : `${n} enlaces disponibles en Lecturas.`,
+          );
+          onClose();
+        }}
+      />
+    );
   return (
     <Sheet
       yieldTo=".mp-picker[open],.reader-dialog[open]"

@@ -9,6 +9,8 @@ import { whoMightCare } from '../lib/interest';
 import { useApp } from '../AppContext';
 import { supabase } from '../backend';
 import { SaveLink } from './SaveLink';
+import { failure } from './capture';
+import { refetchReading } from './refetch';
 import { pictures, preview } from './media';
 import { ReaderDialog } from './ReaderDialog';
 import { Trash2, Plus, BookOpen, Highlighter, Folder, Archive, ExternalLink } from 'lucide-react';
@@ -17,7 +19,7 @@ import { useLibrary, type Card } from './library';
 import { Notebooks } from './Notebooks';
 import { MarkGroups, useResume } from './ReadingExtras';
 import { ArticleMarks, toneOf } from './ArticleMarks';
-import { BookA, Check, Heart, NotebookPen, Pin } from 'lucide-react';
+import { BookA, Check, Heart, NotebookPen, Pin, RefreshCw } from 'lucide-react';
 import { Dictionary } from './Dictionary';
 import { cleanTerm, isTerm, sentenceAround, useWords } from './words';
 import { ReadEnd } from './ReadEnd';
@@ -41,6 +43,8 @@ type Article = {
   pinned_at?: string | null;
   read_at?: string | null;
 };
+/** Un artículo recién vuelto a descargar, con los campos de su tarjeta. */
+type Fresh = Article & Partial<Pick<Card, 'excerpt' | 'cover' | 'minutes'>>;
 /** Fijar y «Completado» necesitan la migración 012. */
 const PINS_SQL = 'supabase/migrations/202611070012_reading_pins.sql';
 const missingColumn = (e: { code?: string; message: string }) =>
@@ -150,7 +154,7 @@ export function Readings({ openId, addLink = false }: { openId?: string; addLink
     [askOpen, setAskOpen] = useState(false),
     [shareOpen, setShareOpen] = useState(false),
     [dict, showDict] = useState(false);
-  const { notify, workspace } = useApp();
+  const { notify, workspace, confirm } = useApp();
   // Diccionario de palabras y conceptos por aprender (se carga una vez).
   const dictionary = useWords(notify);
   const pendingWords = dictionary.words.filter((w) => !w.learned_at).length;
@@ -172,6 +176,74 @@ export function Readings({ openId, addLink = false }: { openId?: string; addLink
     patch: patchCard,
     pin: pinCard,
   } = useLibrary(view, query, revision, markRev);
+  // Artículos que se están volviendo a descargar. `shown`: el abierto ahora, leído al terminar.
+  const [refetching, setRefetching] = useState<ReadonlySet<string>>(new Set());
+  const shown = useRef(id);
+  shown.current = id;
+  /**
+   * Vuelve a descargar un artículo que se guardó incompleto. La tarjeta se actualiza sola y, si
+   * está abierto, el lector muestra el texto nuevo con sus resaltados recolocados.
+   */
+  async function refetch(card: Card) {
+    if (refetching.has(card.id)) return;
+    setRefetching((s) => new Set(s).add(card.id));
+    try {
+      const result = await refetchReading<Fresh>(card.id, card.url, (warning) =>
+        confirm({
+          title: 'Reemplazar el texto guardado',
+          message: warning,
+          confirmLabel: 'Reemplazar',
+          icon: 'warning',
+        }),
+      );
+      if (result === 'cancelled') return;
+      if (result === 'same') {
+        notify('El artículo ya estaba completo: no hubo cambios.');
+        return;
+      }
+      const { row, lost } = result;
+      const len = Math.max(1, row.content.length);
+      // Portada, extracto y minutos los recalcula la base al cambiar el texto.
+      patchCard(card.id, {
+        title: row.title,
+        excerpt: row.excerpt ?? '',
+        cover: row.cover ?? null,
+        minutes: row.minutes ?? Math.max(1, Math.ceil(len / 1200)),
+        progress: row.read_at
+          ? 100
+          : !row.last_read || row.resume_at <= 0
+            ? null
+            : Math.min(100, Math.max(1, Math.round((100 * row.resume_at) / len))),
+      });
+      // El porcentaje que llevabas se calculó con el texto viejo.
+      setReadNow((p) => {
+        const next = { ...p };
+        delete next[card.id];
+        return next;
+      });
+      if (shown.current === card.id) {
+        const fresh = await loadArticleMarks(card.id);
+        if (shown.current === card.id) {
+          setArticle(row);
+          setMarks(fresh);
+        }
+      }
+      bumpMarks((v) => v + 1);
+      notify(
+        lost
+          ? `Artículo actualizado. ${lost === 1 ? '1 resaltado quedó descolocado' : `${lost} resaltados quedaron descolocados`}.`
+          : 'Artículo actualizado.',
+      );
+    } catch (e) {
+      notify('No se pudo volver a descargar: ' + failure(e, true));
+    } finally {
+      setRefetching((s) => {
+        const next = new Set(s);
+        next.delete(card.id);
+        return next;
+      });
+    }
+  }
   /** Fija o suelta un artículo al instante; se guarda de fondo. */
   function togglePin(card: Card) {
     const on = !card.pinned_at;
@@ -952,6 +1024,13 @@ export function Readings({ openId, addLink = false }: { openId?: string; addLink
               open(a);
               add(false);
             }}
+            savedMany={() => {
+              // Los nuevos entran en la bandeja de entrada.
+              bump((v) => v + 1);
+              setView('inbox');
+              search('');
+              add(false);
+            }}
           />
         )}
         {view === 'marks' && (
@@ -976,12 +1055,17 @@ export function Readings({ openId, addLink = false }: { openId?: string; addLink
           const full = done || pct >= 95;
           // Separa los fijados del resto.
           const lastPinned = Boolean(a.pinned_at) && !all[i + 1]?.pinned_at;
+          const reloading = refetching.has(a.id);
           return (
             <div
               key={a.id}
               className={
-                'rd-row' + (a.pinned_at ? ' pinned' : '') + (lastPinned ? ' last-pinned' : '')
+                'rd-row' +
+                (a.pinned_at ? ' pinned' : '') +
+                (lastPinned ? ' last-pinned' : '') +
+                (reloading ? ' refetching' : '')
               }
+              aria-busy={reloading || undefined}
             >
               <button
                 className={'read-row' + (id === a.id ? ' current' : '') + (done ? ' read' : '')}
@@ -1033,6 +1117,20 @@ export function Readings({ openId, addLink = false }: { openId?: string; addLink
                 onClick={() => togglePin(a)}
               >
                 <Pin size={14} fill={a.pinned_at ? 'currentColor' : 'none'} />
+              </button>
+              <button
+                type="button"
+                className="rd-refetch"
+                disabled={reloading}
+                title={reloading ? 'Descargando de nuevo…' : 'Volver a descargar'}
+                aria-label={
+                  reloading
+                    ? `Descargando de nuevo «${a.title}»`
+                    : `Volver a descargar «${a.title}»`
+                }
+                onClick={() => void refetch(a)}
+              >
+                <RefreshCw size={13} className={reloading ? 'spin' : undefined} />
               </button>
             </div>
           );

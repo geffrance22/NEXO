@@ -1,0 +1,490 @@
+import {
+  Banknote,
+  BookMarked,
+  Briefcase,
+  Clapperboard,
+  LayoutGrid,
+  Lightbulb,
+  ListChecks,
+  PenLine,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
+import { plainText } from '../components/RichText';
+import type { Entry, EntryDetails, Kind, Person } from '../data';
+import { kindMeta, seriesColors } from '../composer/kinds';
+import { isOpenTask } from '../lib/commitments';
+import { bookPace, isSeries } from '../lib/entries';
+import { money, normalizeText, todayInputValue } from '../lib/format';
+
+export type TabId =
+  | 'inicio'
+  | 'peliculas'
+  | 'libros'
+  | 'aprendizajes'
+  | 'notas'
+  | 'encuentros'
+  | 'pendientes'
+  | 'trabajo'
+  | 'movimientos';
+
+export type ViewMode = 'portadas' | 'tarjetas' | 'lista';
+export type SortId =
+  | 'reciente'
+  | 'antiguo'
+  | 'titulo'
+  | 'calificacion'
+  | 'anio'
+  | 'progreso'
+  | 'confianza'
+  | 'vence'
+  | 'monto';
+
+export const sortLabels: Record<SortId, string> = {
+  reciente: 'Más recientes',
+  antiguo: 'Más antiguos',
+  titulo: 'Título (A–Z)',
+  calificacion: 'Mejor calificados',
+  anio: 'Año de estreno',
+  progreso: 'Más avanzados',
+  confianza: 'Por reforzar primero',
+  vence: 'Fecha límite',
+  monto: 'Mayor monto',
+};
+
+export type Shelf = { id: string; label: string; test: (e: Entry) => boolean };
+export type Tone = { accent: string; soft: string; ink: string };
+
+/** Colores de lo que no es un tipo de recuerdo (o se distingue dentro de uno). */
+export const tones = {
+  series: seriesColors,
+  lecturas: { accent: '#b0703a', soft: '#fbf1e6', ink: '#7a4a22' },
+  citas: { accent: '#8c6d4f', soft: '#f4ece3', ink: '#5b4330' },
+  inicio: { accent: '#5f8247', soft: '#eaf1e0', ink: '#3a5229' },
+} satisfies Record<string, Tone>;
+
+export type EntryTab = {
+  id: TabId;
+  label: string;
+  icon: LucideIcon;
+  kind: Kind;
+  tone: Tone;
+  match: (e: Entry) => boolean;
+  views: ViewMode[];
+  shelves?: Shelf[];
+  /** Estante con el que se abre (por defecto, todos). */
+  shelf?: string;
+  sorts: SortId[];
+  /** Nombre de lo que se añade: «Añadir película». */
+  noun: string;
+  /** Detalles con los que se abre el formulario según el estante elegido. */
+  addDetails?: (shelf: string) => EntryDetails | undefined;
+  /** Frase para cuando no hay nada. */
+  empty: string;
+};
+
+const watch = (e: Entry) => e.details.watch ?? 'vista';
+const read = (e: Entry) => e.details.read ?? 'leyendo';
+const MEDIA: ViewMode[] = ['portadas', 'tarjetas', 'lista'];
+const PLAIN: ViewMode[] = ['tarjetas', 'lista'];
+const tone = (k: Kind): Tone => kindMeta[k];
+
+export const entryTabs: EntryTab[] = [
+  {
+    // Películas y series juntas; la pastilla «Series» deja solo las series.
+    id: 'peliculas',
+    label: 'Películas',
+    icon: Clapperboard,
+    kind: 'Película',
+    tone: tone('Película'),
+    match: (e) => e.kind === 'Película',
+    views: ['tarjetas', 'portadas', 'lista'],
+    shelves: [
+      { id: 'quiero', label: 'Por ver', test: (e) => watch(e) === 'quiero' },
+      { id: 'viendo', label: 'Viendo', test: (e) => watch(e) === 'viendo' },
+      { id: 'vista', label: 'Vistas', test: (e) => watch(e) === 'vista' },
+    ],
+    sorts: ['reciente', 'calificacion', 'anio', 'titulo', 'antiguo'],
+    noun: 'película',
+    addDetails: (s) => (s === 'quiero' || s === 'viendo' ? { watch: s } : undefined),
+    empty: 'Aún no hay películas ni series.',
+  },
+  {
+    id: 'libros',
+    label: 'Libros',
+    icon: BookMarked,
+    kind: 'Libro',
+    tone: tone('Libro'),
+    match: (e) => e.kind === 'Libro',
+    views: MEDIA,
+    shelves: [
+      { id: 'quiero', label: 'Quiero leer', test: (e) => read(e) === 'quiero' },
+      { id: 'leyendo', label: 'Leyendo', test: (e) => read(e) === 'leyendo' },
+      { id: 'terminado', label: 'Terminados', test: (e) => read(e) === 'terminado' },
+    ],
+    sorts: ['reciente', 'progreso', 'calificacion', 'titulo', 'antiguo'],
+    noun: 'libro',
+    addDetails: (s) =>
+      s === 'quiero' || s === 'leyendo' || s === 'terminado' ? { read: s } : undefined,
+    empty: 'Aún no hay libros.',
+  },
+  {
+    id: 'aprendizajes',
+    label: 'Aprendizajes',
+    icon: Lightbulb,
+    kind: 'Aprendizaje',
+    tone: tone('Aprendizaje'),
+    match: (e) => e.kind === 'Aprendizaje',
+    views: PLAIN,
+    shelves: [
+      {
+        id: 'reforzar',
+        label: 'Por reforzar',
+        test: (e) => Boolean(e.details.confidence && e.details.confidence <= 2),
+      },
+      { id: 'dominados', label: 'Dominados', test: (e) => (e.details.confidence ?? 0) >= 4 },
+      { id: 'aplicar', label: 'Con plan para aplicar', test: (e) => Boolean(e.details.apply) },
+    ],
+    sorts: ['reciente', 'confianza', 'titulo', 'antiguo'],
+    noun: 'aprendizaje',
+    empty: 'Aún no hay aprendizajes.',
+  },
+  {
+    id: 'notas',
+    label: 'Notas',
+    icon: PenLine,
+    kind: 'Nota',
+    tone: tone('Nota'),
+    match: (e) => e.kind === 'Nota',
+    views: PLAIN,
+    shelves: [
+      { id: 'personas', label: 'Con personas', test: (e) => e.person_ids.length > 0 },
+      { id: 'fotos', label: 'Con fotos', test: (e) => e.images.length > 0 },
+    ],
+    sorts: ['reciente', 'titulo', 'antiguo'],
+    noun: 'nota',
+    empty: 'Aún no hay notas.',
+  },
+  {
+    id: 'encuentros',
+    label: 'Encuentros',
+    icon: Users,
+    kind: 'Encuentro',
+    tone: tone('Encuentro'),
+    match: (e) => e.kind === 'Encuentro',
+    views: PLAIN,
+    shelves: [
+      { id: 'lugar', label: 'Con lugar', test: (e) => Boolean(e.details.place) },
+      { id: 'fotos', label: 'Con fotos', test: (e) => e.images.length > 0 },
+    ],
+    sorts: ['reciente', 'titulo', 'antiguo'],
+    noun: 'encuentro',
+    empty: 'Aún no hay encuentros.',
+  },
+  {
+    id: 'pendientes',
+    label: 'Pendientes',
+    icon: ListChecks,
+    kind: 'Pendiente',
+    tone: tone('Pendiente'),
+    match: (e) => e.kind === 'Pendiente',
+    views: PLAIN,
+    shelves: [
+      { id: 'abiertos', label: 'Abiertos', test: isOpenTask },
+      { id: 'hechos', label: 'Hechos', test: (e) => e.status === 'completado' },
+    ],
+    shelf: 'abiertos',
+    sorts: ['vence', 'reciente', 'titulo', 'antiguo'],
+    noun: 'pendiente',
+    empty: 'Nada pendiente.',
+  },
+  {
+    id: 'trabajo',
+    label: 'Trabajo',
+    icon: Briefcase,
+    kind: 'Trabajo',
+    tone: tone('Trabajo'),
+    match: (e) => e.kind === 'Trabajo',
+    views: PLAIN,
+    shelves: [
+      { id: 'idea', label: 'Ideas', test: (e) => e.details.stage === 'idea' },
+      { id: 'curso', label: 'En curso', test: (e) => (e.details.stage ?? 'curso') === 'curso' },
+      { id: 'pausa', label: 'En pausa', test: (e) => e.details.stage === 'pausa' },
+      { id: 'listo', label: 'Terminados', test: (e) => e.details.stage === 'listo' },
+    ],
+    sorts: ['reciente', 'vence', 'titulo', 'antiguo'],
+    noun: 'trabajo',
+    addDetails: (s) =>
+      s === 'idea' || s === 'curso' || s === 'pausa' || s === 'listo' ? { stage: s } : undefined,
+    empty: 'Aún no hay proyectos ni tareas de trabajo.',
+  },
+  {
+    id: 'movimientos',
+    label: 'Movimientos',
+    icon: Banknote,
+    kind: 'Movimiento',
+    tone: tone('Movimiento'),
+    match: (e) => e.kind === 'Movimiento',
+    views: PLAIN,
+    shelves: [
+      { id: 'gastos', label: 'Gastos', test: (e) => e.direction === 'egreso' },
+      { id: 'ingresos', label: 'Ingresos', test: (e) => e.direction === 'ingreso' },
+    ],
+    sorts: ['reciente', 'monto', 'antiguo'],
+    noun: 'movimiento',
+    empty: 'Aún no hay movimientos.',
+  },
+];
+
+export const tabById = new Map(entryTabs.map((t) => [t.id, t]));
+
+/** Pestañas en orden: lo que alimenta (arriba) y luego lo de tu libreta. */
+export const tabOrder: { id: TabId; label: string; icon: LucideIcon; divider?: boolean }[] = [
+  { id: 'inicio', label: 'Inicio', icon: LayoutGrid },
+  { id: 'peliculas', label: 'Películas', icon: Clapperboard },
+  { id: 'libros', label: 'Libros', icon: BookMarked },
+  { id: 'aprendizajes', label: 'Aprendizajes', icon: Lightbulb },
+  { id: 'notas', label: 'Notas', icon: PenLine, divider: true },
+  { id: 'encuentros', label: 'Encuentros', icon: Users },
+  { id: 'pendientes', label: 'Pendientes', icon: ListChecks },
+  { id: 'trabajo', label: 'Trabajo', icon: Briefcase },
+  { id: 'movimientos', label: 'Movimientos', icon: Banknote },
+];
+export const isTab = (s: string | null): s is TabId => tabOrder.some((t) => t.id === s);
+
+/** Cuándo lo registraste (o, si no se sabe, cuándo pasó). */
+export const addedAt = (e: Entry) => e.recorded_at ?? e.created_at;
+export const yearOf = (e: Entry) => e.details.year || e.details.movieInfo?.year || '';
+const progressOf = (e: Entry) =>
+  e.kind === 'Libro'
+    ? read(e) === 'terminado'
+      ? 101
+      : (bookPace(e)?.percent ?? (read(e) === 'leyendo' ? 0 : -1))
+    : 0;
+
+export function sortEntries(list: Entry[], sort: SortId) {
+  const out = [...list];
+  const newest = (a: Entry, b: Entry) => b.created_at.localeCompare(a.created_at);
+  switch (sort) {
+    case 'reciente':
+      return out.sort(newest);
+    case 'antiguo':
+      return out.sort((a, b) => a.created_at.localeCompare(b.created_at));
+    case 'titulo':
+      return out.sort((a, b) => a.title.localeCompare(b.title, 'es', { sensitivity: 'base' }));
+    case 'calificacion':
+      return out.sort((a, b) => (b.details.rating ?? 0) - (a.details.rating ?? 0) || newest(a, b));
+    case 'anio':
+      return out.sort((a, b) => yearOf(b).localeCompare(yearOf(a)) || newest(a, b));
+    case 'progreso':
+      // Los que lees primero (más avanzados arriba), luego terminados y al final por leer.
+      return out.sort((a, b) => {
+        const pa = progressOf(a);
+        const pb = progressOf(b);
+        const rank = (p: number) => (p > 100 ? 1 : p < 0 ? 2 : 0);
+        return rank(pa) - rank(pb) || pb - pa || newest(a, b);
+      });
+    case 'confianza':
+      return out.sort(
+        (a, b) => (a.details.confidence ?? 9) - (b.details.confidence ?? 9) || newest(a, b),
+      );
+    case 'vence':
+      return out.sort(
+        (a, b) =>
+          Number(a.status === 'completado') - Number(b.status === 'completado') ||
+          (a.details.due ?? '9999').localeCompare(b.details.due ?? '9999') ||
+          newest(a, b),
+      );
+    case 'monto':
+      return out.sort((a, b) => b.amount - a.amount || newest(a, b));
+  }
+}
+
+/** Texto en el que se busca (título, reseña, autor, plataforma, etiquetas, personas…). */
+export function searchText(e: Entry, people: Map<string, Person>) {
+  const d = e.details;
+  return normalizeText(
+    [
+      e.title,
+      plainText(e.body),
+      d.author,
+      d.platform,
+      d.place,
+      d.activity,
+      d.source,
+      d.sourceName,
+      d.apply,
+      d.nextStep,
+      d.movieInfo?.director,
+      d.movieInfo?.cast?.join(' '),
+      d.movieInfo?.genres.join(' '),
+      ...(d.quotes ?? []),
+      ...e.tags,
+      ...e.person_ids.map((id) => people.get(id)?.name ?? ''),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
+const avg = (list: number[]) =>
+  list.length ? (list.reduce((s, n) => s + n, 0) / list.length).toFixed(1).replace('.', ',') : '';
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Datos que sí dicen algo de cada sección (para su encabezado y su tarjeta en Inicio). */
+export function tabSummary(tab: EntryTab, list: Entry[], today = todayInputValue()): string[] {
+  const bits: string[] = [];
+  const rated = list.map((e) => e.details.rating ?? 0).filter(Boolean);
+  switch (tab.id) {
+    case 'peliculas': {
+      const series = list.filter(isSeries).length;
+      const movies = list.length - series;
+      if (movies) bits.push(plural(movies, 'película', 'películas'));
+      if (series) bits.push(plural(series, 'serie', 'series'));
+      const now = list.filter((e) => watch(e) === 'viendo').length;
+      if (now) bits.push(`${now} viendo`);
+      const want = list.filter((e) => watch(e) === 'quiero').length;
+      if (want) bits.push(`${want} por ver`);
+      // Horas de cine: solo películas vistas (de las series no se sabe cuántos episodios).
+      const minutes = list
+        .filter((e) => watch(e) === 'vista' && !isSeries(e))
+        .reduce((s, e) => s + (e.details.movieInfo?.runtime ?? 0), 0);
+      if (minutes >= 60) bits.push(`${Math.round(minutes / 60)} h de cine`);
+      break;
+    }
+    case 'libros': {
+      const now = list.filter((e) => read(e) === 'leyendo').length;
+      const done = list.filter((e) => read(e) === 'terminado');
+      const year = today.slice(0, 4);
+      const thisYear = done.filter((e) => e.created_at.startsWith(year)).length;
+      if (now) bits.push(`${now} leyendo`);
+      if (done.length) bits.push(plural(done.length, 'terminado', 'terminados'));
+      const want = list.filter((e) => read(e) === 'quiero').length;
+      if (want) bits.push(`${want} por leer`);
+      if (thisYear) bits.push(`${thisYear} este año`);
+      const pages = list.reduce(
+        (s, e) =>
+          s +
+          (read(e) === 'terminado'
+            ? (e.details.pagesTotal ?? 0)
+            : read(e) === 'leyendo'
+              ? (e.details.pagesRead ?? 0)
+              : 0),
+        0,
+      );
+      if (pages) bits.push(`${pages.toLocaleString('es-CO')} páginas`);
+      const quotes = list.reduce((s, e) => s + (e.details.quotes?.filter(Boolean).length ?? 0), 0);
+      if (quotes) bits.push(plural(quotes, 'cita', 'citas'));
+      break;
+    }
+    case 'aprendizajes': {
+      const weak = list.filter((e) => e.details.confidence && e.details.confidence <= 2).length;
+      const strong = list.filter((e) => (e.details.confidence ?? 0) >= 4).length;
+      if (weak) bits.push(`${weak} por reforzar`);
+      if (strong) bits.push(plural(strong, 'dominado', 'dominados'));
+      break;
+    }
+    case 'pendientes': {
+      const open = list.filter(isOpenTask);
+      const late = open.filter((e) => e.details.due && e.details.due < today).length;
+      bits.push(plural(open.length, 'abierto', 'abiertos'));
+      if (late) bits.push(plural(late, 'vencido', 'vencidos'));
+      const done = list.length - open.length;
+      if (done) bits.push(plural(done, 'hecho', 'hechos'));
+      break;
+    }
+    case 'trabajo': {
+      const now = list.filter((e) => (e.details.stage ?? 'curso') === 'curso').length;
+      if (now) bits.push(`${now} en curso`);
+      const done = list.filter((e) => e.details.stage === 'listo').length;
+      if (done) bits.push(plural(done, 'terminado', 'terminados'));
+      break;
+    }
+    case 'movimientos': {
+      const month = today.slice(0, 7);
+      const inMonth = list.filter((e) => todayInputValue(new Date(e.created_at)).startsWith(month));
+      const out = inMonth.filter((e) => e.direction === 'egreso').reduce((s, e) => s + e.amount, 0);
+      const inc = inMonth
+        .filter((e) => e.direction === 'ingreso')
+        .reduce((s, e) => s + e.amount, 0);
+      if (out) bits.push(`${money(out)} gastado este mes`);
+      if (inc) bits.push(`${money(inc)} de ingresos`);
+      break;
+    }
+    case 'encuentros': {
+      const people = new Set(list.flatMap((e) => e.person_ids)).size;
+      if (people) bits.push(plural(people, 'persona', 'personas'));
+      const places = new Set(list.map((e) => e.details.place).filter(Boolean)).size;
+      if (places) bits.push(plural(places, 'lugar', 'lugares'));
+      break;
+    }
+    case 'notas': {
+      const month = today.slice(0, 7);
+      const n = list.filter((e) =>
+        todayInputValue(new Date(e.created_at)).startsWith(month),
+      ).length;
+      if (n) bits.push(`${n} este mes`);
+      break;
+    }
+  }
+  if (rated.length && ['peliculas', 'series', 'libros'].includes(tab.id))
+    bits.push(`★ ${avg(rated)} de media`);
+  return bits;
+}
+
+export type Status = { label: string; tone: 'want' | 'now' | 'done' };
+
+/** Estado de una película, serie o libro para mostrarlo encima de su portada. */
+export function statusOf(e: Entry): Status | null {
+  const d = e.details;
+  if (e.kind === 'Película') {
+    const w = watch(e);
+    if (w === 'quiero') return { label: 'Por ver', tone: 'want' };
+    if (w === 'viendo') {
+      const at = [d.seasonAt && `T${d.seasonAt}`, d.episodeAt && `E${d.episodeAt}`]
+        .filter(Boolean)
+        .join(' ');
+      return { label: at ? `Viendo · ${at}` : 'Viendo', tone: 'now' };
+    }
+    return { label: 'Vista', tone: 'done' };
+  }
+  if (e.kind === 'Libro') {
+    const r = read(e);
+    if (r === 'quiero') return { label: 'Quiero leer', tone: 'want' };
+    if (r === 'leyendo') {
+      const p = bookPace(e);
+      return { label: p ? `Leyendo · ${p.percent}%` : 'Leyendo', tone: 'now' };
+    }
+    return { label: 'Leído', tone: 'done' };
+  }
+  return null;
+}
+
+/** Segunda línea bajo una portada: autor; o año y temporadas / plataforma. */
+export function captionOf(e: Entry) {
+  const d = e.details;
+  if (e.kind === 'Libro') return d.author || '';
+  const seasons = d.movieInfo?.type === 'tv' ? d.movieInfo.seasons : undefined;
+  return [
+    yearOf(e),
+    isSeries(e) && seasons ? plural(seasons, 'temporada', 'temporadas') : d.platform,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** Colores de una película (o serie) o de cualquier otro recuerdo. */
+export const toneOf = (e: Entry): Tone => (isSeries(e) ? tones.series : kindMeta[e.kind]);
+
+const TAB_KEY = 'nexo-lib-tab';
+/** Abre Libroteca directamente en una pestaña (p. ej. «Ver los pendientes» desde el inicio). */
+export function goLibroteca(go: (page: 'Libroteca') => void, tab: TabId) {
+  sessionStorage.setItem(TAB_KEY, tab);
+  go('Libroteca');
+}
+/** La pestaña que pidieron al abrir Libroteca. Se borra con `forgetLibTab` al montar. */
+export function requestedLibTab(): TabId | null {
+  const tab = sessionStorage.getItem(TAB_KEY);
+  return isTab(tab) ? tab : null;
+}
+export const forgetLibTab = () => sessionStorage.removeItem(TAB_KEY);

@@ -1,0 +1,177 @@
+/* ── Mi espacio: columna anclada desde Tableros ── */
+.hc.hpin {
+  --pc: #5f8247;
+  position: relative;
+  overflow: hidden;
+}
+.hc.hpin::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 18px;
+  left: 18px;
+  height: 3px;
+  border-radius: 0 0 4px 4px;
+  background: var(--pc);
+  opacity: 0.85;
+}
+.hpin h3 {
+  min-width: 0;
+}
+.hpin-dot {
+  flex: none;
+  width: 9px !important;
+  height: 9px;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  background: var(--pc) !important;
+}
+.hpin-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hpin .hc-head {
+  min-width: 0;
+}
+.hpin .hc-link {
+  flex: none;
+  max-width: 45%;
+}
+.hpin-board {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hpin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.hpin-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  animation: hpin-in 0.2s ease-out;
+}
+.hpin-check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 8px;
+  padding: 0;
+  border: 1.5px solid #c3ccbb;
+  border-radius: 50%;
+  color: transparent;
+  transition:
+    background 0.18s,
+    border-color 0.18s,
+    color 0.18s;
+}
+.hpin-check {
+  box-sizing: border-box;
+  line-height: 0;
+}
+.hpin-check > svg {
+  display: block;
+  flex: none;
+}
+.hpin-check:hover {
+  border-color: #3f9a63;
+  color: color-mix(in srgb, #3f9a63 55%, transparent);
+}
+.hpin-check[aria-pressed='true'] {
+  border-color: #3f9a63;
+  background: #3f9a63;
+  color: #fff;
+  animation: hpin-pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.5);
+}
+.hpin-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 10px;
+  text-align: left;
+  transition: background 0.15s;
+}
+.hpin-main:hover {
+  background: #f5f7f1;
+}
+.hpin-main strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  color: #2f382a;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  transition: color 0.2s;
+}
+.hpin-list li.done .hpin-main strong {
+  color: #9aa391;
+}
+.hpin-main small {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  font-size: 11px;
+  color: #9aa391;
+}
+.hpin-main small span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.hpin-main small span.full {
+  font-weight: 650;
+  color: #3f9a63;
+}
+.hpin-due.soon {
+  font-weight: 650;
+  color: #a8721d;
+}
+.hpin-due.late {
+  font-weight: 650;
+  color: #b0533a;
+}
+.hpin-due.ok {
+  color: #3f9a63;
+}
+/* «Ver más»: solo texto, sin recuadro ni líneas. */
+.hpin-more {
+  display: inline-block;
+  margin: 4px 0 0 27px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  font-weight: 650;
+  color: #7b8573;
+  transition: color 0.15s;
+}
+.hpin-more:hover {
+  color: #3a5229;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@keyframes hpin-pop {
+  50% {
+    transform: scale(1.25);
+  }
+}
+@keyframes hpin-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}

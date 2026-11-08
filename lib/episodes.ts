@@ -1,0 +1,227 @@
+import {
+  Briefcase,
+  Coffee,
+  Handshake,
+  Milestone,
+  PartyPopper,
+  Plane,
+  Shuffle,
+  Signpost,
+  Sparkles,
+  StickyNote,
+  Ticket,
+  TrendingUp,
+  TriangleAlert,
+  Trophy,
+  Truck,
+  type LucideIcon,
+} from 'lucide-react';
+import type {
+  Entry,
+  Episode,
+  EpisodeKind,
+  EpisodeLinkKind,
+  EpisodeOrigin,
+  EpisodeUpdateKind,
+  Person,
+  Place,
+  StoredImage,
+} from '../data';
+import { isOpenTask } from './commitments';
+import { normalizeText, todayInputValue } from './format';
+import { daysBetween } from './people';
+
+export const episodeKinds: Record<
+  EpisodeKind,
+  { label: string; icon: LucideIcon; color: string; soft: string }
+> = {
+  encuentro: { label: 'Encuentro', icon: Coffee, color: '#8a6fa8', soft: '#f0e9f6' },
+  viaje: { label: 'Viaje', icon: Plane, color: '#3c9186', soft: '#dff2ef' },
+  celebracion: { label: 'Celebración', icon: PartyPopper, color: '#c25683', soft: '#f8e5ee' },
+  proyecto: { label: 'Proyecto', icon: Briefcase, color: '#4d7b9d', soft: '#e3eef6' },
+  colaboracion: { label: 'Colaboración', icon: Handshake, color: '#5f8247', soft: '#eaf1e0' },
+  mudanza: { label: 'Mudanza', icon: Truck, color: '#9a8a62', soft: '#f4efe2' },
+  evento: { label: 'Evento', icon: Ticket, color: '#c48a2a', soft: '#fbf1dc' },
+  etapa: { label: 'Etapa de vida', icon: Milestone, color: '#6b75b8', soft: '#e9ebf8' },
+  otro: { label: 'Otro', icon: Sparkles, color: '#7d8590', soft: '#eef0f3' },
+};
+export const episodeKindList = Object.keys(episodeKinds) as EpisodeKind[];
+
+/** Tipos de entrada de la bitácora de un episodio. */
+export const episodeUpdateKinds: Record<
+  EpisodeUpdateKind,
+  { label: string; icon: LucideIcon; color: string; soft: string; hint: string }
+> = {
+  avance: {
+    label: 'Avance',
+    icon: TrendingUp,
+    color: '#4d7b9d',
+    soft: '#e3eef6',
+    hint: '¿Qué avanzó? «Ya tenemos los tiquetes»',
+  },
+  decision: {
+    label: 'Decisión',
+    icon: Signpost,
+    color: '#6b62b5',
+    soft: '#eeebfa',
+    hint: '¿Qué se decidió y por qué?',
+  },
+  cambio: {
+    label: 'Cambio',
+    icon: Shuffle,
+    color: '#c48a2a',
+    soft: '#fbf1dc',
+    hint: '¿Qué cambió? «Se movió la fecha al sábado»',
+  },
+  problema: {
+    label: 'Problema',
+    icon: TriangleAlert,
+    color: '#c0553f',
+    soft: '#f9e5df',
+    hint: '¿Qué salió mal o preocupa?',
+  },
+  logro: {
+    label: 'Logro',
+    icon: Trophy,
+    color: '#3c9186',
+    soft: '#dff2ef',
+    hint: '¿Qué salió bien?',
+  },
+  nota: {
+    label: 'Nota',
+    icon: StickyNote,
+    color: '#7d8590',
+    soft: '#eef0f3',
+    hint: 'Cualquier cosa que quieras recordar',
+  },
+};
+export const episodeUpdateKindList = Object.keys(episodeUpdateKinds) as EpisodeUpdateKind[];
+
+/** Cómo se lee un vínculo desde cada lado: A «se convirtió en» B ⇄ B «surgió de» A. */
+export const episodeLinkKinds: Record<EpisodeLinkKind, { label: string; back: string }> = {
+  derivo: { label: 'Se convirtió en', back: 'Surgió de' },
+  continua: { label: 'Es continuación de', back: 'Continúa en' },
+  parte: { label: 'Es parte de', back: 'Incluye' },
+  relacionado: { label: 'Relacionado con', back: 'Relacionado con' },
+};
+export const episodeLinkKindList = Object.keys(episodeLinkKinds) as EpisodeLinkKind[];
+
+/** Cómo se lee, desde el episodio nuevo, su relación con el de origen. */
+export const originLabel = (from: Pick<EpisodeOrigin, 'kind' | 'holder'>) =>
+  from.holder === 'new' ? episodeLinkKinds[from.kind].label : episodeLinkKinds[from.kind].back;
+
+export type RelatedEpisode = {
+  episode: Episode;
+  kind: EpisodeLinkKind;
+  /** El vínculo está guardado en este episodio (si no, en el otro). */
+  own: boolean;
+  label: string;
+};
+
+/** Episodios relacionados con uno, en los dos sentidos y sin repetir. */
+export function relatedEpisodes(ep: Episode, all: Episode[]): RelatedEpisode[] {
+  const byId = new Map(all.map((e) => [e.id, e]));
+  const out: RelatedEpisode[] = [];
+  const seen = new Set<string>();
+  for (const l of ep.links ?? []) {
+    const other = byId.get(l.id);
+    if (!other || seen.has(other.id)) continue;
+    seen.add(other.id);
+    out.push({ episode: other, kind: l.kind, own: true, label: episodeLinkKinds[l.kind].label });
+  }
+  for (const other of all) {
+    if (other.id === ep.id || seen.has(other.id)) continue;
+    const l = (other.links ?? []).find((x) => x.id === ep.id);
+    if (!l) continue;
+    seen.add(other.id);
+    out.push({ episode: other, kind: l.kind, own: false, label: episodeLinkKinds[l.kind].back });
+  }
+  return out;
+}
+
+const day = (iso: string) => todayInputValue(new Date(iso));
+
+/** Todo lo que reúne un episodio, con los totales calculados (nunca estimados). */
+export function episodeSummary(ep: Episode, entries: Entry[], people: Person[], places: Place[]) {
+  const items = entries
+    .filter((e) => e.episode_id === ep.id)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const money = items.filter((e) => e.kind === 'Movimiento');
+  const spent = money.filter((e) => e.direction === 'egreso').reduce((s, e) => s + e.amount, 0);
+  const earned = money.filter((e) => e.direction === 'ingreso').reduce((s, e) => s + e.amount, 0);
+  const tasks = items.filter((e) => e.kind === 'Pendiente');
+  const ids = new Set([...ep.person_ids, ...items.flatMap((e) => e.person_ids)]);
+  const placeIds = new Set([
+    ...ep.place_ids,
+    ...items.flatMap((e) => (e.details.placeId ? [e.details.placeId] : [])),
+  ]);
+  const updates = people.flatMap((p) =>
+    (p.profile.updates ?? [])
+      .filter((u) => u.episodeId === ep.id)
+      .map((u) => ({ person: p, update: u })),
+  );
+  // Galería: las fotos del episodio, de su bitácora, de sus recuerdos y de las novedades.
+  const seen = new Set<string>();
+  const photos: StoredImage[] = [
+    ...(ep.images ?? []),
+    ...(ep.updates ?? []).flatMap((u) => u.images ?? []),
+    ...items.flatMap((e) => e.images),
+    ...updates.flatMap(({ update }) => update.images ?? []),
+  ].filter((i) => !seen.has(i.url) && seen.add(i.url));
+  const dates = [
+    ...items.map((e) => day(e.created_at)),
+    ...(ep.updates ?? []).map((u) => u.date),
+  ].sort();
+  const from = ep.starts_on ?? dates[0] ?? null;
+  const to = ep.ends_on ?? dates[dates.length - 1] ?? null;
+  const today = todayInputValue();
+  // En curso y sin fecha final: cuenta hasta hoy.
+  const until = ep.status === 'activo' && !ep.ends_on ? today : (to ?? from);
+  return {
+    items,
+    money,
+    spent,
+    earned,
+    net: earned - spent,
+    open: tasks.filter(isOpenTask),
+    done: tasks.filter((e) => !isOpenTask(e)),
+    learnings: items.filter((e) => e.kind === 'Aprendizaje'),
+    people: people.filter((p) => ids.has(p.id)),
+    places: places.filter((p) => placeIds.has(p.id)),
+    photos,
+    updates,
+    from,
+    to,
+    /** Días que abarca (contando el primero y el último). */
+    days: from && until && until >= from ? daysBetween(from, until) + 1 : null,
+    /** Días que faltan para que empiece (si es a futuro). */
+    startsIn: from && from > today ? daysBetween(today, from) : null,
+  };
+}
+export type EpisodeSummary = ReturnType<typeof episodeSummary>;
+
+/** Recuerdos sueltos que probablemente pertenecen a un episodio: mismas fechas o personas. */
+export function candidateEntries(ep: Episode, entries: Entry[], query = '') {
+  const from = ep.starts_on;
+  const to = ep.ends_on ?? ep.starts_on;
+  const needle = normalizeText(query.trim());
+  return entries
+    .filter((e) => !e.episode_id)
+    .map((e) => {
+      const d = day(e.created_at);
+      const inRange = from && to ? d >= addDaysSafe(from, -2) && d <= addDaysSafe(to, 2) : false;
+      const shared = e.person_ids.filter((id) => ep.person_ids.includes(id)).length;
+      const text = normalizeText(`${e.title} ${e.body} ${e.tags.join(' ')}`);
+      const hit = needle ? text.includes(needle) : false;
+      return { e, score: (inRange ? 3 : 0) + shared + (hit ? 5 : 0), hit };
+    })
+    .filter((x) => (needle ? x.hit : x.score > 0))
+    .sort((a, b) => b.score - a.score || b.e.created_at.localeCompare(a.e.created_at))
+    .slice(0, 40)
+    .map((x) => x.e);
+}
+
+function addDaysSafe(date: string, n: number) {
+  const [y, m, d] = date.split('-').map(Number);
+  return todayInputValue(new Date(y, m - 1, d + n));
+}

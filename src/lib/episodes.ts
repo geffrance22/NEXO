@@ -1,10 +1,24 @@
 import {
   Briefcase,
+  Building2,
+  CloudRain,
   Coffee,
+  Dumbbell,
+  FileText,
+  GraduationCap,
+  Hammer,
+  HandHeart,
   Handshake,
+  Heart,
+  HeartPulse,
   Milestone,
+  Mountain,
+  Palette,
   PartyPopper,
+  PawPrint,
   Plane,
+  Rocket,
+  ShoppingBag,
   Shuffle,
   Signpost,
   Sparkles,
@@ -14,12 +28,14 @@ import {
   TriangleAlert,
   Trophy,
   Truck,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 import type {
   Entry,
   Episode,
   EpisodeKind,
+  EpisodeKindValue,
   EpisodeLinkKind,
   EpisodeOrigin,
   EpisodeUpdateKind,
@@ -31,21 +47,207 @@ import { isOpenTask } from './commitments';
 import { normalizeText, todayInputValue } from './format';
 import { daysBetween } from './people';
 
-export const episodeKinds: Record<
-  EpisodeKind,
-  { label: string; icon: LucideIcon; color: string; soft: string }
-> = {
-  encuentro: { label: 'Encuentro', icon: Coffee, color: '#8a6fa8', soft: '#f0e9f6' },
-  viaje: { label: 'Viaje', icon: Plane, color: '#3c9186', soft: '#dff2ef' },
-  celebracion: { label: 'Celebración', icon: PartyPopper, color: '#c25683', soft: '#f8e5ee' },
-  proyecto: { label: 'Proyecto', icon: Briefcase, color: '#4d7b9d', soft: '#e3eef6' },
-  colaboracion: { label: 'Colaboración', icon: Handshake, color: '#5f8247', soft: '#eaf1e0' },
-  mudanza: { label: 'Mudanza', icon: Truck, color: '#9a8a62', soft: '#f4efe2' },
-  evento: { label: 'Evento', icon: Ticket, color: '#c48a2a', soft: '#fbf1dc' },
-  etapa: { label: 'Etapa de vida', icon: Milestone, color: '#6b75b8', soft: '#e9ebf8' },
-  otro: { label: 'Otro', icon: Sparkles, color: '#7d8590', soft: '#eef0f3' },
+export type EpisodeKindMeta = {
+  label: string;
+  icon: LucideIcon;
+  color: string;
+  soft: string;
+  /** Título de ejemplo para el formulario. */
+  example: string;
+};
+
+/** Tipos de episodio, de los más comunes a los menos (en ese orden se muestran). */
+export const episodeKinds: Record<EpisodeKind, EpisodeKindMeta> = {
+  viaje: {
+    label: 'Viaje',
+    icon: Plane,
+    color: '#3c9186',
+    soft: '#dff2ef',
+    example: 'Viaje a Cartagena',
+  },
+  encuentro: {
+    label: 'Encuentro',
+    icon: Coffee,
+    color: '#8a6fa8',
+    soft: '#f0e9f6',
+    example: 'Reencuentro del colegio',
+  },
+  celebracion: {
+    label: 'Celebración',
+    icon: PartyPopper,
+    color: '#c25683',
+    soft: '#f8e5ee',
+    example: 'Cumpleaños de Laura',
+  },
+  evento: {
+    label: 'Evento',
+    icon: Ticket,
+    color: '#c48a2a',
+    soft: '#fbf1dc',
+    example: 'Concierto en el Movistar Arena',
+  },
+  proyecto: {
+    label: 'Proyecto',
+    icon: Briefcase,
+    color: '#4d7b9d',
+    soft: '#e3eef6',
+    example: 'Lanzamiento de la web',
+  },
+  colaboracion: {
+    label: 'Colaboración',
+    icon: Handshake,
+    color: '#5f8247',
+    soft: '#eaf1e0',
+    example: 'Podcast con Andrés',
+  },
+  negocio: {
+    label: 'Negocio',
+    icon: Rocket,
+    color: '#d0663f',
+    soft: '#fbe9e1',
+    example: 'Abrir la tienda online',
+  },
+  empleo: {
+    label: 'Empleo',
+    icon: Building2,
+    color: '#56708a',
+    soft: '#e6edf3',
+    example: 'Búsqueda de trabajo',
+  },
+  estudio: {
+    label: 'Estudios',
+    icon: GraduationCap,
+    color: '#5b63b7',
+    soft: '#e8e9f8',
+    example: 'Curso de fotografía',
+  },
+  salud: {
+    label: 'Salud',
+    icon: HeartPulse,
+    color: '#c4506a',
+    soft: '#f9e4e9',
+    example: 'Recuperación de la rodilla',
+  },
+  deporte: {
+    label: 'Deporte',
+    icon: Dumbbell,
+    color: '#2f8a6a',
+    soft: '#dcf1e8',
+    example: 'Preparación para la media maratón',
+  },
+  aventura: {
+    label: 'Aventura',
+    icon: Mountain,
+    color: '#6f7f3a',
+    soft: '#eef1dc',
+    example: 'Travesía por el Cocuy',
+  },
+  familia: {
+    label: 'Familia',
+    icon: Users,
+    color: '#b07a3c',
+    soft: '#f7ecdd',
+    example: 'Navidad en casa de los abuelos',
+  },
+  pareja: {
+    label: 'Pareja',
+    icon: Heart,
+    color: '#d1495b',
+    soft: '#fbe3e6',
+    example: 'Aniversario de cinco años',
+  },
+  mascota: {
+    label: 'Mascota',
+    icon: PawPrint,
+    color: '#a0703f',
+    soft: '#f5ebdf',
+    example: 'La llegada de Luna',
+  },
+  hogar: {
+    label: 'Hogar',
+    icon: Hammer,
+    color: '#8a7350',
+    soft: '#f3ede2',
+    example: 'Remodelación de la cocina',
+  },
+  mudanza: {
+    label: 'Mudanza',
+    icon: Truck,
+    color: '#9a8a62',
+    soft: '#f4efe2',
+    example: 'Mudanza al nuevo apartamento',
+  },
+  compra: {
+    label: 'Gran compra',
+    icon: ShoppingBag,
+    color: '#b3792b',
+    soft: '#faefdc',
+    example: 'Compra del carro',
+  },
+  tramite: {
+    label: 'Trámite',
+    icon: FileText,
+    color: '#6b7a8c',
+    soft: '#e9edf2',
+    example: 'Renovación del pasaporte',
+  },
+  creativo: {
+    label: 'Creativo',
+    icon: Palette,
+    color: '#a35cb0',
+    soft: '#f4e6f6',
+    example: 'Grabar el primer EP',
+  },
+  voluntariado: {
+    label: 'Voluntariado',
+    icon: HandHeart,
+    color: '#3f8f8f',
+    soft: '#def0f0',
+    example: 'Jornada en el comedor comunitario',
+  },
+  etapa: {
+    label: 'Etapa de vida',
+    icon: Milestone,
+    color: '#6b75b8',
+    soft: '#e9ebf8',
+    example: 'Primer año en Madrid',
+  },
+  dificil: {
+    label: 'Momento difícil',
+    icon: CloudRain,
+    color: '#64748b',
+    soft: '#e8ecf1',
+    example: 'Un mes complicado',
+  },
+  otro: {
+    label: 'Otro',
+    icon: Sparkles,
+    color: '#7d8590',
+    soft: '#eef0f3',
+    example: 'Ponle un nombre',
+  },
 };
 export const episodeKindList = Object.keys(episodeKinds) as EpisodeKind[];
+
+/** Largo máximo del tipo escrito a mano (la base guarda hasta 30 caracteres con «otro:»). */
+export const CUSTOM_KIND_MAX = 24;
+const CUSTOM = 'otro:';
+/** El nombre que escribiste en «Otro» («Boda», «Retiro»…), o '' si es un tipo de la lista. */
+export const customKind = (kind: string) =>
+  kind.startsWith(CUSTOM) ? kind.slice(CUSTOM.length) : '';
+/** El tipo de la lista al que corresponde (los escritos a mano cuentan como «otro»). */
+export const baseKind = (kind: string): EpisodeKind =>
+  episodeKindList.includes(kind as EpisodeKind) ? (kind as EpisodeKind) : 'otro';
+/** Lo que se guarda al elegir «Otro» y escribir un nombre. */
+export const toCustomKind = (label: string): EpisodeKindValue => {
+  const t = label.trim().replace(/\s+/g, ' ').slice(0, CUSTOM_KIND_MAX);
+  return t ? `otro:${t}` : 'otro';
+};
+/** Nombre, ícono y colores de un tipo, incluido uno escrito a mano. */
+export function episodeKindOf(kind: string): EpisodeKindMeta {
+  const custom = customKind(kind);
+  return custom ? { ...episodeKinds.otro, label: custom } : episodeKinds[baseKind(kind)];
+}
 
 /** Tipos de entrada de la bitácora de un episodio. */
 export const episodeUpdateKinds: Record<
@@ -199,6 +401,16 @@ export function episodeSummary(ep: Episode, entries: Entry[], people: Person[], 
   };
 }
 export type EpisodeSummary = ReturnType<typeof episodeSummary>;
+
+/** Último día en que pasó algo en el episodio: un recuerdo, la bitácora o su creación. */
+export function lastActivity(ep: Episode, items: Entry[]) {
+  const days = [
+    day(ep.created_at),
+    ...items.map((e) => day(e.recorded_at ?? e.created_at)),
+    ...(ep.updates ?? []).map((u) => u.date),
+  ];
+  return days.reduce((max, d) => (d > max ? d : max), days[0]);
+}
 
 /** Recuerdos sueltos que probablemente pertenecen a un episodio: mismas fechas o personas. */
 export function candidateEntries(ep: Episode, entries: Entry[], query = '') {

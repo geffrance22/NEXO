@@ -8,7 +8,11 @@ import { relationMeta, relationOf, relations, searchText } from '../lib/people';
 import { Avatar } from '../people/Avatar';
 import type { ComposerApi } from './useComposer';
 
-type PeopleApi = ComposerApi['people'];
+/** Lo que necesita la ventana: el composer le pasa todo; un episodio, solo su selección. */
+export type PeopleChoice = Pick<
+  ComposerApi['people'],
+  'all' | 'selected' | 'suggested' | 'toggle' | 'accept' | 'dismiss' | 'autoLink'
+>;
 
 /** Buscar y elegir varias personas cómodamente; si no existe, se crea con un clic. */
 export function PeopleDialog({
@@ -16,7 +20,7 @@ export function PeopleDialog({
   initialQuery = '',
   onClose,
 }: {
-  api: PeopleApi;
+  api: PeopleChoice;
   initialQuery?: string;
   onClose: () => void;
 }) {

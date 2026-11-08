@@ -1,5 +1,4 @@
 import {
-  Banknote,
   BookMarked,
   Briefcase,
   Clapperboard,
@@ -15,7 +14,7 @@ import type { Entry, EntryDetails, Kind, Person } from '../data';
 import { kindMeta, seriesColors } from '../composer/kinds';
 import { isOpenTask } from '../lib/commitments';
 import { bookPace, isSeries } from '../lib/entries';
-import { money, normalizeText, todayInputValue } from '../lib/format';
+import { normalizeText, todayInputValue } from '../lib/format';
 
 export type TabId =
   | 'inicio'
@@ -25,20 +24,11 @@ export type TabId =
   | 'notas'
   | 'encuentros'
   | 'pendientes'
-  | 'trabajo'
-  | 'movimientos';
+  | 'trabajo';
 
 export type ViewMode = 'portadas' | 'tarjetas' | 'lista';
 export type SortId =
-  | 'reciente'
-  | 'antiguo'
-  | 'titulo'
-  | 'calificacion'
-  | 'anio'
-  | 'progreso'
-  | 'confianza'
-  | 'vence'
-  | 'monto';
+  'reciente' | 'antiguo' | 'titulo' | 'calificacion' | 'anio' | 'progreso' | 'confianza' | 'vence';
 
 export const sortLabels: Record<SortId, string> = {
   reciente: 'Más recientes',
@@ -49,7 +39,6 @@ export const sortLabels: Record<SortId, string> = {
   progreso: 'Más avanzados',
   confianza: 'Por reforzar primero',
   vence: 'Fecha límite',
-  monto: 'Mayor monto',
 };
 
 export type Shelf = { id: string; label: string; test: (e: Entry) => boolean };
@@ -218,37 +207,29 @@ export const entryTabs: EntryTab[] = [
       s === 'idea' || s === 'curso' || s === 'pausa' || s === 'listo' ? { stage: s } : undefined,
     empty: 'Aún no hay proyectos ni tareas de trabajo.',
   },
-  {
-    id: 'movimientos',
-    label: 'Movimientos',
-    icon: Banknote,
-    kind: 'Movimiento',
-    tone: tone('Movimiento'),
-    match: (e) => e.kind === 'Movimiento',
-    views: PLAIN,
-    shelves: [
-      { id: 'gastos', label: 'Gastos', test: (e) => e.direction === 'egreso' },
-      { id: 'ingresos', label: 'Ingresos', test: (e) => e.direction === 'ingreso' },
-    ],
-    sorts: ['reciente', 'monto', 'antiguo'],
-    noun: 'movimiento',
-    empty: 'Aún no hay movimientos.',
-  },
 ];
 
 export const tabById = new Map(entryTabs.map((t) => [t.id, t]));
 
-/** Pestañas en orden: lo que alimenta (arriba) y luego lo de tu libreta. */
-export const tabOrder: { id: TabId; label: string; icon: LucideIcon; divider?: boolean }[] = [
-  { id: 'inicio', label: 'Inicio', icon: LayoutGrid },
-  { id: 'peliculas', label: 'Películas', icon: Clapperboard },
+/**
+ * Pestañas en orden. «Inicio» va solo con su ícono (sin nombre ni cifra) y una raya lo separa de
+ * las secciones. Los movimientos no tienen pestaña: viven en Finanzas.
+ */
+export const tabOrder: {
+  id: TabId;
+  label: string;
+  icon: LucideIcon;
+  divider?: boolean;
+  iconOnly?: boolean;
+}[] = [
+  { id: 'inicio', label: 'Inicio', icon: LayoutGrid, iconOnly: true },
+  { id: 'peliculas', label: 'Películas', icon: Clapperboard, divider: true },
   { id: 'libros', label: 'Libros', icon: BookMarked },
-  { id: 'aprendizajes', label: 'Aprendizajes', icon: Lightbulb },
-  { id: 'notas', label: 'Notas', icon: PenLine, divider: true },
-  { id: 'encuentros', label: 'Encuentros', icon: Users },
   { id: 'pendientes', label: 'Pendientes', icon: ListChecks },
   { id: 'trabajo', label: 'Trabajo', icon: Briefcase },
-  { id: 'movimientos', label: 'Movimientos', icon: Banknote },
+  { id: 'notas', label: 'Notas', icon: PenLine },
+  { id: 'encuentros', label: 'Encuentros', icon: Users },
+  { id: 'aprendizajes', label: 'Aprendizajes', icon: Lightbulb },
 ];
 export const isTab = (s: string | null): s is TabId => tabOrder.some((t) => t.id === s);
 
@@ -295,8 +276,6 @@ export function sortEntries(list: Entry[], sort: SortId) {
           (a.details.due ?? '9999').localeCompare(b.details.due ?? '9999') ||
           newest(a, b),
       );
-    case 'monto':
-      return out.sort((a, b) => b.amount - a.amount || newest(a, b));
   }
 }
 
@@ -398,17 +377,6 @@ export function tabSummary(tab: EntryTab, list: Entry[], today = todayInputValue
       if (now) bits.push(`${now} en curso`);
       const done = list.filter((e) => e.details.stage === 'listo').length;
       if (done) bits.push(plural(done, 'terminado', 'terminados'));
-      break;
-    }
-    case 'movimientos': {
-      const month = today.slice(0, 7);
-      const inMonth = list.filter((e) => todayInputValue(new Date(e.created_at)).startsWith(month));
-      const out = inMonth.filter((e) => e.direction === 'egreso').reduce((s, e) => s + e.amount, 0);
-      const inc = inMonth
-        .filter((e) => e.direction === 'ingreso')
-        .reduce((s, e) => s + e.amount, 0);
-      if (out) bits.push(`${money(out)} gastado este mes`);
-      if (inc) bits.push(`${money(inc)} de ingresos`);
       break;
     }
     case 'encuentros': {

@@ -249,33 +249,21 @@ export function Poster({ entry }: { entry: Entry }) {
   return <CoverPlaceholder icon={Icon} title={entry.title} sub={captionOf(entry)} />;
 }
 
-/** Una película, serie o libro en la cuadrícula de portadas. */
+/** Una película, serie o libro en la cuadrícula de portadas: solo el póster. */
 function CoverTile({ entry }: { entry: Entry }) {
   const { viewEntry } = useApp();
-  const status = statusOf(entry);
-  const pace = bookPace(entry);
-  const caption = captionOf(entry);
+  const label = [entry.title, captionOf(entry)].filter(Boolean).join(' · ');
   return (
     <button
       type="button"
       className="lt-cover"
       style={toneVars(toneOf(entry))}
+      title={label}
+      aria-label={label}
       onClick={() => viewEntry(entry)}
     >
       <span className="lt-art">
         <Poster entry={entry} />
-        {status && <StatusPill status={status} />}
-        <RatingPill value={entry.details.rating} />
-        {pace && (
-          <span className="lt-bar" aria-hidden="true">
-            <i style={{ width: pace.percent + '%' }} />
-          </span>
-        )}
-      </span>
-      <span className="lt-cap">
-        <strong>{entry.title}</strong>
-        {caption && <small>{caption}</small>}
-        {pace?.eta && <small className="lt-eta">{etaLabel(pace.eta)}</small>}
       </span>
     </button>
   );

@@ -20,6 +20,7 @@ import { TodayAgenda } from '../agenda/TodayAgenda';
 import type { Entry } from '../data';
 import { isActive, progressOf, withEpisode } from '../library/progress';
 import { addedAt, goLibroteca, toneOf } from '../library/shelf';
+import { QuoteOfDayCard } from '../library/QuoteOfDay';
 import { entryImages } from '../lib/moviePosters';
 import { commitmentKinds, commitmentOf, counterpartOf, isOpenTask } from '../lib/commitments';
 import { friendlyDate, money, todayInputValue } from '../lib/format';
@@ -52,6 +53,7 @@ export function Overview() {
         <FollowCard />
         <PinnedColumnCard />
         <ReadingPick />
+        <QuoteOfDayCard />
         <RadarCard onShowAll={showTasks} />
         <CircleCard />
         <SummaryCard onShowTasks={showTasks} />

@@ -1,6 +1,6 @@
 import type { Entry, Episode, Group, Person, Place, Tie, Workspace } from '../data';
 import { kindLabel } from './entries';
-import { episodeKinds } from './episodes';
+import { episodeKindOf } from './episodes';
 import { normalizeText } from './format';
 import { searchText } from './people';
 import { placeSearchText } from './places';
@@ -91,7 +91,7 @@ export function searchWorkspace(workspace: Workspace, query: string): SearchGrou
           ep.summary,
           ep.outcome,
           ep.source,
-          episodeKinds[ep.kind]?.label,
+          episodeKindOf(ep.kind).label,
           names(ep.person_ids),
           ...(ep.updates ?? []).map((u) => u.text),
         ].join(' '),

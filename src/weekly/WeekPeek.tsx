@@ -5,7 +5,7 @@ import { supabase } from '../backend';
 import { Sheet } from '../components/Sheet';
 import type { Entry, Episode, Person } from '../data';
 import { kindMeta } from '../composer/kinds';
-import { episodeKinds, episodeUpdateKinds } from '../lib/episodes';
+import { episodeKindOf, episodeUpdateKinds } from '../lib/episodes';
 import { friendlyDate } from '../lib/format';
 import { placeKinds } from '../lib/places';
 import { Avatar } from '../people/Avatar';
@@ -140,7 +140,7 @@ function EpisodeDetail({
 }) {
   const { workspace, go, viewEntry } = useApp();
   const ep = item.episode;
-  const meta = episodeKinds[ep.kind] ?? episodeKinds.otro;
+  const meta = episodeKindOf(ep.kind);
   const people = workspace.people.filter(
     (p) => ep.person_ids.includes(p.id) || item.items.some((e) => e.person_ids.includes(p.id)),
   );

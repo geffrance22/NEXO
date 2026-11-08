@@ -21,7 +21,7 @@ import {
 } from './shelf';
 
 const COLLECTION: TabId[] = ['peliculas', 'libros', 'aprendizajes'];
-const NOTEBOOK: TabId[] = ['notas', 'encuentros', 'pendientes', 'trabajo', 'movimientos'];
+const NOTEBOOK: TabId[] = ['notas', 'encuentros', 'pendientes', 'trabajo'];
 const MEDIA = new Set<TabId>(['peliculas', 'libros']);
 const NOW_MAX = 12;
 const RECENT = 6;

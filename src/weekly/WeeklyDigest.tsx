@@ -33,7 +33,7 @@ import { addDays, friendlyDate, money, todayInputValue } from '../lib/format';
 import { exchangeKinds } from '../lib/people';
 import { placeKinds } from '../lib/places';
 import { updateKinds } from '../lib/updates';
-import { episodeKinds } from '../lib/episodes';
+import { episodeKindOf } from '../lib/episodes';
 import { Avatar } from '../people/Avatar';
 import { AiText } from '../readings/AiText';
 import { dismiss, useDismissed } from '../relations/dismissed';
@@ -595,7 +595,7 @@ export function WeeklyDigest({ onClose }: { onClose: () => void }) {
                     <Sec icon={<Layers size={14} />} title="Tus episodios">
                       <ul className="wk-list">
                         {w.episodes.slice(0, 5).map((item) => {
-                          const k = episodeKinds[item.episode.kind] ?? episodeKinds.otro;
+                          const k = episodeKindOf(item.episode.kind);
                           const last = item.updates[0];
                           return (
                             <li key={item.episode.id}>

@@ -4,7 +4,7 @@ import { useApp } from '../AppContext';
 import { kindMeta } from '../composer/kinds';
 import { useDismiss } from '../hooks/useDismiss';
 import { kindLabel } from '../lib/entries';
-import { episodeKinds } from '../lib/episodes';
+import { episodeKindOf } from '../lib/episodes';
 import { shortDate } from '../lib/format';
 import { relationMeta, relationOf } from '../lib/people';
 import { placeKinds } from '../lib/places';
@@ -63,7 +63,7 @@ function describe(hit: SearchHit): { title: string; sub: string; look: Look | nu
     }
     case 'episode': {
       const { episode } = hit;
-      const kind = episodeKinds[episode.kind] ?? episodeKinds.otro;
+      const kind = episodeKindOf(episode.kind);
       const when = episode.starts_on ?? episode.created_at;
       return {
         title: episode.title,

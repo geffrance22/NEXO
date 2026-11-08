@@ -489,10 +489,14 @@ export function AppShell({ user }: { user: AppUser }) {
             onClose={closeModal}
           />
         )}
-        {viewing && <EntryViewer key={viewing.id} entry={viewing} onClose={closeModal} />}
+        {/* Claves distintas aunque sean del mismo recuerdo: con la misma, React pierde la ficha al
+            cerrar «Actualizar progreso» y deja una copia muerta encima que no se puede cerrar. */}
+        {viewing && (
+          <EntryViewer key={'ficha-' + viewing.id} entry={viewing} onClose={closeModal} />
+        )}
         {progressTarget && (
           <ProgressSheet
-            key={progressTarget.id}
+            key={'progreso-' + progressTarget.id}
             entry={progressTarget}
             onClose={() => setProgress(null)}
           />

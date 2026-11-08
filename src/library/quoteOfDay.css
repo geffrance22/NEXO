@@ -1,0 +1,70 @@
+/* ── Mi espacio: cita del día ── */
+.hc.qd {
+  border-color: #ece3d7;
+  background: linear-gradient(160deg, #f8f2ea, #fff 70%);
+}
+.hc.qd h3 svg {
+  color: #a08466;
+}
+.qd-fig {
+  margin: 0;
+  animation: qd-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+/* Una cita muy larga no estira la tarjeta: se desplaza dentro de ella. */
+.qd-fig blockquote {
+  max-height: 20em;
+  margin: 0;
+  overflow-y: auto;
+  font:
+    italic 15px/1.6 Georgia,
+    'Times New Roman',
+    serif;
+  letter-spacing: -0.1px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #3d342a;
+  scrollbar-width: thin;
+  scrollbar-color: #d8cbbb transparent;
+}
+.qd-fig blockquote::before {
+  content: '“';
+}
+.qd-fig blockquote::after {
+  content: '”';
+}
+.qd-fig figcaption {
+  margin-top: 12px;
+}
+.qd-fig figcaption button {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: 100%;
+  padding: 0;
+  text-align: left;
+}
+.qd-fig figcaption strong {
+  font:
+    700 12.5px/1.35 'Manrope',
+    sans-serif;
+  color: #5b4330;
+}
+.qd-fig figcaption small {
+  font-size: 11.5px;
+  color: #7a6a56;
+}
+.qd-fig figcaption button:hover strong {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@keyframes qd-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qd-fig {
+    animation: none;
+  }
+}

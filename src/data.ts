@@ -275,21 +275,38 @@ export type Entry = {
 export type CommitmentKind = 'quiero' | 'prometi' | 'espero' | 'depende';
 
 export type EpisodeKind =
-  | 'encuentro'
   | 'viaje'
+  | 'encuentro'
   | 'celebracion'
+  | 'evento'
   | 'proyecto'
   | 'colaboracion'
+  | 'negocio'
+  | 'empleo'
+  | 'estudio'
+  | 'salud'
+  | 'deporte'
+  | 'aventura'
+  | 'familia'
+  | 'pareja'
+  | 'mascota'
+  | 'hogar'
   | 'mudanza'
-  | 'evento'
+  | 'compra'
+  | 'tramite'
+  | 'creativo'
+  | 'voluntariado'
   | 'etapa'
+  | 'dificil'
   | 'otro';
+/** Lo que se guarda: un tipo de la lista o «otro:» con el nombre que escribiste («otro:Boda»). */
+export type EpisodeKindValue = EpisodeKind | `otro:${string}`;
 
 /** Una experiencia que reúne varios recuerdos: personas, lugares, dinero, tareas y aprendizajes. */
 export type Episode = {
   id: string;
   title: string;
-  kind: EpisodeKind;
+  kind: EpisodeKindValue;
   status: 'activo' | 'cerrado';
   /** AAAA-MM-DD */
   starts_on: string | null;

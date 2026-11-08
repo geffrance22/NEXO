@@ -181,8 +181,15 @@
 .lt-tabs button.on svg {
   opacity: 1;
 }
-.lt-tabs button.empty:not(.on) {
+/* Sección sin nada. No se llama «empty»: esa clase global sube el ícono 17px (style.css). */
+.lt-tabs button.lt-zero:not(.on) {
   color: #aab2a0;
+}
+/* «Inicio»: solo el ícono, en un botón redondo. */
+.lt-tabs button.icon {
+  justify-content: center;
+  width: 32px;
+  padding: 0;
 }
 .lt-tabs i {
   min-width: 18px;
@@ -405,19 +412,40 @@
   }
 }
 
-/* ───────── Portadas: la cuadrícula protagonista ───────── */
+/* ───────── Portadas: solo los pósters, pequeños y juntos ───────── */
 .lt-covers {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 26px 18px;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
 }
+/* Bloque (no flex): Chrome alinea el contenido de un botón al inicio y la portada quedaba sin
+   ancho ni alto. Así ocupa toda la celda. */
 .lt-cover {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
+  display: block;
   min-width: 0;
   padding: 0;
-  text-align: left;
+}
+.lt-cover .lt-art {
+  width: 100%;
+  border-radius: 8px;
+}
+/* Sin píldoras encima, la sombra superior sobra. */
+.lt-cover .lt-art::after {
+  display: none;
+}
+.lt-cover .lt-ph {
+  gap: 3px;
+  padding: 9px 8px;
+}
+.lt-cover .lt-ph b {
+  padding-right: 0;
+  font-size: 12.5px;
+}
+.lt-cover .lt-ph small {
+  font-size: 9.5px;
+}
+.lt-cover .lt-ph svg {
+  display: none;
 }
 .lt-art {
   position: relative;
@@ -570,35 +598,6 @@
   border-radius: inherit;
   background: #fff;
 }
-.lt-cap {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  padding: 0 2px;
-}
-.lt-cap strong {
-  overflow: hidden;
-  font:
-    700 13.5px/1.35 'Manrope',
-    sans-serif;
-  letter-spacing: -0.15px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--lt-ink);
-}
-.lt-cap small {
-  overflow: hidden;
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--lt-faint);
-}
-.lt-cap .lt-eta {
-  font-weight: 600;
-  color: var(--k);
-}
-
 /* ───────── Lista ───────── */
 .lt-list {
   display: flex;
@@ -1603,8 +1602,8 @@ html[data-theme='dark'] .lt-tabs {
     font-size: 26px;
   }
   .lt-covers {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 20px 12px;
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: 6px;
   }
 
   .lt-sec.media {

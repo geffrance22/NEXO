@@ -102,6 +102,8 @@ export function PinnedColumnCard() {
   if (!col) return null;
 
   const real = cards.filter((c) => !isDivider(c.title));
+  // Sin tarjetas en la columna, el bloque no aparece.
+  if (!real.length) return null;
   const top = real.slice(0, SHOWN);
   const more = real.length - top.length;
   const open = real.filter((c) => !isDone(c)).length;
@@ -169,53 +171,49 @@ export function PinnedColumnCard() {
         </button>
       </header>
 
-      {top.length ? (
-        <ul className="hpin-list">
-          {top.map((c) => {
-            const done = isDone(c);
-            const due = dueState(c.due, done);
-            const ticked = c.checks.filter((x) => x.done).length;
-            return (
-              <li key={c.id} className={done ? 'done' : ''}>
-                <button
-                  type="button"
-                  className="hpin-check"
-                  aria-pressed={done}
-                  title={done ? 'Marcar como no completada' : 'Completar'}
-                  aria-label={done ? 'Marcar como no completada' : 'Completar'}
-                  onClick={() => toggle(c)}
-                >
-                  <Check size={11} strokeWidth={3.2} />
-                </button>
-                <button
-                  type="button"
-                  className="hpin-main"
-                  title="Abrir la tarjeta en Tableros"
-                  onClick={() => toBoard(c.id)}
-                >
-                  <strong>{c.title}</strong>
-                  {(due || c.checks.length > 0) && (
-                    <small>
-                      {due && (
-                        <span className={'hpin-due ' + due.tone}>
-                          <Calendar size={11} /> {due.label}
-                        </span>
-                      )}
-                      {c.checks.length > 0 && (
-                        <span className={ticked === c.checks.length ? 'full' : ''}>
-                          <CheckSquare size={11} /> {ticked}/{c.checks.length}
-                        </span>
-                      )}
-                    </small>
-                  )}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <p className="hc-empty">Esta columna está vacía por ahora.</p>
-      )}
+      <ul className="hpin-list">
+        {top.map((c) => {
+          const done = isDone(c);
+          const due = dueState(c.due, done);
+          const ticked = c.checks.filter((x) => x.done).length;
+          return (
+            <li key={c.id} className={done ? 'done' : ''}>
+              <button
+                type="button"
+                className="hpin-check"
+                aria-pressed={done}
+                title={done ? 'Marcar como no completada' : 'Completar'}
+                aria-label={done ? 'Marcar como no completada' : 'Completar'}
+                onClick={() => toggle(c)}
+              >
+                <Check size={11} strokeWidth={3.2} />
+              </button>
+              <button
+                type="button"
+                className="hpin-main"
+                title="Abrir la tarjeta en Tableros"
+                onClick={() => toBoard(c.id)}
+              >
+                <strong>{c.title}</strong>
+                {(due || c.checks.length > 0) && (
+                  <small>
+                    {due && (
+                      <span className={'hpin-due ' + due.tone}>
+                        <Calendar size={11} /> {due.label}
+                      </span>
+                    )}
+                    {c.checks.length > 0 && (
+                      <span className={ticked === c.checks.length ? 'full' : ''}>
+                        <CheckSquare size={11} /> {ticked}/{c.checks.length}
+                      </span>
+                    )}
+                  </small>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
 
       {more > 0 && (
         <button type="button" className="hpin-more" onClick={() => toBoard()}>

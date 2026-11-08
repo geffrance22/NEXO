@@ -24,7 +24,7 @@ import type {
   StoredImage,
 } from '../data';
 import {
-  episodeKinds,
+  episodeKindOf,
   episodeLinkKindList,
   episodeLinkKinds,
   episodeUpdateKindList,
@@ -370,7 +370,7 @@ export function RelatedEpisodes({ episode }: { episode: Episode }) {
           {related.length > 0 ? (
             <ul className="ep-rel-list">
               {related.map((r) => {
-                const m = episodeKinds[r.episode.kind] ?? episodeKinds.otro;
+                const m = episodeKindOf(r.episode.kind);
                 return (
                   <li
                     key={r.episode.id}

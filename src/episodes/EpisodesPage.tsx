@@ -1,9 +1,13 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import {
   ArrowLeft,
+  ArrowUpDown,
   Banknote,
   CalendarClock,
+  CalendarDays,
+  Camera,
   Check,
+  CircleAlert,
   CircleCheck,
   History,
   Layers,
@@ -11,6 +15,7 @@ import {
   ListChecks,
   MapPin,
   Pencil,
+  Play,
   Plus,
   Quote,
   RotateCcw,
@@ -22,14 +27,26 @@ import {
   Unlink,
   Users,
   Wand2,
+  X,
+  type LucideIcon,
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { PhotoThumbs } from '../components/PhotoThumbs';
 import { kindMeta } from '../composer/kinds';
-import type { Entry, Episode } from '../data';
+import type { Entry, Episode, EpisodeKind, Person } from '../data';
 import { commitmentKinds, commitmentOf } from '../lib/commitments';
-import { candidateEntries, episodeKinds, episodeSummary, relatedEpisodes } from '../lib/episodes';
-import { friendlyDate, money, shortDate, todayInputValue } from '../lib/format';
+import {
+  candidateEntries,
+  episodeKindOf,
+  episodeKinds,
+  episodeSummary,
+  lastActivity,
+  relatedEpisodes,
+  type EpisodeKindMeta,
+  type EpisodeSummary,
+} from '../lib/episodes';
+import { friendlyDate, money, normalizeText, shortDate, todayInputValue } from '../lib/format';
+import { daysBetween } from '../lib/people';
 import { updateKinds } from '../lib/updates';
 import { Avatar } from '../people/Avatar';
 import { EpisodeGallery, EpisodeLog, RelatedEpisodes } from './EpisodeParts';
@@ -40,82 +57,378 @@ const range = (from: string | null, to: string | null) => {
   const f = (d: string) => shortDate(d + 'T12:00:00');
   return to && to !== from ? `${f(from)} – ${f(to)}` : f(from);
 };
+const day = (iso: string) => todayInputValue(new Date(iso));
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+type Tab = 'activo' | 'cerrado';
+type Sort = 'fecha' | 'actividad' | 'gasto';
+const sortLabels: Record<Sort, string> = {
+  fecha: 'Por fecha',
+  actividad: 'Última actividad',
+  gasto: 'Mayor gasto',
+};
+/** Un episodio activo sin nada nuevo en estos días se marca como «sin novedades». */
+const QUIET_DAYS = 21;
+/** Tipos para empezar rápido cuando aún no hay episodios. */
+const STARTERS: EpisodeKind[] = [
+  'viaje',
+  'celebracion',
+  'proyecto',
+  'evento',
+  'estudio',
+  'salud',
+  'mudanza',
+  'negocio',
+];
+
+/** Un episodio con lo que se calcula una sola vez para la lista. */
+type Row = {
+  ep: Episode;
+  s: EpisodeSummary;
+  kind: EpisodeKindMeta;
+  /** Último día con actividad (AAAA-MM-DD). */
+  last: string;
+  /** Primer día (o el de creación si no tiene fecha). */
+  start: string;
+  /** Texto normalizado para buscar. */
+  text: string;
+};
 
 /** Episodios: cada uno reúne recuerdos, personas, lugares, dinero, tareas y aprendizajes. */
 export function EpisodesPage() {
-  const { workspace, selectedEpisode, openEpisode, openCapture, experiencesMissing } = useApp();
-  const [filter, setFilter] = useState<'activo' | 'cerrado' | 'todos'>('todos');
+  const { selectedEpisode } = useApp();
+  return selectedEpisode ? <EpisodeDetail episode={selectedEpisode} /> : <EpisodesList />;
+}
 
-  if (selectedEpisode) return <EpisodeDetail episode={selectedEpisode} />;
+/** Panel general: resumen, «En curso» y «Cerrados», búsqueda, tipos y orden. */
+function EpisodesList() {
+  const { workspace, openEpisode, openCapture, experiencesMissing } = useApp();
+  const today = todayInputValue();
+  const year = today.slice(0, 4);
 
-  const list = workspace.episodes
-    .filter((e) => filter === 'todos' || e.status === filter)
-    .sort((a, b) => (b.starts_on ?? b.created_at).localeCompare(a.starts_on ?? a.created_at));
+  const rows = useMemo<Row[]>(
+    () =>
+      workspace.episodes.map((ep) => {
+        const s = episodeSummary(ep, workspace.entries, workspace.people, workspace.places);
+        const kind = episodeKindOf(ep.kind);
+        return {
+          ep,
+          s,
+          kind,
+          last: lastActivity(ep, s.items),
+          start: s.from ?? day(ep.created_at),
+          text: normalizeText(
+            [
+              ep.title,
+              ep.summary,
+              ep.outcome,
+              kind.label,
+              ...s.people.map((p) => p.name),
+              ...s.places.map((p) => p.name),
+            ].join(' '),
+          ),
+        };
+      }),
+    [workspace],
+  );
   const counts = {
-    todos: workspace.episodes.length,
-    activo: workspace.episodes.filter((e) => e.status === 'activo').length,
-    cerrado: workspace.episodes.filter((e) => e.status === 'cerrado').length,
+    activo: rows.filter((r) => r.ep.status === 'activo').length,
+    cerrado: rows.filter((r) => r.ep.status === 'cerrado').length,
   };
+  // Abre en «En curso»; si no hay nada en curso pero sí cerrados, en «Cerrados».
+  const [tab, setTab] = useState<Tab>(() =>
+    !counts.activo && counts.cerrado ? 'cerrado' : 'activo',
+  );
+  const [query, setQuery] = useState('');
+  const [kindFilter, setKindFilter] = useState<string | null>(null);
+  const [sort, setSort] = useState<Sort>('fecha');
+
+  // ── Resumen de todos los episodios ──
+  const active = rows.filter((r) => r.ep.status === 'activo');
+  const upcoming = active
+    .filter((r) => r.s.startsIn !== null)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  const thisYear = rows.filter((r) => r.start.startsWith(year));
+  const spentYear = thisYear.reduce((sum, r) => sum + r.s.spent, 0);
+  const overBudget = active.filter((r) => r.ep.budget && r.s.spent > r.ep.budget).length;
+  const openTasks = active.reduce((sum, r) => sum + r.s.open.length, 0);
+  const withTasks = active.filter((r) => r.s.open.length).length;
+  const daysYear = thisYear.reduce((sum, r) => sum + (r.s.days ?? 0), 0);
+  const companions = new Map<string, { person: Person; n: number }>();
+  for (const r of rows)
+    for (const p of r.s.people)
+      companions.set(p.id, { person: p, n: (companions.get(p.id)?.n ?? 0) + 1 });
+  const top = [...companions.values()].sort((a, b) => b.n - a.n)[0];
+  const next = upcoming[0];
+  const stats: { icon: LucideIcon; value: string; label: string; sub?: string; tone?: string }[] = [
+    {
+      icon: Play,
+      value: String(active.length - upcoming.length),
+      label: 'en marcha',
+      sub: next
+        ? `Próximo: ${next.ep.title} · ${next.s.startsIn === 1 ? 'mañana' : `en ${next.s.startsIn} días`}`
+        : 'Nada por empezar',
+    },
+    {
+      icon: CalendarDays,
+      value: String(thisYear.length),
+      label: `${thisYear.length === 1 ? 'episodio' : 'episodios'} en ${year}`,
+      sub: daysYear ? `${plural(daysYear, 'día', 'días')} de historias` : undefined,
+    },
+    {
+      icon: TrendingDown,
+      value: money(spentYear),
+      label: `gastado en ${year}`,
+      sub: overBudget
+        ? `${plural(overBudget, 'episodio pasado', 'episodios pasados')} de presupuesto`
+        : undefined,
+      tone: overBudget ? 'warn' : undefined,
+    },
+    {
+      icon: ListChecks,
+      value: String(openTasks),
+      label: openTasks === 1 ? 'pendiente abierto' : 'pendientes abiertos',
+      sub: withTasks ? `en ${plural(withTasks, 'episodio', 'episodios')}` : 'Todo al día',
+    },
+    {
+      icon: Users,
+      value: String(companions.size),
+      label: companions.size === 1 ? 'persona' : 'personas',
+      sub: top ? `Más con ${top.person.name.split(' ')[0]} (${top.n})` : undefined,
+    },
+  ];
+
+  // ── Lista de la pestaña ──
+  const inTab = rows.filter((r) => r.ep.status === tab);
+  const kindsHere = [...new Map(inTab.map((r) => [r.ep.kind, r.kind])).entries()]
+    .map(([key, meta]) => ({ key, meta, n: inTab.filter((r) => r.ep.kind === key).length }))
+    .sort((a, b) => b.n - a.n || a.meta.label.localeCompare(b.meta.label, 'es'));
+  const kindOn = kindsHere.some((k) => k.key === kindFilter) ? kindFilter : null;
+  const needle = normalizeText(query.trim());
+  const shown = inTab.filter(
+    (r) => (!kindOn || r.ep.kind === kindOn) && (!needle || r.text.includes(needle)),
+  );
+  const sorters: Record<Sort, (a: Row, b: Row) => number> = {
+    fecha: (a, b) => b.start.localeCompare(a.start),
+    actividad: (a, b) => b.last.localeCompare(a.last) || b.start.localeCompare(a.start),
+    gasto: (a, b) => b.s.spent - a.s.spent || b.start.localeCompare(a.start),
+  };
+  let groups: { title: string; rows: Row[] }[];
+  if (tab === 'activo') {
+    // Lo que ya empezó, y aparte lo que viene (lo más cercano primero).
+    groups = [
+      {
+        title: 'En marcha',
+        rows: shown.filter((r) => r.s.startsIn === null).sort(sorters[sort]),
+      },
+      {
+        title: 'Próximamente',
+        rows: shown
+          .filter((r) => r.s.startsIn !== null)
+          .sort((a, b) => a.start.localeCompare(b.start)),
+      },
+    ].filter((g) => g.rows.length);
+  } else if (sort === 'fecha') {
+    // Cerrados por año, del más reciente al más antiguo.
+    const years = new Map<string, Row[]>();
+    for (const r of [...shown].sort(sorters.fecha)) {
+      const y = (r.s.to ?? r.start).slice(0, 4);
+      years.set(y, [...(years.get(y) ?? []), r]);
+    }
+    groups = [...years.entries()].map(([title, list]) => ({ title, rows: list }));
+  } else {
+    groups = [{ title: '', rows: [...shown].sort(sorters[sort]) }];
+  }
+  const showTitles = groups.length > 1 || tab === 'cerrado' || groups[0]?.title === 'Próximamente';
+  const filtered = Boolean(needle || kindOn);
+
+  if (experiencesMissing)
+    return (
+      <div className="pp-empty-state">
+        <Layers size={30} />
+        <h3>Los episodios necesitan la migración 008.</h3>
+        <p>
+          Ejecuta supabase/migrations/202611060008_experiences.sql en el SQL Editor de Supabase.
+        </p>
+      </div>
+    );
+
+  if (!rows.length)
+    return (
+      <div className="ep-empty">
+        <span className="ep-empty-art">
+          <Layers size={28} />
+        </span>
+        <h3>Tus historias completas vivirán aquí.</h3>
+        <p>
+          Un viaje, una celebración, una mudanza o un proyecto: cuéntalo y Nexo arma el episodio con
+          sus personas, lugares, gastos y pendientes.
+        </p>
+        <div className="ep-empty-actions">
+          <button type="button" className="pp-btn" onClick={() => openCapture()}>
+            <Wand2 size={15} /> Capturar una experiencia
+          </button>
+          <button type="button" className="pp-btn dark" onClick={() => openEpisode()}>
+            <Plus size={15} /> Nuevo episodio
+          </button>
+        </div>
+        <div className="ep-empty-kinds">
+          {STARTERS.map((k) => {
+            const km = episodeKinds[k];
+            return (
+              <button
+                type="button"
+                key={k}
+                style={{ '--kc': km.color, '--ks': km.soft } as CSSProperties}
+                onClick={() => openEpisode(undefined, { kind: k })}
+              >
+                <km.icon size={15} /> {km.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
 
   return (
     <div className="ep-page">
+      <div className="ep-stats">
+        {stats.map((st) => (
+          <div key={st.label} className={'ep-stat' + (st.tone ? ' ' + st.tone : '')}>
+            <span className="ep-stat-icon">
+              <st.icon size={16} />
+            </span>
+            <span className="ep-stat-text">
+              <b>{st.value}</b>
+              <span>{st.label}</span>
+              {st.sub && <small title={st.sub}>{st.sub}</small>}
+            </span>
+          </div>
+        ))}
+      </div>
+
       <div className="ep-bar">
-        <div className="pp-pills" role="tablist">
-          {(['todos', 'activo', 'cerrado'] as const).map((f) => (
+        <div className="pp-pills" role="tablist" aria-label="Estado de los episodios">
+          {(['activo', 'cerrado'] as const).map((f) => (
             <button
               type="button"
               role="tab"
               key={f}
-              aria-selected={filter === f}
-              className={'pp-pill' + (filter === f ? ' on' : '')}
-              onClick={() => setFilter(f)}
+              aria-selected={tab === f}
+              className={'pp-pill' + (tab === f ? ' on' : '')}
+              onClick={() => setTab(f)}
             >
-              {f === 'todos' ? 'Todos' : f === 'activo' ? 'En curso' : 'Cerrados'}{' '}
-              <i>{counts[f]}</i>
+              {f === 'activo' ? 'En curso' : 'Cerrados'} <i>{counts[f]}</i>
             </button>
           ))}
         </div>
         <div className="ep-bar-tools">
+          <label className="ep-search">
+            <Search size={15} />
+            <input
+              type="search"
+              value={query}
+              placeholder="Buscar por nombre, persona o lugar"
+              aria-label="Buscar episodios"
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape' && query) {
+                  e.stopPropagation();
+                  setQuery('');
+                }
+              }}
+            />
+            {query && (
+              <button type="button" aria-label="Borrar búsqueda" onClick={() => setQuery('')}>
+                <X size={13} />
+              </button>
+            )}
+          </label>
+          <label className="ep-sort" title="Ordenar">
+            <ArrowUpDown size={14} />
+            <select
+              value={sort}
+              aria-label="Ordenar episodios"
+              onChange={(e) => setSort(e.target.value as Sort)}
+            >
+              {(Object.keys(sortLabels) as Sort[]).map((k) => (
+                <option key={k} value={k}>
+                  {sortLabels[k]}
+                </option>
+              ))}
+            </select>
+          </label>
           <button type="button" className="pp-btn" onClick={() => openCapture()}>
-            <Wand2 size={15} /> Capturar experiencia
+            <Wand2 size={15} /> Capturar
           </button>
-          <button
-            type="button"
-            className="pp-btn dark"
-            disabled={experiencesMissing}
-            onClick={() => openEpisode()}
-          >
+          <button type="button" className="pp-btn dark" onClick={() => openEpisode()}>
             <Plus size={15} /> Nuevo episodio
           </button>
         </div>
       </div>
 
-      {experiencesMissing ? (
-        <div className="pp-empty-state">
-          <Layers size={30} />
-          <h3>Los episodios necesitan la migración 008.</h3>
-          <p>
-            Ejecuta supabase/migrations/202611060008_experiences.sql en el SQL Editor de Supabase.
-          </p>
-        </div>
-      ) : list.length ? (
-        <div className="ep-grid">
-          {list.map((ep) => (
-            <EpisodeCard key={ep.id} episode={ep} />
+      {kindsHere.length > 1 && (
+        <div className="ep-kind-filter" role="group" aria-label="Filtrar por tipo">
+          <button type="button" className={!kindOn ? 'on' : ''} onClick={() => setKindFilter(null)}>
+            Todos los tipos
+          </button>
+          {kindsHere.map(({ key, meta, n }) => (
+            <button
+              type="button"
+              key={key}
+              className={kindOn === key ? 'on' : ''}
+              style={{ '--kc': meta.color, '--ks': meta.soft } as CSSProperties}
+              onClick={() => setKindFilter(kindOn === key ? null : key)}
+            >
+              <meta.icon size={13} /> {meta.label} <i>{n}</i>
+            </button>
           ))}
         </div>
+      )}
+
+      {shown.length ? (
+        groups.map((g) => (
+          <section key={g.title || 'todos'} className="ep-group">
+            {showTitles && g.title && (
+              <h2 className="ep-group-title">
+                {g.title} <i>{g.rows.length}</i>
+              </h2>
+            )}
+            <div className="ep-grid">
+              {g.rows.map((r) => (
+                <EpisodeCard key={r.ep.id} row={r} today={today} />
+              ))}
+            </div>
+          </section>
+        ))
       ) : (
-        <div className="pp-empty-state">
-          <Layers size={30} />
-          <h3>{counts.todos ? 'Nada con ese filtro.' : 'Tus historias completas vivirán aquí.'}</h3>
-          <p>
-            Un viaje, una cena, una mudanza o un proyecto: cuéntalo y Nexo arma el episodio con sus
-            piezas.
-          </p>
-          {!counts.todos && (
-            <button type="button" className="pp-btn dark" onClick={() => openCapture()}>
-              <Wand2 size={15} /> Capturar la primera experiencia
-            </button>
+        <div className="ep-none">
+          {filtered ? (
+            <>
+              <p>
+                {needle ? `Nada coincide con «${query.trim()}»` : 'Nada de ese tipo'}
+                {tab === 'activo' ? ' en curso.' : ' entre los cerrados.'}
+              </p>
+              <button
+                type="button"
+                className="pp-text-btn"
+                onClick={() => {
+                  setQuery('');
+                  setKindFilter(null);
+                }}
+              >
+                Quitar filtros
+              </button>
+            </>
+          ) : tab === 'activo' ? (
+            <>
+              <p>No tienes nada en curso ahora mismo.</p>
+              <button type="button" className="pp-text-btn" onClick={() => openEpisode()}>
+                <Plus size={13} /> Empezar un episodio
+              </button>
+            </>
+          ) : (
+            <p>Aún no has cerrado ningún episodio. Ciérralos desde su ficha cuando terminen.</p>
           )}
         </div>
       )}
@@ -123,20 +436,57 @@ export function EpisodesPage() {
   );
 }
 
-function EpisodeCard({ episode: ep }: { episode: Episode }) {
+/** Cómo va un episodio: por empezar, en qué día va o cerrado. */
+function cardStatus(
+  ep: Episode,
+  s: EpisodeSummary,
+  today: string,
+): { text: string; tone: 'soon' | 'live' | 'done' } {
+  if (ep.status === 'cerrado') return { text: 'Cerrado', tone: 'done' };
+  if (s.startsIn !== null)
+    return { text: s.startsIn === 1 ? 'Empieza mañana' : `En ${s.startsIn} días`, tone: 'soon' };
+  if (s.from) {
+    const n = daysBetween(s.from, today) + 1;
+    const total = ep.ends_on ? daysBetween(s.from, ep.ends_on) + 1 : null;
+    if (total && n <= total) return { text: `Día ${n} de ${total}`, tone: 'live' };
+    if (!total && n <= 60) return { text: `Día ${n}`, tone: 'live' };
+  }
+  return { text: 'En curso', tone: 'live' };
+}
+
+/** Lo que pide atención: ya terminó y sigue abierto, pendientes vencidos o mucho silencio. */
+function cardFlag(
+  ep: Episode,
+  s: EpisodeSummary,
+  last: string,
+  today: string,
+): { text: string; muted?: boolean } | null {
+  if (ep.status !== 'activo') return null;
+  if (ep.ends_on && ep.ends_on < today)
+    return { text: `Terminó ${friendlyDate(ep.ends_on, today).toLowerCase()} · ¿lo cierras?` };
+  const late = s.open.filter((e) => e.details.due && e.details.due < today).length;
+  if (late) return { text: plural(late, 'pendiente vencido', 'pendientes vencidos') };
+  if (s.startsIn === null) {
+    const quiet = daysBetween(last, today);
+    if (quiet >= QUIET_DAYS)
+      return { text: `Sin novedades hace ${Math.round(quiet / 7)} semanas`, muted: true };
+  }
+  return null;
+}
+
+function EpisodeCard({ row, today }: { row: Row; today: string }) {
   const { workspace, go } = useApp();
-  const s = useMemo(
-    () => episodeSummary(ep, workspace.entries, workspace.people, workspace.places),
-    [ep, workspace],
-  );
-  const m = episodeKinds[ep.kind] ?? episodeKinds.otro;
+  const { ep, s, kind: m, last } = row;
   const cover = s.photos[0];
   const related = relatedEpisodes(ep, workspace.episodes).length;
   const lastUpdate = [...ep.updates].sort((a, b) => b.date.localeCompare(a.date))[0];
+  const status = cardStatus(ep, s, today);
+  const flag = cardFlag(ep, s, last, today);
+  const budgetPct = ep.budget ? Math.round((s.spent / ep.budget) * 100) : null;
   return (
     <button
       type="button"
-      className="ep-card"
+      className={'ep-card ' + status.tone}
       style={{ '--c': m.color, '--s': m.soft } as CSSProperties}
       onClick={() => go('Episodios', ep)}
     >
@@ -144,35 +494,67 @@ function EpisodeCard({ episode: ep }: { episode: Episode }) {
         {cover ? (
           <img src={cover.medium ?? cover.url} alt="" loading="lazy" />
         ) : (
-          <m.icon size={30} strokeWidth={1.6} />
+          <span className="ep-card-art">
+            <m.icon size={30} strokeWidth={1.6} />
+          </span>
         )}
-        <span className={'ep-status ' + ep.status}>
-          {ep.status === 'activo' ? 'En curso' : 'Cerrado'}
+        <span className="ep-card-kind">
+          <m.icon size={12} /> {m.label}
+        </span>
+        <span className={'ep-status ' + status.tone}>
+          {status.tone === 'live' && <i className="ep-live" aria-hidden="true" />}
+          {status.text}
         </span>
       </div>
       <div className="ep-card-body">
-        <small>
-          <m.icon size={12} /> {m.label} · {range(s.from, s.to)}
+        <small className="ep-card-when">
+          <CalendarDays size={12} /> {range(s.from, s.to)}
+          {ep.status === 'cerrado' && s.days && s.days > 1 ? ` · ${s.days} días` : ''}
         </small>
         <strong>{ep.title}</strong>
-        <div className="ep-card-meta">
-          <span>
-            {s.items.length} {s.items.length === 1 ? 'pieza' : 'piezas'}
-          </span>
-          {s.spent > 0 && <span>−{money(s.spent)}</span>}
-          {s.earned > 0 && <span className="good">+{money(s.earned)}</span>}
-          {s.open.length > 0 && <span className="warn">{s.open.length} pendientes</span>}
-          {related > 0 && (
+        {ep.summary && <p className="ep-card-sum">{ep.summary}</p>}
+        {budgetPct !== null && (
+          <div className={'ep-card-budget' + (budgetPct > 100 ? ' over' : '')}>
             <span>
+              <b>{money(s.spent)}</b> de {money(ep.budget!)}
+              <em>{budgetPct}%</em>
+            </span>
+            <i>
+              <em style={{ width: Math.min(100, budgetPct) + '%' }} />
+            </i>
+          </div>
+        )}
+        <div className="ep-card-meta">
+          <span>{plural(s.items.length, 'pieza', 'piezas')}</span>
+          {s.photos.length > 0 && (
+            <span title="Fotos">
+              <Camera size={11} /> {s.photos.length}
+            </span>
+          )}
+          {budgetPct === null && s.spent > 0 && <span>−{money(s.spent)}</span>}
+          {s.earned > 0 && <span className="good">+{money(s.earned)}</span>}
+          {s.open.length > 0 && (
+            <span className="warn" title="Pendientes abiertos">
+              <ListChecks size={11} /> {s.open.length}
+            </span>
+          )}
+          {related > 0 && (
+            <span title="Episodios relacionados">
               <Link2 size={11} /> {related}
             </span>
           )}
         </div>
-        {lastUpdate && (
-          <p className="ep-card-last">
-            <History size={12} /> {lastUpdate.text || 'Fotos nuevas'} ·{' '}
-            {friendlyDate(lastUpdate.date)}
+        {flag ? (
+          <p className={'ep-flag' + (flag.muted ? ' muted' : '')}>
+            <CircleAlert size={12} /> {flag.text}
           </p>
+        ) : (
+          lastUpdate && (
+            <p className="ep-card-last">
+              <History size={12} /> {lastUpdate.text || 'Fotos nuevas'} ·{' '}
+              {friendlyDate(lastUpdate.date, today)}
+            </p>
+          )
         )}
         {s.people.length > 0 && (
           <div className="ep-faces">
@@ -204,7 +586,7 @@ function EpisodeDetail({ episode: ep }: { episode: Episode }) {
     () => episodeSummary(ep, workspace.entries, workspace.people, workspace.places),
     [ep, workspace],
   );
-  const m = episodeKinds[ep.kind] ?? episodeKinds.otro;
+  const m = episodeKindOf(ep.kind);
   const [adding, setAdding] = useState(false);
   const [outcome, setOutcome] = useState(ep.outcome);
   const budgetPct = ep.budget ? Math.min(100, Math.round((s.spent / ep.budget) * 100)) : null;
@@ -222,7 +604,7 @@ function EpisodeDetail({ episode: ep }: { episode: Episode }) {
   return (
     <div className="ep-detail" style={{ '--c': m.color, '--s': m.soft } as CSSProperties}>
       <button type="button" className="pp-back" onClick={() => go('Episodios')}>
-        <ArrowLeft size={15} /> Todos los episodios
+        <ArrowLeft size={15} /> Episodios
       </button>
       <header className="ep-hero">
         <span className="ep-hero-icon">

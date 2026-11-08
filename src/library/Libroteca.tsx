@@ -342,12 +342,22 @@ export function Libroteca() {
                 type="button"
                 role="tab"
                 aria-selected={tab === t.id}
-                className={(tab === t.id ? 'on' : '') + (n === 0 ? ' empty' : '')}
+                aria-label={t.iconOnly ? t.label : undefined}
+                title={t.iconOnly ? t.label : undefined}
+                className={
+                  (tab === t.id ? 'on' : '') +
+                  (n === 0 ? ' lt-zero' : '') +
+                  (t.iconOnly ? ' icon' : '')
+                }
                 onClick={() => setTab(t.id)}
               >
-                <t.icon size={14} />
-                {t.label}
-                <i>{n.toLocaleString('es-CO')}</i>
+                <t.icon size={t.iconOnly ? 16 : 14} />
+                {!t.iconOnly && (
+                  <>
+                    {t.label}
+                    <i>{n.toLocaleString('es-CO')}</i>
+                  </>
+                )}
               </button>
             </span>
           );

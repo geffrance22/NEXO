@@ -25,7 +25,7 @@ import {
 import { useApp } from '../AppContext';
 import { supabase } from '../backend';
 import { Sheet } from '../components/Sheet';
-import { episodeKinds } from '../lib/episodes';
+import { episodeKindOf } from '../lib/episodes';
 import { addDays, friendlyDate, nextMonday, shortDate, todayInputValue } from '../lib/format';
 import { relationMeta, relationOf, searchText } from '../lib/people';
 import { Avatar } from '../people/Avatar';
@@ -768,7 +768,7 @@ function NexoLinks({
       [...workspace.episodes]
         .sort((a, b) => b.created_at.localeCompare(a.created_at))
         .map((ep) => {
-          const k = episodeKinds[ep.kind] ?? episodeKinds.otro;
+          const k = episodeKindOf(ep.kind);
           return {
             id: ep.id,
             title: ep.title,
@@ -800,7 +800,7 @@ function NexoLinks({
       ),
     }));
   };
-  const epKind = episode ? (episodeKinds[episode.kind] ?? episodeKinds.otro) : null;
+  const epKind = episode ? episodeKindOf(episode.kind) : null;
 
   return (
     <>

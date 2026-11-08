@@ -1,0 +1,248 @@
+.mp-art {
+  position: relative;
+  aspect-ratio: 2/3;
+  border-radius: 13px;
+  background: #eff1eb;
+  border: 1px solid #d9dfd4;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: #768471;
+}
+.mp-art > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  inset: 0;
+}
+.mp-actions {
+  position: absolute;
+  bottom: 7px;
+  left: 4px;
+  right: 4px;
+  display: flex;
+  justify-content: center;
+  gap: 3px;
+}
+.mp-actions button,
+.mp-picker header button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: #fffffff0;
+  color: #384b3c;
+  cursor: pointer;
+}
+.mp small,
+.mp > a {
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  margin: 5px 0;
+}
+.mp-picker {
+  padding: 0;
+  margin: auto;
+  width: min(380px, 92vw);
+  max-height: 80dvh;
+  border: 1px solid #dde2d7;
+  border-radius: 16px;
+  background: white;
+  color: #28372c;
+  box-shadow: 0 12px 56px #15201f33;
+}
+.mp-picker::backdrop {
+  background: #19231d66;
+}
+.mp-picker > div {
+  padding: 16px;
+}
+.mp-picker header,
+.mp-picker label,
+.mp-picker section button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.mp-picker header {
+  justify-content: space-between;
+}
+.mp-picker h3 {
+  margin: 0;
+}
+.mp-picker label {
+  margin: 12px 0;
+  border: 1px solid #bbc9bb;
+  padding: 8px 10px;
+  border-radius: 9px;
+}
+.mp-picker input {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  min-width: 0;
+  flex: 1;
+  font: inherit;
+}
+.mp-picker section {
+  max-height: 46dvh;
+  overflow: auto;
+}
+.mp-picker section button {
+  width: 100%;
+  padding: 6px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+}
+.mp-picker section button:hover {
+  background: #edf3eb;
+}
+.mp-picker section img {
+  width: 36px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+.mp-picker section small {
+  display: block;
+}
+.mp-picker footer {
+  font-size: 0.72rem;
+  margin-top: 10px;
+  color: #526457;
+}
+.mp-facts {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0;
+}
+.mp-facts div {
+  line-height: 1.3;
+}
+.mp-facts dt {
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: #5d6b60;
+}
+.mp-facts dd {
+  margin: 2px 0 0;
+  font-size: 0.79rem;
+  overflow-wrap: anywhere;
+}
+.mp-platform {
+  display: grid;
+  gap: 5px;
+  font-size: 0.8rem;
+  margin: 8px 0;
+}
+.mp-platform input {
+  padding: 9px 11px;
+  border: 1px solid #cbd6ca;
+  border-radius: 9px;
+  font: inherit;
+}
+.mp-picker {
+  width: min(420px, 92vw);
+  border-radius: 18px;
+}
+.mp-picker::backdrop {
+  backdrop-filter: blur(3px);
+}
+.mp-picker > div {
+  padding: 20px;
+}
+.mp-picker header h3 {
+  font-size: 1.2rem;
+  letter-spacing: -0.025em;
+}
+.mp-picker label:focus-within {
+  outline: 2px solid #759079;
+}
+.mp-picker section {
+  scrollbar-width: thin;
+  display: grid;
+  gap: 4px;
+}
+.mp-picker section button {
+  padding: 7px 9px;
+  gap: 12px;
+  cursor: pointer;
+}
+.mp-picker section img {
+  width: 40px;
+  height: 60px;
+  border-radius: 5px;
+}
+.mp-picker section strong,
+.mp-picker section small {
+  display: block;
+}
+.mp-picker section small {
+  margin-top: 3px;
+  color: #5c695e;
+}
+.mp-picker footer {
+  border-top: 1px solid #dde4db;
+  padding-top: 9px;
+}
+.mp-picker input:focus {
+  outline: 0;
+}
+/* Buscar en películas, series o en las dos */
+.mp-only {
+  display: inline-flex;
+  gap: 2px;
+  margin: -4px 0 8px;
+  padding: 3px;
+  border-radius: 10px;
+  background: #f1f4ee;
+}
+.mp-only button {
+  height: 26px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 650;
+  color: #66745f;
+  cursor: pointer;
+}
+.mp-only button.on {
+  background: #fff;
+  color: #28372c;
+  box-shadow: 0 1px 3px #1d2a1f1f;
+}
+.mp-picker .mp-type {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: #e9ebf8;
+  font-size: 0.66rem;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #3c4378;
+}
+.mp-picker .mp-type.tv {
+  background: #f6e9f1;
+  color: #7a3a63;
+}
+.mp-noart {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 60px;
+  border-radius: 5px;
+  background: #eff1eb;
+  color: #8a9686;
+}

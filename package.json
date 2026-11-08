@@ -1,0 +1,26 @@
+{
+  "name": "nexo-personal",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --open /app.html",
+    "build": "tsc -b && vite build && node scripts/finalize-build.mjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "format": "prettier --write src supabase scripts",
+    "format:check": "prettier --check src supabase scripts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.95.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "prettier": "^3.9.10",
+    "typescript": "~5.7.2",
+    "vite": "^6.1.0"
+  }
+}

@@ -1,0 +1,5 @@
+[functions.assistant]
+verify_jwt = false
+
+[functions.movie-search]
+verify_jwt = false

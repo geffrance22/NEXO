@@ -1,0 +1,93 @@
+import {
+  StickyNote,
+  Columns3,
+  ArrowUpRight,
+  BookOpen,
+  GitCompareArrows,
+  Layers,
+  Library,
+  LogOut,
+  Lock,
+  MapPin,
+  Network,
+  Settings,
+  Sparkles,
+  Users,
+  Wallet,
+} from 'lucide-react';
+import { useApp } from '../AppContext';
+import { initials } from '../lib/format';
+
+const nav = [
+  ['Mi espacio', BookOpen],
+  ['Episodios', Layers],
+  ['Personas', Users],
+  ['Conexiones', Network],
+  ['Lugares', MapPin],
+  ['Libroteca', Library],
+  ['Lecturas', BookOpen],
+  ['Notas', StickyNote],
+  ['Tableros', Columns3],
+  ['Finanzas', Wallet],
+  ['Comparador', GitCompareArrows],
+] as const;
+
+export function Sidebar({ mobileOpen }: { mobileOpen: boolean }) {
+  const { user, workspace, page, go, openChat, signOut } = useApp();
+
+  return (
+    <aside className={'sidebar ' + (mobileOpen ? 'mobile-open' : '')}>
+      <a
+        className="brand"
+        href="#"
+        onClick={(e) => {
+          e.preventDefault();
+          go('Mi espacio');
+        }}
+      >
+        <span className="brand-mark">n</span>nexo<span className="brand-dot">.</span>
+      </a>
+      <div className="workspace-label">TU UNIVERSO PERSONAL</div>
+      <nav>
+        {nav.map(([label, Icon]) => (
+          <button key={label} className={page === label ? 'active' : ''} onClick={() => go(label)}>
+            <Icon size={19} />
+            {label}
+            {label === 'Mi espacio' && (
+              <span className="nav-count">{workspace.entries.length}</span>
+            )}
+          </button>
+        ))}
+      </nav>
+      <button className="assistant-nav" onClick={openChat}>
+        <Sparkles size={18} />
+        <span>
+          Pregúntale a Nexo<small>Conecta los puntos</small>
+        </span>
+        <ArrowUpRight size={16} />
+      </button>
+      <div className="sidebar-bottom">
+        <div className="privacy">
+          <Lock size={13} /> Tu espacio, solo tuyo
+        </div>
+        <button
+          className={page === 'Ajustes' ? 'settings active' : 'settings'}
+          onClick={() => go('Ajustes')}
+        >
+          <Settings size={18} /> Ajustes
+        </button>
+        <button className="user-profile" onClick={signOut}>
+          <span className="avatar">{initials(user.email || 'Yo').toUpperCase()}</span>
+          <span>
+            Mi cuenta<small>{user.email}</small>
+            <span className="connection connected">
+              <i />
+              Sesión privada
+            </span>
+          </span>
+          <LogOut size={16} />
+        </button>
+      </div>
+    </aside>
+  );
+}

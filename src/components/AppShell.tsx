@@ -32,6 +32,8 @@ import { PlaceSheet } from '../places/PlaceSheet';
 import { useAssistant } from '../hooks/useAssistant';
 import { useToast } from '../hooks/useToast';
 import { useWorkspace } from '../hooks/useWorkspace';
+import { useMyProfile } from '../hooks/useMyProfile';
+import { MyProfileSheet } from '../people/MyProfileSheet';
 import { parseHash, toHash, type Route } from '../lib/route';
 import { ComparePage } from '../pages/ComparePage';
 import { ConnectionsPage } from '../pages/ConnectionsPage';
@@ -114,6 +116,8 @@ export function AppShell({ user }: { user: AppUser }) {
   const { message, action, notify, clear } = useToast();
   const { confirm, dialog: confirmDialog } = useConfirm();
   const data = useWorkspace(user, notify, confirm);
+  const mine = useMyProfile(user, notify);
+  const [meOpen, setMeOpen] = useState(false);
   const assistant = useAssistant();
   // La sección actual vive en la URL (`#/personas/<id>`): así sobrevive a recargar la página y
   // funcionan los botones de atrás y adelante. `visit` cambia en cada navegación para volver a
@@ -307,6 +311,11 @@ export function AppShell({ user }: { user: AppUser }) {
       setModal({ type: 'brief', personId: person.id, mode, entry }),
     experiencesMissing: data.experiencesMissing,
     openChat: () => setChat(true),
+    me: mine.me,
+    meMissing: mine.meMissing,
+    openMe: () => setMeOpen(true),
+    saveMe: mine.saveMe,
+    saveMyReading: mine.saveMyReading,
     signOut: () => void supabase.auth.signOut(),
     toggleEntry: (entry) => void data.toggleEntry(entry),
     removeEntry: (entry, silent) => void data.removeEntry(entry, silent),
@@ -507,6 +516,7 @@ export function AppShell({ user }: { user: AppUser }) {
           <Lightbox images={viewer.images} start={viewer.index} onClose={() => setViewer(null)} />
         )}
         {chat && <ChatPanel assistant={assistant} onClose={() => setChat(false)} />}
+        {meOpen && <MyProfileSheet onClose={() => setMeOpen(false)} />}
         {confirmDialog}
       </div>
     </AppProvider>

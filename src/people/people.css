@@ -335,33 +335,33 @@ main:has(.pp-page:not(.full)) {
 }
 
 /* ── Cumpleaños ── */
-.pk.bd {
+.pk.bday {
   --accent: #c48a2a;
   --soft: #fbf1dc;
   width: min(440px, 100%);
 }
-.bd-head {
+.bday-head {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 18px 16px 10px 20px;
 }
-.bd-head > div {
+.bday-head > div {
   flex: 1;
   min-width: 0;
 }
-.bd-head h3 {
+.bday-head h3 {
   font:
     750 18px 'Manrope',
     sans-serif;
   color: #27301f;
 }
-.bd-head p {
+.bday-head p {
   margin-top: 2px;
   font-size: 12.5px;
   color: #8a9381;
 }
-.bd-icon {
+.bday-icon {
   display: grid;
   flex: none;
   place-items: center;
@@ -371,19 +371,19 @@ main:has(.pp-page:not(.full)) {
   background: linear-gradient(135deg, #fdf0d9, #fbe3cf);
   color: #c47a1e;
 }
-.bd-scroll {
+.bday-scroll {
   flex: 1;
   min-height: 0;
   padding: 2px 10px 12px;
   overflow: auto;
   scrollbar-width: thin;
 }
-.bd-list {
+.bday-list {
   margin: 0 0 6px;
   padding: 0;
   list-style: none;
 }
-.bd-row {
+.bday-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -391,16 +391,16 @@ main:has(.pp-page:not(.full)) {
   border-radius: 14px;
   transition: background 0.12s;
 }
-.bd-row:hover {
+.bday-row:hover {
   background: #f8f9f5;
 }
-.bd-row.today {
+.bday-row.today {
   background: linear-gradient(120deg, #fdf3df, #fff 80%);
 }
-.bd-row.dim {
+.bday-row.dim {
   opacity: 0.75;
 }
-.bd-date {
+.bday-date {
   display: flex;
   flex: none;
   flex-direction: column;
@@ -417,12 +417,12 @@ main:has(.pp-page:not(.full)) {
   text-transform: uppercase;
   color: var(--ink);
 }
-.bd-date b {
+.bday-date b {
   font-size: 18px;
   line-height: 1;
   letter-spacing: -0.5px;
 }
-.bd-who {
+.bday-who {
   display: flex;
   flex: 1;
   align-items: center;
@@ -430,28 +430,28 @@ main:has(.pp-page:not(.full)) {
   min-width: 0;
   text-align: left;
 }
-.bd-who > span:last-child {
+.bday-who > span:last-child {
   min-width: 0;
 }
-.bd-who strong,
-.bd-who small {
+.bday-who strong,
+.bday-who small {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.bd-who strong {
+.bday-who strong {
   font-size: 14px;
   color: #27301f;
 }
-.bd-who:hover strong {
+.bday-who:hover strong {
   color: var(--accent);
 }
-.bd-who small {
+.bday-who small {
   font-size: 12px;
   color: #8a9381;
 }
-.bd-when {
+.bday-when {
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -460,16 +460,16 @@ main:has(.pp-page:not(.full)) {
   font-weight: 650;
   color: #6f7966;
 }
-.bd-row.today .bd-when {
+.bday-row.today .bday-when {
   color: #c47a1e;
 }
-.bd-actions {
+.bday-actions {
   display: flex;
   flex: none;
   gap: 2px;
 }
-.bd-actions a,
-.bd-actions button {
+.bday-actions a,
+.bday-actions button {
   display: grid;
   place-items: center;
   width: 30px;
@@ -480,15 +480,15 @@ main:has(.pp-page:not(.full)) {
     background 0.15s,
     color 0.15s;
 }
-.bd-actions a:hover,
-.bd-actions button:hover {
+.bday-actions a:hover,
+.bday-actions button:hover {
   background: var(--soft);
   color: var(--ink);
 }
-.bd-empty {
+.bday-empty {
   padding: 18px 10px;
 }
-.bd-foot {
+.bday-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -498,7 +498,7 @@ main:has(.pp-page:not(.full)) {
   font-size: 12.5px;
   color: #8a9381;
 }
-.bd-foot .pp-text-btn {
+.bday-foot .pp-text-btn {
   margin: 0;
 }
 
@@ -3786,4 +3786,55 @@ body:has(.nx-peek) :is(.sheet-backdrop, .modal-backdrop) {
 .ps-gender small {
   font-size: 11.5px;
   color: #9aa391;
+}
+
+/* ── Cumpleaños: etiqueta de sección e ideas de regalo ── */
+.bday-label {
+  display: block;
+  padding: 10px 10px 4px;
+  font:
+    700 10.5px 'Manrope',
+    sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #a7af9d;
+}
+.bday-actions button.gift {
+  color: #c47a1e;
+}
+.bday-actions button.gift:hover {
+  background: #fbf1dc;
+  color: #a5620f;
+}
+
+/* ── Novedad: lo que se sumará a su perfil ── */
+.qd-tastes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: #f6f4fd;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #6f6c80;
+  animation: cp-rise 0.18s ease-out;
+}
+.qd-tastes > svg {
+  flex: none;
+  color: #6b62b5;
+}
+.qd-tastes b {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fff;
+  font-weight: 650;
+  color: #4b3fa0;
+}
+.qd-tastes b.no {
+  color: #b8412f;
+  text-decoration: line-through;
+  text-decoration-color: rgba(184, 65, 47, 0.35);
 }

@@ -22,13 +22,15 @@ import {
   Clock,
   LayoutGrid,
   List,
+  Layers,
   MessageCircleWarning,
-  Pencil,
   Plus,
   Search,
+  Settings2,
   Star,
   StickyNote,
   Users,
+  X,
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import type { Group, Person, Relation } from '../data';
@@ -51,6 +53,8 @@ import { PersonMenu } from '../people/PersonMenu';
 import { PersonPanel } from '../people/PersonPanel';
 import { BirthdaysDialog } from '../people/BirthdaysDialog';
 import { SuggestionsDialog, useSuggestions } from '../relations/Suggestions';
+import { GroupManager } from '../relations/GroupManager';
+import { GroupPicker, groupVars } from '../relations/GroupPicker';
 import { markSeen, useSeen } from '../relations/dismissed';
 import '../people/people.css';
 
@@ -287,8 +291,11 @@ function PersonRow({ row, active, onOpen }: ItemProps) {
 }
 
 export function PeoplePage() {
-  const { workspace, selected, openPerson, toggleEntry, openGroup, patchPerson } = useApp();
-  const [groupId, setGroupId] = useState<string | null>(null);
+  const { workspace, selected, openPerson, toggleEntry, patchPerson } = useApp();
+  // Filtro por grupo: puedes elegir varios (sale quien esté en cualquiera de ellos).
+  const [groupIds, setGroupIds] = useState<string[]>([]);
+  const [groupPick, setGroupPick] = useState(false);
+  const [manage, setManage] = useState(false);
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<TabId>('todos');
   const [sort, setSort] = useState<Sort>('reciente');
@@ -319,7 +326,9 @@ export function PeoplePage() {
     [workspace],
   );
   const peekPerson = workspace.people.find((p) => p.id === peek) ?? null;
-  const group = workspace.groups.find((g) => g.id === groupId);
+  // Solo los grupos que siguen existiendo (si borras uno, deja de filtrar).
+  const activeGroups = workspace.groups.filter((g) => groupIds.includes(g.id));
+  const inGroups = activeGroups.length ? new Set(activeGroups.flatMap((g) => g.member_ids)) : null;
 
   // La ficha lateral es fija (bajo la barra superior) y se alinea con su columna de la cuadrícula.
   useLayoutEffect(() => {
@@ -386,7 +395,7 @@ export function PeoplePage() {
     .filter(
       (r) =>
         matchTab(r) &&
-        (!group || group.member_ids.includes(r.person.id)) &&
+        (!inGroups || inGroups.has(r.person.id)) &&
         (!needle || searchText(r.person).includes(needle)),
     )
     .sort((a, b) => {
@@ -543,37 +552,55 @@ export function PeoplePage() {
               ))}
           </div>
           <div className="pp-pills" role="group" aria-label="Grupos">
-            {workspace.groups.map((g) => {
-              const m = groupKinds[g.kind] ?? groupKinds.otro;
-              const on = groupId === g.id;
-              return (
-                <button
-                  type="button"
-                  key={g.id}
-                  aria-pressed={on}
-                  className={'pp-pill grp' + (on ? ' on' : '')}
-                  style={{ '--c': m.color, '--s': m.soft } as CSSProperties}
-                  onClick={() => setGroupId(on ? null : g.id)}
-                  onDoubleClick={() => openGroup(g)}
-                  title="Clic para filtrar · doble clic para editar"
-                >
-                  <m.icon size={13} /> {g.name} <i>{g.member_ids.length}</i>
-                </button>
-              );
-            })}
-            {group && (
+            {workspace.groups.length > 0 && (
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                className={
+                  'pp-pill gp-filter' +
+                  (activeGroups.length === 1 ? ' one' : activeGroups.length ? ' on' : '')
+                }
+                style={activeGroups.length === 1 ? groupVars(activeGroups[0].kind) : undefined}
+                title="Filtrar por grupo"
+                onClick={() => setGroupPick(true)}
+              >
+                {activeGroups.length === 1 ? (
+                  (() => {
+                    const Icon = (groupKinds[activeGroups[0].kind] ?? groupKinds.otro).icon;
+                    return <Icon size={13} />;
+                  })()
+                ) : (
+                  <Layers size={13} />
+                )}
+                {activeGroups.length === 0
+                  ? 'Grupo'
+                  : activeGroups.length === 1
+                    ? activeGroups[0].name
+                    : `${activeGroups.length} grupos`}
+                {activeGroups.length > 0 ? <i>{inGroups?.size ?? 0}</i> : <ChevronDown size={13} />}
+              </button>
+            )}
+            {activeGroups.length > 0 && (
               <button
                 type="button"
                 className="pp-pill icon"
-                aria-label={`Editar el grupo ${group.name}`}
-                title="Editar grupo"
-                onClick={() => openGroup(group)}
+                aria-label="Quitar el filtro de grupo"
+                title="Quitar el filtro"
+                onClick={() => setGroupIds([])}
               >
-                <Pencil size={13} />
+                <X size={13} />
               </button>
             )}
-            <button type="button" className="pp-pill add" onClick={() => openGroup()}>
-              <Plus size={13} /> {workspace.groups.length ? 'Grupo' : 'Crear un grupo'}
+            <button type="button" className="pp-pill add" onClick={() => setManage(true)}>
+              {workspace.groups.length ? (
+                <>
+                  <Settings2 size={13} /> Gestionar grupos
+                </>
+              ) : (
+                <>
+                  <Plus size={13} /> Crear un grupo
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -730,6 +757,30 @@ export function PeoplePage() {
         />
       )}
       {dialog === 'sugerencias' && <SuggestionsDialog onClose={() => setDialog(null)} />}
+      {groupPick && (
+        <GroupPicker
+          title="Filtrar por grupo"
+          hint="Elige uno o varios: verás a quien esté en cualquiera"
+          selected={groupIds}
+          onToggle={(id) =>
+            setGroupIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))
+          }
+          footer={
+            <button
+              type="button"
+              className="gp-foot-link"
+              onClick={() => {
+                setGroupPick(false);
+                setManage(true);
+              }}
+            >
+              <Settings2 size={14} /> Gestionar grupos
+            </button>
+          }
+          onClose={() => setGroupPick(false)}
+        />
+      )}
+      {manage && <GroupManager onClose={() => setManage(false)} />}
     </div>
   );
 }

@@ -14,9 +14,10 @@ import type {
   PlaceKind,
 } from '../data';
 import type { CapturePlan, MediaPiece, Piece } from '../lib/capture';
-import { normalizeText, todayInputValue } from '../lib/format';
+import { normalizeText, splitList, todayInputValue } from '../lib/format';
 import { findMedia } from '../lib/moviePosters';
 import { ME } from '../lib/relations';
+import { deduceTastes } from '../lib/tastes';
 import { capture as captureLink, publicLink } from '../readings/capture';
 import { savePictures } from '../readings/media';
 
@@ -48,6 +49,8 @@ const peopleOf = (p: Piece): string[] => {
 type ProfileAdds = {
   updates: PersonUpdate[];
   exchanges: Exchange[];
+  /** Intereses deducidos de sus novedades (van a `interests`, fuera de la ficha). */
+  interests: string[];
   likes: string[];
   dislikes: string[];
   gifts: string[];
@@ -58,6 +61,7 @@ type ProfileAdds = {
 const emptyAdds = (): ProfileAdds => ({
   updates: [],
   exchanges: [],
+  interests: [],
   likes: [],
   dislikes: [],
   gifts: [],
@@ -368,6 +372,11 @@ export async function saveCapture(plan: CapturePlan, app: AppContextValue) {
       case 'novedad': {
         const who = real(p.personId);
         if (!who) break;
+        // Lo que la novedad deja ver de sus gustos también se suma a su ficha.
+        const tastes = deduceTastes(p.evidence || p.text);
+        addsFor(who).interests.push(...tastes.interests);
+        addsFor(who).likes.push(...tastes.likes);
+        addsFor(who).dislikes.push(...tastes.dislikes);
         addsFor(who).updates.push({
           id: crypto.randomUUID(),
           date: p.date,
@@ -577,9 +586,24 @@ export async function saveCapture(plan: CapturePlan, app: AppContextValue) {
       ...(a.facts.length && { facts: [...(pr.facts ?? []), ...a.facts] }),
       ...(a.birthday && { birthday: a.birthday }),
     };
-    const ok = await app.patchPerson(person, { profile: next }, true);
+    // Intereses nuevos (sin repetir lo que ya es un gusto o algo que no le gusta).
+    const taken = new Set(
+      [...(next.likes ?? []), ...(next.dislikes ?? [])].map((x) => normalizeText(x)),
+    );
+    const before = splitList(person.interests);
+    const interests = addUnique(
+      before,
+      a.interests.filter((x) => !taken.has(normalizeText(x))),
+    );
+    const moreInterests = interests.length - before.length;
+    const ok = await app.patchPerson(
+      person,
+      { profile: next, ...(moreInterests > 0 && { interests: interests.join(', ') }) },
+      true,
+    );
     if (ok)
       count +=
+        moreInterests +
         a.updates.length +
         a.exchanges.length +
         a.likes.length +

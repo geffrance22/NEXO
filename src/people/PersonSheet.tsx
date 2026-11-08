@@ -55,6 +55,7 @@ import {
 import {
   ME,
   groupKinds,
+  guessGroupKind,
   kindTitle,
   kindWord,
   kindsForRelation,
@@ -66,6 +67,7 @@ import {
   kindsByCategory,
   tiesOf,
 } from '../lib/relations';
+import { GroupPicker } from '../relations/GroupPicker';
 import { Avatar } from './Avatar';
 
 const relationIcons: Record<Relation, LucideIcon> = {
@@ -177,7 +179,7 @@ export function PersonSheet({
   onSave: (input: PersonInput) => Promise<Person | null>;
   onClose: () => void;
 }) {
-  const { confirm, workspace, saveTies, removeTies, updateGroup, saveGroup, notify } = useApp();
+  const { confirm, workspace, saveTies, removeTies, updateGroup, saveGroup, notify, me } = useApp();
   const pr = person?.profile ?? {};
   const byId = useMemo(() => new Map(workspace.people.map((p) => [p.id, p])), [workspace.people]);
 
@@ -199,7 +201,9 @@ export function PersonSheet({
   const [groupSel, setGroupSel] = useState<string[]>(() =>
     person ? workspace.groups.filter((g) => g.member_ids.includes(person.id)).map((g) => g.id) : [],
   );
-  const [newGroup, setNewGroup] = useState('');
+  // Grupos nuevos escritos en el buscador: se crean al guardar la ficha, ya con la persona dentro.
+  const [newGroups, setNewGroups] = useState<string[]>([]);
+  const [groupPick, setGroupPick] = useState(false);
   const [linkQuery, setLinkQuery] = useState('');
   const [linksTouched, setLinksTouched] = useState(false);
 
@@ -344,9 +348,12 @@ export function PersonSheet({
           true,
         );
     }
-    const name = newGroup.trim();
-    if (name) await saveGroup({ name, kind: 'otro', description: '', member_ids: [id] }, true);
-    if (adds.length || removals.length || name)
+    for (const name of newGroups)
+      await saveGroup(
+        { name, kind: guessGroupKind(name), description: '', member_ids: [id] },
+        true,
+      );
+    if (adds.length || removals.length || newGroups.length)
       notify(
         adds.length
           ? `Ficha guardada con ${adds.length} ${adds.length === 1 ? 'vínculo nuevo' : 'vínculos nuevos'}.`
@@ -447,6 +454,39 @@ export function PersonSheet({
         .map((p) => ({ p, k: myKindOf(p.id) }))
         .find((x) => x.k && tieKinds[x.k].category === 'familia')
     : undefined;
+  // Comparte tus apellidos (los de «Mi ficha»): quizá es de tu familia.
+  const mySurnames = surnamesOf(me.profile.name ?? '');
+  const sharesMine =
+    !meKind && !familyHint && relation !== 'familia'
+      ? sur.filter((s) => mySurnames.includes(s))
+      : [];
+  const sharedLabel = sharesMine
+    .map((s) => d.name.split(/\s+/).find((w) => normalizeText(w) === s) ?? s)
+    .join(' ');
+
+  // ── Grupos: elegir varios en una ventana; sugeridos los de su gente ──
+  const toggleGroup = (id: string) => {
+    setLinksTouched(true);
+    setGroupSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  };
+  const dropNewGroup = (name: string) => {
+    setLinksTouched(true);
+    setNewGroups((list) => list.filter((n) => n !== name));
+  };
+  const near = new Set([...links.map((l) => l.other), ...kin.map((p) => p.id)]);
+  const fits: Partial<Record<string, string>> = {
+    familia: 'familia',
+    trabajo: 'trabajo',
+    amistad: 'amigos',
+  };
+  const groupHints = workspace.groups
+    .filter(
+      (g) =>
+        !groupSel.includes(g.id) &&
+        (g.member_ids.some((m) => near.has(m)) || (relation && fits[relation] === g.kind)),
+    )
+    .map((g) => g.id);
+
   const needle = normalizeText(linkQuery.trim());
   const linkResults = needle
     ? workspace.people
@@ -663,6 +703,17 @@ export function PersonSheet({
                 {kindWord(familyHint.k!, sex)}?
               </button>
             )}
+            {sharesMine.length > 0 && (
+              <button
+                type="button"
+                className="ps-hint-chip"
+                onClick={() => set('relation', 'familia')}
+              >
+                <Sparkles size={14} /> Comparte tu
+                {sharesMine.length > 1 ? 's apellidos' : ' apellido'} {sharedLabel}. ¿Es de tu
+                familia?
+              </button>
+            )}
             <input
               className="cp-ghost-input ps-gap"
               placeholder={
@@ -838,40 +889,78 @@ export function PersonSheet({
                 )}
               </div>
 
-              <Label>Grupos</Label>
-              <div className="cp-chips">
-                {workspace.groups.map((g) => {
-                  const m = groupKinds[g.kind] ?? groupKinds.otro;
-                  const on = groupSel.includes(g.id);
+              <Label hint="Iglesia, trabajo, la familia Gómez…">Grupos</Label>
+              <div className="ps-groups">
+                {workspace.groups
+                  .filter((g) => groupSel.includes(g.id))
+                  .map((g) => {
+                    const m = groupKinds[g.kind] ?? groupKinds.otro;
+                    return (
+                      <span
+                        className="ps-group"
+                        key={g.id}
+                        style={{ '--c': m.color, '--s': m.soft } as CSSProperties}
+                      >
+                        <m.icon size={13} /> {g.name}
+                        <button
+                          type="button"
+                          aria-label={`Quitar del grupo ${g.name}`}
+                          onClick={() => toggleGroup(g.id)}
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    );
+                  })}
+                {newGroups.map((name) => {
+                  const m = groupKinds[guessGroupKind(name)];
                   return (
-                    <button
-                      type="button"
-                      key={g.id}
-                      aria-pressed={on}
-                      className={'cp-chip' + (on ? ' on' : '')}
-                      onClick={() => {
-                        setLinksTouched(true);
-                        setGroupSel((s) => (on ? s.filter((x) => x !== g.id) : [...s, g.id]));
-                      }}
+                    <span
+                      className="ps-group"
+                      key={'new:' + name}
+                      style={{ '--c': m.color, '--s': m.soft } as CSSProperties}
                     >
-                      <m.icon size={13} /> {g.name}
-                    </button>
+                      <m.icon size={13} /> {name} <em>nuevo</em>
+                      <button
+                        type="button"
+                        aria-label={`No crear el grupo ${name}`}
+                        onClick={() => dropNewGroup(name)}
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
                   );
                 })}
-                <input
-                  className="ps-new-group"
-                  placeholder={
-                    workspace.groups.length ? '+ Grupo nuevo' : '+ Crea un grupo: Iglesia, Trabajo…'
-                  }
-                  maxLength={80}
-                  value={newGroup}
-                  onChange={(e) => {
-                    setLinksTouched(true);
-                    setNewGroup(e.target.value);
-                  }}
-                  aria-label="Nombre de un grupo nuevo"
-                />
+                <button
+                  type="button"
+                  className="ps-group-add"
+                  aria-haspopup="dialog"
+                  onClick={() => setGroupPick(true)}
+                >
+                  <Plus size={14} />
+                  {groupSel.length || newGroups.length ? 'Añadir' : 'Añadir a un grupo'}
+                </button>
               </div>
+              {groupPick && (
+                <GroupPicker
+                  title={`Grupos de ${first}`}
+                  hint="Elige varios o escribe uno nuevo"
+                  selected={groupSel}
+                  suggested={groupHints}
+                  pending={newGroups}
+                  onToggle={toggleGroup}
+                  onCreate={(name) => {
+                    setLinksTouched(true);
+                    setNewGroups((list) =>
+                      list.some((n) => normalizeText(n) === normalizeText(name))
+                        ? list
+                        : [...list, name],
+                    );
+                  }}
+                  onRemovePending={dropNewGroup}
+                  onClose={() => setGroupPick(false)}
+                />
+              )}
             </Section>
 
             {/* ── Contacto ── */}

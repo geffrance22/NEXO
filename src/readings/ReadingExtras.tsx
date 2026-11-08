@@ -206,11 +206,13 @@ export function useResume(
       if (match) pane.scrollTop += match.getBoundingClientRect().top - top();
     }
     function scroll() {
+      // Se mide una vez por evento, no en cada paso de la búsqueda.
+      const edge = top();
       let lo = 0,
         hi = nodes.length;
       while (lo < hi) {
         const mid = (lo + hi) >> 1;
-        if (nodes[mid].getBoundingClientRect().bottom <= top()) lo = mid + 1;
+        if (nodes[mid].getBoundingClientRect().bottom <= edge) lo = mid + 1;
         else hi = mid;
       }
       last = pane!.scrollTop < 4 ? 0 : Number(nodes[lo]?.dataset.offset ?? last);

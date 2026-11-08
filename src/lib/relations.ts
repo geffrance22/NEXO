@@ -767,6 +767,9 @@ export function suggestTies(
   ties: Tie[],
   groups: Group[],
   skip: ReadonlySet<string>,
+  /** Tus apellidos (de «Mi ficha»), sin tildes: quien los comparte puede ser de tu familia. */
+  mySurnames: string[] = [],
+  myName = '',
 ): Suggestion[] {
   const byId = new Map(people.map((p) => [p.id, p]));
   const live = ties.filter((t) => (t.a === null || byId.has(t.a)) && byId.has(t.b));
@@ -837,6 +840,31 @@ export function suggestTies(
     });
   }
 
+  // Quien comparte tus apellidos (los de «Mi ficha») puede ser de tu familia. Un apellido muy
+  // repetido en tu red (García, Rodríguez…) no dice nada: se ignora.
+  if (mySurnames.length) {
+    const freq = new Map<string, number>();
+    for (const p of people) for (const s of sn.get(p.id)!) freq.set(s, (freq.get(s) ?? 0) + 1);
+    const me = normalizeText(myName.trim());
+    for (const p of people) {
+      const theirs = sn.get(p.id)!;
+      const shared = theirs.filter((s) => mySurnames.includes(s) && (freq.get(s) ?? 0) <= 12);
+      if (!shared.length || known.has(pairKey(p.id, ME))) continue;
+      // Si te guardaste a ti mismo como persona, no eres familia tuya.
+      if (me && normalizeText(p.name.trim()) === me) continue;
+      if (out.some((s) => s.members[0] === p.id && s.members[1] === ME)) continue;
+      const both = mySurnames.length >= 2 && mySurnames.every((s) => theirs.includes(s));
+      const label = shared.map((s) => prettyWord(s, [p.name])).join(' ');
+      add({
+        id: 'mine|' + p.id,
+        type: 'tuya',
+        members: [p.id, ME],
+        options: both ? ['hermano', 'primo', 'familiar'] : ['familiar', 'primo', 'tio'],
+        reason: both ? `Tiene tus dos apellidos: ${label}` : `Comparte tu apellido ${label}`,
+      });
+    }
+  }
+
   const bySurname = new Map<string, string[]>();
   for (const p of people)
     for (const s of sn.get(p.id)!) bySurname.set(s, [...(bySurname.get(s) ?? []), p.id]);
@@ -883,6 +911,28 @@ export function suggestTies(
 
 export const groupsOf = (personId: string, groups: Group[]) =>
   groups.filter((g) => g.member_ids.includes(personId));
+
+/** Tipo probable de un grupo por su nombre («Familia Gómez», «Equipo de fútbol», «Iglesia»…). */
+export function guessGroupKind(name: string): GroupKind {
+  const n = normalizeText(name);
+  if (/\b(familia|primos|tios|herman|abuel|sobrin)/.test(n)) return 'familia';
+  if (/\b(iglesia|parroquia|celula|ministerio|congregacion|oracion|catequesis|misa)/.test(n))
+    return 'iglesia';
+  if (
+    /\b(futbol|gym|gimnasio|running|ciclis|yoga|crossfit|voley|baloncesto|basket|tenis|natacion|deporte|entreno)/.test(
+      n,
+    )
+  )
+    return 'deporte';
+  if (/\b(trabajo|oficina|equipo|empresa|colegas|companeros de trabajo|clientes?|proyecto)/.test(n))
+    return 'trabajo';
+  if (/\b(universidad|colegio|clase|curso|maestria|semestre|promocion|egresados|carrera)/.test(n))
+    return 'estudio';
+  if (/\b(viaje|paseo|tour)/.test(n)) return 'viaje';
+  if (/\b(amig|parche|combo|panas|crew)/.test(n)) return 'amigos';
+  if (/\b(barrio|vecin|comunidad|voluntari|fundacion|conjunto)/.test(n)) return 'comunidad';
+  return 'otro';
+}
 
 /** Lo que dos personas tienen en común: vínculos, grupos y amigos compartidos. */
 export function commonGround(a: Person, b: Person, ties: Tie[], groups: Group[]) {

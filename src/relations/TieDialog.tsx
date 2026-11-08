@@ -54,8 +54,10 @@ export function TieDialog({
   initialOthers?: string[];
   onClose: () => void;
 }) {
-  const { workspace, saveTies, patchPerson } = useApp();
+  const { workspace, saveTies, patchPerson, me } = useApp();
   const subject = person?.id ?? ME;
+  // Tus apellidos (de «Mi ficha») cuando los vínculos son tuyos.
+  const myName = me.profile.name ?? '';
   // Sexo elegido aquí (si no, el de la ficha o el que se deduce del nombre).
   const [genders, setGenders] = useState<Record<string, Gender>>({});
   const first = person?.name.split(' ')[0] ?? null;
@@ -109,9 +111,9 @@ export function TieDialog({
     const counts = new Map<string, string[]>();
     for (const p of others)
       for (const s of surnamesOf(p.name)) counts.set(s, [...(counts.get(s) ?? []), p.id]);
-    const mine = person ? surnamesOf(person.name) : [];
+    const mine = surnamesOf(person ? person.name : myName);
     const surnames = [...counts]
-      .filter(([s, ids]) => (person ? mine.includes(s) : ids.length >= 2))
+      .filter(([s, ids]) => (mine.length ? mine.includes(s) : !person && ids.length >= 2))
       .sort((a, b) => b[1].length - a[1].length)
       .slice(0, 3)
       .map(([s, ids]) => {
@@ -129,7 +131,7 @@ export function TieDialog({
         icon: (groupKinds[g.kind] ?? groupKinds.otro).icon,
       }));
     return [...surnames, ...groups];
-  }, [workspace.people, workspace.groups, subject, person, byId]);
+  }, [workspace.people, workspace.groups, subject, person, byId, myName]);
 
   const peer = kind !== null && PEER.includes(kind) && picked.length >= 2;
   const amongOn = peer && (among ?? kind === 'hermano');

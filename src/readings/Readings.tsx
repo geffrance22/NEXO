@@ -1,5 +1,5 @@
 import { formats, readableSlice } from './formatting';
-import { useEffect, useMemo, useState, useRef, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { MarkToolbar, boxOfRange, type Box } from './MarkToolbar';
 import { AI_MARK, aiNote, askReading, locateQuote, type ReadingAnswer } from './ask';
 import { DEBATE_LABEL, QUESTION_LABEL, QuestionFab, type SavedAi } from './ReadingQuestion';
@@ -11,7 +11,7 @@ import { supabase } from '../backend';
 import { SaveLink } from './SaveLink';
 import { failure } from './capture';
 import { refetchReading } from './refetch';
-import { pictures, preview } from './media';
+import { pictures } from './media';
 import { ReaderDialog } from './ReaderDialog';
 import { Trash2, Plus, BookOpen, Highlighter, Folder, Archive, ExternalLink } from 'lucide-react';
 import { Tag, Zap, Sparkles, ChevronDown, Search, X, LoaderCircle } from 'lucide-react';
@@ -19,7 +19,8 @@ import { useLibrary, type Card } from './library';
 import { Notebooks } from './Notebooks';
 import { MarkGroups, useResume } from './ReadingExtras';
 import { ArticleMarks, toneOf } from './ArticleMarks';
-import { BookA, Check, Heart, NotebookPen, Pin, RefreshCw } from 'lucide-react';
+import { BookA, Heart, NotebookPen, Pin } from 'lucide-react';
+import { ReadingRow, type RowActions } from './ReadingRow';
 import { Dictionary } from './Dictionary';
 import { cleanTerm, isTerm, sentenceAround, useWords } from './words';
 import { ReadEnd } from './ReadEnd';
@@ -326,13 +327,19 @@ export function Readings({ openId, addLink = false }: { openId?: string; addLink
     if (window.location.hash !== target) history.replaceState(null, '', target);
   }, [id]);
   const sentinel = useRef<HTMLDivElement>(null);
+  // Al buscar, la lista vuelve arriba (los resultados nuevos reemplazan a los que había).
+  useEffect(() => {
+    const list = sentinel.current?.closest('aside');
+    if (list && list.scrollTop > 0) list.scrollTop = 0;
+  }, [query]);
   useEffect(() => {
     if (!more || loading || !sentinel.current) return;
     const io = new IntersectionObserver(
       (e) => {
         if (e[0]?.isIntersecting) void load();
       },
-      { root: sentinel.current.closest('aside'), rootMargin: '200px' },
+      // Pide la página siguiente bastante antes de llegar al final: el scroll no se detiene.
+      { root: sentinel.current.closest('aside'), rootMargin: '900px 0px' },
     );
     io.observe(sentinel.current);
     return () => io.disconnect();
@@ -350,7 +357,8 @@ export function Readings({ openId, addLink = false }: { openId?: string; addLink
     (offset) => {
       if (!article) return;
       const pct = Math.min(100, Math.round((100 * offset) / Math.max(1, article.content.length)));
-      setReadNow((p) => ({ ...p, [article.id]: pct }));
+      // Sin cambios no se vuelve a pintar nada.
+      setReadNow((p) => (p[article.id] === pct ? p : { ...p, [article.id]: pct }));
     },
   );
   const total = (key: string) => (filters.counts ? ' (' + (filters.counts[key] ?? 0) + ')' : '');
@@ -775,40 +783,65 @@ export function Readings({ openId, addLink = false }: { openId?: string; addLink
       ...images.flatMap((i) => [i.index!, i.index! + i[0].length]),
     ]);
     const points = [...cuts].sort((x, y) => x - y);
+    // Qué toca a cada fragmento, en una sola pasada (en artículos largos, recorrer todas las
+    // reglas por cada fragmento se notaba al abrirlos). Todos los bordes son puntos de corte.
+    const at = new Map(points.map((p, i) => [p, i]));
+    const kinds: string[][] = points.map(() => []);
+    const hidden = new Uint8Array(points.length);
+    const imageAt = new Map<number, (typeof images)[number]>();
+    const markOf: (Mark | undefined)[] = new Array(points.length);
+    for (const r of rules)
+      for (let i = at.get(r.start)!, end = at.get(r.end)!; i < end; i++) {
+        kinds[i].push('rd-f-' + r.kind);
+        if (r.kind === 'hidden') hidden[i] = 1;
+      }
+    for (const img of images) {
+      const start = at.get(img.index!)!;
+      if (!imageAt.has(start)) imageAt.set(start, img);
+      for (let i = start + 1, end = at.get(img.index! + img[0].length)!; i < end; i++)
+        hidden[i] = 1;
+    }
+    // Si dos resaltados se pisan, manda el primero (como antes).
+    for (const m of mine)
+      for (let i = at.get(m.start_offset)!, end = at.get(m.end_offset)!; i < end; i++)
+        markOf[i] ??= m;
     return points.slice(0, -1).map((p, i) => {
-      const img = images.find((x) => x.index === p);
+      const img = imageAt.get(i);
       if (img)
         return (
           <img
             key={p}
             loading="lazy"
+            decoding="async"
             referrerPolicy="no-referrer"
             src={a.media?.[img[2]] || img[2]}
             alt={img[1]}
           />
         );
-      if (images.some((x) => p > x.index! && p < x.index! + x[0].length)) return null;
-      const styles = rules.filter((r) => r.start <= p && r.end > p);
-      if (styles.some((r) => r.kind === 'hidden')) return null;
-      const marked = mine.find((m) => m.start_offset <= p && m.end_offset > p);
+      if (hidden[i]) return null;
+      const marked = markOf[i];
       return (
         <span
           key={p}
           data-offset={p}
-          className={[
-            ...styles.map((r) => 'rd-f-' + r.kind),
-            marked ? 'lit ' + (marked.color || 'yellow') : '',
-          ].join(' ')}
+          className={[...kinds[i], marked ? 'lit ' + (marked.color || 'yellow') : ''].join(' ')}
           role={marked ? 'button' : undefined}
           tabIndex={marked ? 0 : undefined}
-          onClick={(e) => {
-            if (marked && window.getSelection()?.isCollapsed)
-              inspect(marked, e.currentTarget.getBoundingClientRect());
-          }}
-          onKeyDown={(e) => {
-            if (marked && e.key === 'Enter')
-              inspect(marked, e.currentTarget.getBoundingClientRect());
-          }}
+          onClick={
+            marked
+              ? (e) => {
+                  if (window.getSelection()?.isCollapsed)
+                    inspect(marked, e.currentTarget.getBoundingClientRect());
+                }
+              : undefined
+          }
+          onKeyDown={
+            marked
+              ? (e) => {
+                  if (e.key === 'Enter') inspect(marked, e.currentTarget.getBoundingClientRect());
+                }
+              : undefined
+          }
         >
           {a.content.slice(p, points[i + 1])}
         </span>
@@ -903,10 +936,23 @@ export function Readings({ openId, addLink = false }: { openId?: string; addLink
     [mine, article?.question],
   );
   // Fijados arriba (sin repetirse abajo) y luego el resto, del más reciente al más antiguo.
-  const listed =
-    view === 'marks'
-      ? []
-      : [...pinned, ...visible.filter((c) => !pinned.some((p) => p.id === c.id))];
+  const listed = useMemo(() => {
+    if (view === 'marks') return [];
+    const top = new Set(pinned.map((p) => p.id));
+    return [...pinned, ...visible.filter((c) => !top.has(c.id))];
+  }, [view, pinned, visible]);
+  // Las tarjetas reciben siempre las mismas funciones (leen lo último al pulsarse): así no se
+  // vuelven a pintar todas con cada cambio del lector.
+  const rowLive = useRef({ open, togglePin, refetch });
+  rowLive.current = { open, togglePin, refetch };
+  const rowActions = useMemo<RowActions>(
+    () => ({
+      open: (card) => rowLive.current.open(card),
+      pin: (card) => rowLive.current.togglePin(card),
+      refetch: (card) => void rowLive.current.refetch(card),
+    }),
+    [],
+  );
   return (
     <section className="readings" data-open={!!article || books || dict}>
       <aside>
@@ -1049,92 +1095,17 @@ export function Readings({ openId, addLink = false }: { openId?: string; addLink
             <Pin size={12} aria-hidden="true" /> Fijados
           </small>
         )}
-        {listed.map((a, i, all) => {
-          const done = Boolean(a.read_at);
-          const pct = done ? 100 : (readNow[a.id] ?? a.progress ?? 0);
-          const full = done || pct >= 95;
-          // Separa los fijados del resto.
-          const lastPinned = Boolean(a.pinned_at) && !all[i + 1]?.pinned_at;
-          const reloading = refetching.has(a.id);
-          return (
-            <div
-              key={a.id}
-              className={
-                'rd-row' +
-                (a.pinned_at ? ' pinned' : '') +
-                (lastPinned ? ' last-pinned' : '') +
-                (reloading ? ' refetching' : '')
-              }
-              aria-busy={reloading || undefined}
-            >
-              <button
-                className={'read-row' + (id === a.id ? ' current' : '') + (done ? ' read' : '')}
-                onClick={() => open(a)}
-              >
-                {pct > 0 && (
-                  <i
-                    className={'rd-progress' + (full ? ' done' : '')}
-                    style={{ '--p': Math.max(4, pct) } as CSSProperties}
-                    title={done ? 'Completado' : full ? 'Leído' : `Llevas el ${pct}%`}
-                    aria-label={done ? 'Completado' : full ? 'Leído' : `Leído al ${pct}%`}
-                  />
-                )}
-                {a.cover && (
-                  <img
-                    className="rd-thumb"
-                    alt=""
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    onError={(e) => (e.currentTarget.hidden = true)}
-                    src={a.cover}
-                  />
-                )}
-                <strong>{a.title}</strong>
-                <small className="rd-cardmeta">
-                  <span className="rd-domain">{new URL(a.url).hostname}</span>
-                  <span className="rd-minutes" title="Tiempo estimado de lectura">
-                    {a.minutes} min
-                  </span>
-                  {a.mark_count > 0 && (
-                    <span className="rd-count" title="Resaltados">
-                      <Highlighter size={12} /> {a.mark_count}
-                    </span>
-                  )}
-                  {done && (
-                    <span className="rd-readmark" title="Completado">
-                      <Check size={12} strokeWidth={2.6} />
-                    </span>
-                  )}
-                </small>
-                <span className="rd-preview">{preview(a.excerpt || '').slice(0, 160)}</span>
-              </button>
-              <button
-                type="button"
-                className="rd-pin"
-                aria-pressed={Boolean(a.pinned_at)}
-                title={a.pinned_at ? 'Desfijar' : 'Fijar arriba'}
-                aria-label={a.pinned_at ? `Desfijar «${a.title}»` : `Fijar «${a.title}» arriba`}
-                onClick={() => togglePin(a)}
-              >
-                <Pin size={14} fill={a.pinned_at ? 'currentColor' : 'none'} />
-              </button>
-              <button
-                type="button"
-                className="rd-refetch"
-                disabled={reloading}
-                title={reloading ? 'Descargando de nuevo…' : 'Volver a descargar'}
-                aria-label={
-                  reloading
-                    ? `Descargando de nuevo «${a.title}»`
-                    : `Volver a descargar «${a.title}»`
-                }
-                onClick={() => void refetch(a)}
-              >
-                <RefreshCw size={13} className={reloading ? 'spin' : undefined} />
-              </button>
-            </div>
-          );
-        })}
+        {listed.map((a, i, all) => (
+          <ReadingRow
+            key={a.id}
+            card={a}
+            current={id === a.id}
+            pct={a.read_at ? 100 : (readNow[a.id] ?? a.progress ?? 0)}
+            lastPinned={Boolean(a.pinned_at) && !all[i + 1]?.pinned_at}
+            reloading={refetching.has(a.id)}
+            actions={rowActions}
+          />
+        ))}
         <div ref={sentinel} />
         {more && (
           <button disabled={loading} onClick={() => void load()}>
@@ -1252,12 +1223,22 @@ export function Readings({ openId, addLink = false }: { openId?: string; addLink
             {deleting && (
               <ReaderDialog title="Eliminar artículo" close={() => setDeleting(false)} busy={busy}>
                 <p>Se eliminarán «{article.title}» y sus resaltados y notas.</p>
-                <button disabled={busy} onClick={() => setDeleting(false)}>
-                  Cancelar
-                </button>
-                <button disabled={busy} onClick={() => void run(deleteArticle)}>
-                  Eliminar artículo
-                </button>
+                <div className="rd-dlg-foot">
+                  <button
+                    className="rd-dlg-btn ghost"
+                    disabled={busy}
+                    onClick={() => setDeleting(false)}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    className="rd-dlg-btn danger"
+                    disabled={busy}
+                    onClick={() => void run(deleteArticle)}
+                  >
+                    Eliminar artículo
+                  </button>
+                </div>
                 {error && <p role="alert">{error}</p>}
               </ReaderDialog>
             )}

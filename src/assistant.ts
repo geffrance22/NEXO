@@ -75,3 +75,50 @@ export async function captureWithAssistant(
   if (!data?.plan) throw new Error('La IA no devolvió una propuesta válida.');
   return data.plan;
 }
+
+const OUTDATED =
+  'Esta función necesita la versión nueva de la IA. Despliega la función assistant: npx supabase functions deploy assistant --remote=imdvmlzdbmbvwkfoisgs --use-api --yes';
+
+/** Llama a un modo nuevo: si la función desplegada es anterior, lo dice claro. */
+async function callMode(body: Record<string, unknown>) {
+  try {
+    return await call(body);
+  } catch (e) {
+    // Una función vieja no conoce el modo y lo trata como pregunta vacía.
+    if (e instanceof Error && /pregunta debe tener/i.test(e.message)) throw new Error(OUTDATED);
+    throw e;
+  }
+}
+
+/**
+ * Lectura de quién eres hoy a partir de todo lo que hay de ti en Nexo (tu ficha, tu gente, tus
+ * recuerdos, lecturas y episodios). `digest` es un resumen ya preparado.
+ */
+export async function selfReading(
+  digest: Record<string, unknown>,
+): Promise<{ reading: string; highlights: string[] }> {
+  const data = await callMode({ mode: 'self-reading', digest });
+  if (typeof data?.reading !== 'string' || !data.reading.trim())
+    throw new Error('La IA no devolvió una lectura. Inténtalo de nuevo.');
+  return {
+    reading: data.reading.trim(),
+    highlights: Array.isArray(data.highlights)
+      ? data.highlights.filter((h): h is string => typeof h === 'string').slice(0, 6)
+      : [],
+  };
+}
+
+export type GiftKind = 'objeto' | 'experiencia' | 'detalle' | 'hecho a mano';
+export type GiftPrice = 'bajo' | 'medio' | 'alto';
+export type GiftIdea = { title: string; why: string; kind: GiftKind; price: GiftPrice };
+
+/** Ideas de regalo para una persona, a partir de todo lo que sabes de ella y de su historia contigo. */
+export async function giftIdeas(
+  person: Record<string, unknown>,
+  avoid: string[] = [],
+): Promise<GiftIdea[]> {
+  const data = await callMode({ mode: 'gift-ideas', person, avoid });
+  const ideas = Array.isArray(data?.ideas) ? (data.ideas as GiftIdea[]) : [];
+  if (!ideas.length) throw new Error('La IA no devolvió ideas. Inténtalo de nuevo.');
+  return ideas;
+}

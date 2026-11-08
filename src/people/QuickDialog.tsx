@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type CSSProperties,
+} from 'react';
 import {
   Activity,
   ArrowDownLeft,
@@ -6,6 +13,7 @@ import {
   Check,
   LoaderCircle,
   Plus,
+  Sparkles,
   StickyNote,
   X,
 } from 'lucide-react';
@@ -19,6 +27,7 @@ import { useImageUploads } from '../composer/useImageUploads';
 import { addDays, todayInputValue } from '../lib/format';
 import { exchangeKinds } from '../lib/people';
 import { updateKindList, updateKinds } from '../lib/updates';
+import { deduceTastes, hasTastes, tastesLabel, withTastes } from '../lib/tastes';
 import { Avatar } from './Avatar';
 
 const followOptions = [
@@ -105,6 +114,14 @@ export function QuickDialog({
           : true;
   const ready = hasContent && !photoProblem;
   const name = person.name.split(' ')[0];
+  // Lo nuevo que la novedad dice de sus gustos (lo que ya está en su ficha no se repite).
+  const preview = useMemo(
+    () =>
+      mode === 'novedad' && text.trim()
+        ? withTastes(person, deduceTastes(text)).added
+        : { interests: [], likes: [], dislikes: [] },
+    [mode, text, person],
+  );
   const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
     const files = pastedImages(e);
     if (!files.length) return;
@@ -131,13 +148,34 @@ export function QuickDialog({
         ...(photos.images.length > 0 && { images: photos.images }),
       };
       const updates = [update, ...(current.profile.updates ?? [])].slice(0, 300);
-      ok = await app.patchPerson(current, { profile: { ...current.profile, updates } }, true);
-      if (ok)
-        app.notify(
-          follow
-            ? `Novedad guardada. Te recordaremos preguntarle a ${name}.`
-            : `Novedad guardada en la historia de ${name}.`,
-        );
+      // Lo que la novedad deja ver de sus gustos se suma a su perfil en la misma escritura.
+      const t = withTastes(current, deduceTastes(text));
+      const changes = t.changed
+        ? { interests: t.interests, profile: { ...t.profile, updates } }
+        : { profile: { ...current.profile, updates } };
+      ok = await app.patchPerson(current, changes, true);
+      const base = follow
+        ? `Novedad guardada. Te recordaremos preguntarle a ${name}.`
+        : `Novedad guardada en la historia de ${name}.`;
+      if (ok && t.changed) {
+        const saved = { ...current, ...changes };
+        app.notify(`${base} Su perfil suma: ${tastesLabel(t.added)}.`, {
+          label: 'Quitar',
+          run: () =>
+            void app.patchPerson(
+              saved,
+              {
+                interests: current.interests,
+                profile: {
+                  ...saved.profile,
+                  likes: current.profile.likes,
+                  dislikes: current.profile.dislikes,
+                },
+              },
+              true,
+            ),
+        });
+      } else if (ok) app.notify(base);
     } else if (exchange) {
       const item: Exchange = {
         id: crypto.randomUUID(),
@@ -344,6 +382,23 @@ export function QuickDialog({
               onFocus={(e) => (first.current = e.currentTarget)}
               autoFocus
             />
+            {hasTastes(preview) && (
+              <p className="qd-tastes" aria-live="polite">
+                <Sparkles size={13} />
+                <span>Se suma a su perfil:</span>
+                {preview.interests.map((v) => (
+                  <b key={'i' + v}>{v}</b>
+                ))}
+                {preview.likes.map((v) => (
+                  <b key={'l' + v}>{v}</b>
+                ))}
+                {preview.dislikes.map((v) => (
+                  <b key={'d' + v} className="no" title="No le gusta">
+                    {v}
+                  </b>
+                ))}
+              </p>
+            )}
             <MiniPhotos uploads={photos} hint="o pégalas con Ctrl+V" />
             <div className="qd-row">
               <Label>Cuándo pasó</Label>

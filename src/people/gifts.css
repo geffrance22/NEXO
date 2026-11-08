@@ -1,0 +1,284 @@
+/* ════════════════ Ideas de regalo (encima de «Próximos cumpleaños») ════════════════ */
+.gi-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(32, 42, 26, 0.18);
+  animation: cp-fade 0.15s ease-out;
+}
+.gi {
+  display: flex;
+  flex-direction: column;
+  width: min(500px, 100%);
+  max-height: min(82vh, 720px);
+  overflow: hidden;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow:
+    0 30px 80px rgba(30, 45, 25, 0.36),
+    0 2px 8px rgba(30, 45, 25, 0.08);
+  animation: confirm-pop 0.22s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.gi-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 16px 12px 20px;
+}
+.gi-head > div {
+  flex: 1;
+  min-width: 0;
+}
+.gi-head h3 {
+  overflow: hidden;
+  font:
+    750 17px/1.3 'Manrope',
+    sans-serif;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #27301f;
+}
+.gi-head p {
+  margin-top: 2px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #8a9381;
+}
+.gi-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fdf0d9, #fbe3cf);
+  color: #c47a1e;
+}
+
+.gi-body {
+  display: grid;
+  flex: 1;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  padding: 4px 16px 14px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #e6dcc8 transparent;
+}
+.gi-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 10px 12px 14px;
+  border: 1px solid #f1ece2;
+  border-radius: 16px;
+  background: #fffdf9;
+  animation: gi-in 0.36s cubic-bezier(0.2, 0.9, 0.25, 1) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.gi-card:hover {
+  border-color: #f0dcc0;
+  box-shadow: 0 8px 20px -14px rgba(196, 122, 30, 0.45);
+}
+.gi-kind {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: #fbf1dc;
+  color: #c47a1e;
+}
+.gi-kind.exp {
+  background: #eef0fb;
+  color: #5a63b8;
+}
+.gi-kind.det {
+  background: #fbe9ee;
+  color: #b8456a;
+}
+.gi-kind.diy {
+  background: #e9f4ee;
+  color: #3c8a5f;
+}
+.gi-text {
+  flex: 1;
+  min-width: 0;
+}
+.gi-text strong {
+  display: block;
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #27301f;
+}
+.gi-text p {
+  margin: 3px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #6f7966;
+}
+.gi-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.gi-meta em {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f3f5ef;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 650;
+  color: #6a745f;
+}
+.gi-meta em.p-bajo {
+  background: #e9f4ee;
+  color: #3c7a52;
+}
+.gi-meta em.p-alto {
+  background: #fdf0d9;
+  color: #a5620f;
+}
+.gi-save {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: #a2aa98;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.gi-save:hover:not(:disabled) {
+  background: #fbf1dc;
+  color: #c47a1e;
+}
+.gi-save.on,
+.gi-save:disabled {
+  background: #fbf1dc;
+  color: #c47a1e;
+  opacity: 1;
+  cursor: default;
+}
+
+/* Mientras la IA piensa */
+.gi-skel {
+  height: 88px;
+  border: 1px solid #f3efe6;
+  border-radius: 16px;
+  background: linear-gradient(90deg, #faf6ee 0%, #fffdf9 50%, #faf6ee 100%);
+  background-size: 220% 100%;
+  animation: gi-shine 1.3s linear infinite;
+}
+.gi-skel:nth-child(2) {
+  animation-delay: 0.12s;
+}
+.gi-skel:nth-child(3) {
+  animation-delay: 0.24s;
+}
+.gi-wait {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: #c47a1e;
+}
+.gi-wait svg {
+  animation: gi-twinkle 1.4s ease-in-out infinite;
+}
+.gi-thin {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: #fdf5df;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #8a6a1c;
+}
+.gi-error {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 22px 12px;
+  text-align: center;
+}
+.gi-error p {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #a64a39;
+}
+
+.gi-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px 10px 20px;
+  border-top: 1px solid #f3efe6;
+  background: #fffcf6;
+}
+.gi-foot small {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: #9a9386;
+}
+.gi-foot .cp-btn {
+  flex: none;
+  white-space: nowrap;
+}
+
+@keyframes gi-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes gi-shine {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+@keyframes gi-twinkle {
+  50% {
+    transform: scale(0.8) rotate(14deg);
+    opacity: 0.65;
+  }
+}
+@media (max-width: 720px) {
+  .gi-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .gi {
+    width: 100%;
+    max-height: 88vh;
+    border-radius: 22px 22px 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gi-card,
+  .gi-skel,
+  .gi-wait svg {
+    animation: none;
+  }
+}

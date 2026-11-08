@@ -1,0 +1,328 @@
+/* ════════════════ Grupos: elegir, filtrar y gestionar ════════════════ */
+.pk.gp,
+.pk.gm {
+  width: min(460px, 100%);
+}
+.gp-head {
+  align-items: flex-start;
+  gap: 12px;
+}
+.gp-head > div {
+  flex: 1;
+  min-width: 0;
+}
+.gp-head small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #8a9381;
+}
+.gp-clear {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: #9aa391;
+}
+.gp-clear:hover {
+  background: #e8ede1;
+  color: #27301f;
+}
+
+/* Filas con el color de su tipo de grupo */
+.gp-row.on {
+  background: var(--s);
+}
+.gp-row .pk-tick.on {
+  border-color: var(--c);
+  background: var(--c);
+}
+.gp-row mark {
+  padding: 0 1px;
+  border-radius: 3px;
+  background: #fff1b8;
+  color: inherit;
+}
+.gp-badge {
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 750;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  vertical-align: 1px;
+  color: var(--c);
+}
+.pk-row.create.gp-row strong {
+  color: var(--c);
+}
+
+/* Pie: lo elegido */
+.gp-chosen {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.gp-chip {
+  display: inline-block;
+  max-width: 130px;
+  height: 24px;
+  padding: 0 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--s);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 24px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--c);
+}
+.gp-more,
+.gp-none,
+.gm-hint {
+  font-size: 12.5px;
+  color: #8a9381;
+}
+.gp-foot-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 650;
+  color: #5f6b55;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.gp-foot-link:hover {
+  background: #eef2e8;
+  color: #27301f;
+}
+
+/* ── Gestionar grupos ── */
+.gm-list {
+  flex: 1;
+  min-height: 140px;
+  padding: 2px 10px 10px;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #d2dac7 transparent;
+}
+.gm-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 14px;
+  transition: background 0.12s;
+}
+.gm-row + .gm-row {
+  margin-top: 2px;
+}
+.gm-row:hover {
+  background: #f6f8f2;
+}
+.gm-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 6px;
+  border-radius: 11px;
+  text-align: left;
+}
+.gm-text {
+  flex: 1;
+  min-width: 0;
+}
+.gm-text strong,
+.gm-text small {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.gm-text strong {
+  font-size: 14px;
+  color: #27301f;
+}
+.gm-text small {
+  font-size: 12px;
+  color: #8a9381;
+}
+.gm-faces {
+  display: flex;
+  flex: none;
+  align-items: center;
+  padding-right: 6px;
+}
+.gm-faces .pp-avatar {
+  margin-right: -6px;
+  border: 2px solid #fff;
+}
+.gm-faces i {
+  margin-left: 10px;
+  font-size: 11.5px;
+  font-style: normal;
+  font-weight: 650;
+  color: #8a9381;
+}
+.gm-act {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: #9aa391;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s;
+}
+.gm-row:hover .gm-act,
+.gm-act:focus-visible {
+  opacity: 1;
+}
+.gm-act:hover {
+  background: #fff;
+  color: #27301f;
+}
+.gm-act.danger:hover {
+  background: #fbeee9;
+  color: #b8412f;
+}
+@media (hover: none) {
+  .gm-act {
+    opacity: 1;
+  }
+}
+.gm-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 26px 28px 30px;
+  text-align: center;
+}
+.gm-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #eef3e6, #e3eef6);
+  color: #5f8247;
+}
+.gm-empty strong {
+  font:
+    750 15px 'Manrope',
+    sans-serif;
+  color: #27301f;
+}
+.gm-empty p {
+  max-width: 300px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #8a9381;
+}
+
+/* ── En la ficha de una persona: sus grupos como fichas y «Añadir» ── */
+.ps-groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.ps-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 5px 0 11px;
+  border-radius: 999px;
+  background: var(--s);
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--c);
+  animation: cp-rise 0.18s ease-out;
+}
+.ps-group em {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.8);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 750;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.ps-group button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: inherit;
+  opacity: 0.65;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
+}
+.ps-group button:hover {
+  background: rgba(255, 255, 255, 0.75);
+  opacity: 1;
+}
+.ps-group-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 13px;
+  border: 1.5px dashed #d3dbc8;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6a745f;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
+}
+.ps-group-add:hover {
+  border-color: var(--accent);
+  background: var(--soft);
+  color: var(--ink);
+}
+
+/* ── En Personas: filtro por grupo ── */
+.pp-pill.gp-filter > svg:last-child {
+  margin-right: -3px;
+  opacity: 0.6;
+}
+.pp-pill.gp-filter.one {
+  border-color: var(--c);
+  background: var(--s);
+  color: var(--c);
+}
+.pp-pill.gp-filter.one i {
+  background: #fff;
+  color: var(--c);
+}
+.pp-pill.gp-filter.one svg {
+  color: var(--c);
+}

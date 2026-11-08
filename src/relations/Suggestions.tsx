@@ -22,6 +22,7 @@ import {
   kindTitle,
   kindWord,
   suggestTies,
+  surnamesOf,
   tieCategories,
   tieKinds,
   type Suggestion,
@@ -33,12 +34,21 @@ import './relations.css';
 
 /** Sugerencias vigentes (todas o las de una persona). */
 export function useSuggestions(personId?: string) {
-  const { workspace } = useApp();
+  const { workspace, me } = useApp();
   const skip = useDismissed();
+  // Tus apellidos (de «Mi ficha») también sirven para encontrar a tu familia.
+  const myName = me.profile.name ?? '';
   return useMemo(() => {
-    const all = suggestTies(workspace.people, workspace.ties, workspace.groups, skip);
+    const all = suggestTies(
+      workspace.people,
+      workspace.ties,
+      workspace.groups,
+      skip,
+      surnamesOf(myName),
+      myName,
+    );
     return personId ? all.filter((s) => s.members.includes(personId)) : all;
-  }, [workspace.people, workspace.ties, workspace.groups, skip, personId]);
+  }, [workspace.people, workspace.ties, workspace.groups, skip, personId, myName]);
 }
 
 /** Vínculos deducidos que aún no descartaste. */

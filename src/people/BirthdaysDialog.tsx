@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { BellPlus, Cake, CalendarPlus, MessageCircle, PartyPopper, X } from 'lucide-react';
+import { BellPlus, Cake, CalendarPlus, Gift, MessageCircle, PartyPopper, X } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { addDays, todayInputValue } from '../lib/format';
 import { ageOf, daysToBirthday, relationMeta, relationOf } from '../lib/people';
 import { Avatar } from './Avatar';
+import { GiftIdeas } from './GiftIdeas';
 
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
@@ -17,14 +18,19 @@ export function BirthdaysDialog({
   onOpen: (personId: string) => void;
 }) {
   const { workspace, openEntry, editPerson } = useApp();
+  // Ideas de regalo abiertas encima (para quién).
+  const [gift, setGift] = useState<{ id: string; turns: number | null; date: string } | null>(null);
+  const giftOpen = useRef(false);
+  giftOpen.current = Boolean(gift);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        closeRef.current();
-      }
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      // Esc cierra primero las ideas de regalo; luego, los cumpleaños.
+      if (giftOpen.current) setGift(null);
+      else closeRef.current();
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
@@ -42,6 +48,7 @@ export function BirthdaysDialog({
   const soon = all.filter((x) => x.d <= 30);
   const later = all.filter((x) => x.d > 30).slice(0, 4);
   const missing = workspace.people.filter((p) => !p.profile.birthday);
+  const giftPerson = gift ? workspace.people.find((p) => p.id === gift.id) : undefined;
 
   const row = ({ p, d }: (typeof all)[number], dim = false) => {
     const meta = relationMeta[relationOf(p)];
@@ -53,21 +60,21 @@ export function BirthdaysDialog({
     return (
       <li
         key={p.id}
-        className={'bd-row' + (d === 0 ? ' today' : '') + (dim ? ' dim' : '')}
+        className={'bday-row' + (d === 0 ? ' today' : '') + (dim ? ' dim' : '')}
         style={{ '--accent': meta.color, '--soft': meta.soft, '--ink': meta.ink } as CSSProperties}
       >
-        <span className="bd-date">
+        <span className="bday-date">
           <b>{dd}</b>
           {MONTHS[mm - 1]}
         </span>
-        <button type="button" className="bd-who" onClick={() => onOpen(p.id)}>
+        <button type="button" className="bday-who" onClick={() => onOpen(p.id)}>
           <Avatar person={p} size={36} />
           <span>
             <strong>{p.name}</strong>
             <small>{age !== null ? `Cumple ${age}` : meta.label}</small>
           </span>
         </button>
-        <span className="bd-when">
+        <span className="bday-when">
           {d === 0 ? (
             <>
               <PartyPopper size={13} /> Hoy
@@ -78,7 +85,16 @@ export function BirthdaysDialog({
             `En ${d} días`
           )}
         </span>
-        <span className="bd-actions">
+        <span className="bday-actions">
+          <button
+            type="button"
+            className="gift"
+            title="Ideas de regalo"
+            aria-label={`Ideas de regalo para ${first}`}
+            onClick={() => setGift({ id: p.id, turns: age, date })}
+          >
+            <Gift size={15} />
+          </button>
           {digits && (
             <a
               href={`https://wa.me/${digits}?text=${encodeURIComponent(`¡Feliz cumpleaños, ${first}! 🎉`)}`}
@@ -112,9 +128,9 @@ export function BirthdaysDialog({
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
       onKeyDown={(e) => e.stopPropagation()}
     >
-      <div className="pk bd" role="dialog" aria-modal="true" aria-label="Próximos cumpleaños">
-        <header className="bd-head">
-          <span className="bd-icon">
+      <div className="pk bday" role="dialog" aria-modal="true" aria-label="Próximos cumpleaños">
+        <header className="bday-head">
+          <span className="bday-icon">
             <Cake size={20} />
           </span>
           <div>
@@ -129,22 +145,22 @@ export function BirthdaysDialog({
             <X size={18} />
           </button>
         </header>
-        <div className="bd-scroll">
-          {soon.length > 0 && <ul className="bd-list">{soon.map((x) => row(x))}</ul>}
+        <div className="bday-scroll">
+          {soon.length > 0 && <ul className="bday-list">{soon.map((x) => row(x))}</ul>}
           {later.length > 0 && (
             <>
-              <span className="pp-dropdown-label">Más adelante</span>
-              <ul className="bd-list">{later.map((x) => row(x, true))}</ul>
+              <span className="bday-label">Más adelante</span>
+              <ul className="bday-list">{later.map((x) => row(x, true))}</ul>
             </>
           )}
           {!all.length && (
-            <p className="pp-empty bd-empty">
+            <p className="pp-empty bday-empty">
               Aún no guardas cumpleaños. Empieza por alguien cercano.
             </p>
           )}
         </div>
         {missing.length > 0 && (
-          <footer className="bd-foot">
+          <footer className="bday-foot">
             <span>
               {missing.length} {missing.length === 1 ? 'persona' : 'personas'} sin fecha
             </span>
@@ -161,6 +177,15 @@ export function BirthdaysDialog({
           </footer>
         )}
       </div>
+      {gift && giftPerson && (
+        <GiftIdeas
+          key={giftPerson.id}
+          person={giftPerson}
+          turns={gift.turns}
+          date={gift.date}
+          onClose={() => setGift(null)}
+        />
+      )}
     </div>,
     document.body,
   );

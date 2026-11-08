@@ -13,6 +13,8 @@ import type {
   GroupInput,
   Tie,
   Kind,
+  MyProfile,
+  MyRecord,
   Page,
   Person,
   Place,
@@ -124,6 +126,15 @@ export type AppContextValue = {
   /** Actualizar cómo vas en un libro o una serie (página, temporada, episodio, terminado). */
   openProgress: (entry: Entry) => void;
   openChat: () => void;
+  /** Tu propia ficha y su lectura de la IA (vacía si aún no la llenas). */
+  me: MyRecord;
+  /** Falta la migración de «Mi ficha»: no se puede guardar. */
+  meMissing: boolean;
+  /** Abre «Mi ficha». */
+  openMe: () => void;
+  saveMe: (profile: MyProfile) => Promise<boolean>;
+  /** Guarda la lectura que hizo la IA (la descripción general de tu ficha). */
+  saveMyReading: (reading: string, highlights: string[]) => Promise<boolean>;
   signOut: () => void;
   toggleEntry: (entry: Entry) => void;
   /** Con `silent`, sin preguntar ni avisar (lo elimina otra acción, como borrar una tarjeta). */

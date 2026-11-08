@@ -165,6 +165,37 @@ export type Person = {
   profile: PersonProfile;
 };
 
+/** Tu propia ficha («Mi ficha»). Todo es opcional. */
+export type MyProfile = {
+  /** Con tus apellidos: así Nexo reconoce a tu familia. */
+  name?: string;
+  alias?: string;
+  gender?: Gender;
+  /** MM-DD */
+  birthday?: string;
+  birthYear?: number;
+  city?: string;
+  occupation?: string;
+  company?: string;
+  interests?: string[];
+  likes?: string[];
+  dislikes?: string[];
+  /** En qué estás ahora: metas, proyectos, lo que aprendes. */
+  goals?: string[];
+  /** Lo que quieras que Nexo sepa de ti, en tus palabras. */
+  about?: string;
+};
+
+/** Tu ficha guardada y la lectura que hace la IA de todo lo que hay de ti en Nexo. */
+export type MyRecord = {
+  profile: MyProfile;
+  /** Descripción general escrita por la IA a partir de todos tus datos. */
+  reading: string;
+  /** Rasgos breves de esa lectura («Lector constante», «Familia cercana»…). */
+  highlights: string[];
+  reading_at: string | null;
+};
+
 /** Foto alojada en ImgBB: original, versión media y miniatura. */
 export type StoredImage = { url: string; medium?: string; thumb?: string };
 

@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { Download, LogOut, Settings, Sparkles } from 'lucide-react';
+import { Download, IdCard, LogOut, Settings, Sparkles } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { useDismiss } from '../hooks/useDismiss';
 import { downloadWorkspace } from '../lib/export';
@@ -7,7 +7,7 @@ import { initials } from '../lib/format';
 
 /** Avatar del encabezado con el menú de la cuenta. */
 export function UserMenu() {
-  const { user, workspace, go, openChat, signOut } = useApp();
+  const { user, workspace, go, openChat, openMe, me, signOut } = useApp();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -29,10 +29,14 @@ export function UserMenu() {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        {initials(user.email || 'Yo').toUpperCase()}
+        {initials(me.profile.name?.trim() || user.email || 'Yo').toUpperCase()}
       </button>
       {open && (
         <div className="pp-dropdown right" role="menu">
+          <button role="menuitem" className="accent" onClick={run(openMe)}>
+            <IdCard size={15} /> Mi ficha
+          </button>
+          <span className="pp-dropdown-sep" role="separator" />
           <button role="menuitem" onClick={run(signOut)}>
             <LogOut size={15} /> Cerrar sesión
           </button>

@@ -26,7 +26,16 @@ type Change = Partial<Card> | ((c: Card) => Partial<Card>);
 const newer = (a: Card, b: Card) =>
   a.created_at > b.created_at || (a.created_at === b.created_at && a.id > b.id);
 
+/** Artículos por página (el `limit` de `reading_list`). */
+const PAGE = 32;
+/**
+ * Con menos letras, la búsqueda recorre el texto entero de todos los artículos (el índice de
+ * trigramas no sirve) y casi todo coincide: se espera a la segunda letra.
+ */
+const MIN_QUERY = 2;
+
 export function useLibrary(view: string, query: string, revision: number, filtersRev = 0) {
+  const needle = query.trim().length >= MIN_QUERY ? query.trim() : '';
   const [cards, setCards] = useState<Card[]>([]),
     [pinned, setPinned] = useState<Card[]>([]),
     [more, setMore] = useState(false),
@@ -43,61 +52,69 @@ export function useLibrary(view: string, query: string, revision: number, filter
   const cursor = useRef<Card | null>(null),
     epoch = useRef(0),
     pending = useRef(false),
-    moreRef = useRef(false);
+    moreRef = useRef(false),
+    // La próxima página reemplaza la lista (es la primera tras buscar, refrescar o cambiar de vista).
+    replace = useRef(true),
+    request = useRef<AbortController | null>(null);
   moreRef.current = more;
   useEffect(() => {
     let live = true;
     supabase.rpc('reading_filters').then(({ data }) => {
-      if (data && live) setFilters(data);
+      if (live && data) setFilters(data);
     });
     return () => {
       live = false;
     };
   }, [revision, filtersRev]);
   // Los fijados de esta vista van aparte, arriba (sin la migración 012 simplemente no hay).
-  const pinKey = useRef('');
+  const pinView = useRef(view);
   useEffect(() => {
     let live = true;
-    const key = view + '|' + query.trim();
-    if (pinKey.current !== key) {
-      pinKey.current = key;
+    // Otra colección: los fijados de la anterior se quitan ya. Al buscar siguen a la vista
+    // hasta que llegan los nuevos.
+    if (pinView.current !== view) {
+      pinView.current = view;
       setPinned([]);
     }
     if (view === 'marks') return;
     const t = setTimeout(
       async () => {
-        const { data, error } = await supabase.rpc('reading_pinned', {
-          scope: view,
-          needle: query.trim(),
-        });
+        const { data, error } = await supabase.rpc('reading_pinned', { scope: view, needle });
         if (live && !error) setPinned(data as Card[]);
       },
-      query ? 180 : 0,
+      needle ? 180 : 0,
     );
     return () => {
       live = false;
       clearTimeout(t);
     };
-  }, [view, query, revision]);
+  }, [view, needle, revision]);
   const load = useCallback(async () => {
     if (pending.current || view === 'marks') return;
     pending.current = true;
     setLoading(true);
     const version = epoch.current;
+    const controller = new AbortController();
+    request.current = controller;
     try {
-      const { data, error } = await supabase.rpc('reading_list', {
-        scope: view,
-        needle: query.trim(),
-        before_date: cursor.current?.created_at ?? null,
-        before_id: cursor.current?.id ?? null,
-      });
+      const { data, error } = await supabase
+        .rpc('reading_list', {
+          scope: view,
+          needle,
+          before_date: cursor.current?.created_at ?? null,
+          before_id: cursor.current?.id ?? null,
+        })
+        .abortSignal(controller.signal);
       if (version !== epoch.current) return;
       if (error) throw error;
       const rows = data as Card[];
       // Los fijados ya salen arriba: no se repiten abajo.
-      setCards((v) => [...v, ...rows.filter((r) => !r.pinned_at)]);
+      const page = rows.filter((r) => !r.pinned_at);
+      const first = replace.current;
+      replace.current = false;
+      setCards((v) => (first ? page : [...v, ...page]));
       cursor.current = rows.at(-1) ?? null;
-      setMore(rows.length === 32);
+      setMore(rows.length === PAGE);
     } catch (e) {
       if (version === epoch.current) setError((e as Error).message);
     } finally {
@@ -106,21 +123,31 @@ export function useLibrary(view: string, query: string, revision: number, filter
         setLoading(false);
       }
     }
-  }, [view, query]);
+  }, [view, needle]);
+  const shownView = useRef(view);
   useEffect(() => {
     epoch.current++;
+    // Lo que se estaba pidiendo para la búsqueda anterior ya no sirve.
+    request.current?.abort();
     cursor.current = null;
     pending.current = false;
-    setCards([]);
+    replace.current = true;
+    // Otra colección: se vacía ya. Al buscar o refrescar, la lista que había sigue a la vista
+    // hasta que llega la nueva: sin parpadeos ni saltos.
+    if (shownView.current !== view) {
+      shownView.current = view;
+      setCards([]);
+    }
     setMore(false);
     setError('');
-    setLoading(false);
-    const t = setTimeout(load, query ? 180 : 0);
+    setLoading(view !== 'marks');
+    const t = setTimeout(load, needle ? 180 : 0);
     return () => {
       clearTimeout(t);
       epoch.current++;
+      request.current?.abort();
     };
-  }, [load, revision, query]);
+  }, [load, revision]);
 
   /** Cambia una tarjeta en la lista al instante (sin volver a pedirla). */
   const patch = useCallback((id: string, change: Change) => {

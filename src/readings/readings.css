@@ -2364,8 +2364,8 @@
   margin: 0 -16px 6px;
   padding: 14px 16px 10px;
   border-bottom: 1px solid var(--rd-line);
-  background: color-mix(in srgb, var(--surface, #fff) 92%, transparent);
-  backdrop-filter: blur(10px) saturate(1.2);
+  /* Fondo opaco y sin desenfoque: el desenfoque se recalculaba en cada paso del scroll. */
+  background: var(--surface, #fff);
 }
 .rd-side-head .read-tools {
   flex-wrap: nowrap;
@@ -2550,6 +2550,13 @@
 /* Fijar: el clip aparece al pasar el cursor; los fijados lo muestran siempre. */
 .rd-row {
   position: relative;
+  /* Con cientos de tarjetas, el navegador solo pinta las que se ven; las demás guardan su alto. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 116px;
+}
+/* El contorno de foco va por dentro: fuera de la tarjeta quedaría recortado. */
+.readings .read-row:focus-visible {
+  outline-offset: -2px;
 }
 .rd-row:hover .read-row:not(.current) {
   background: var(--rd-soft);
@@ -2567,7 +2574,6 @@
   border-radius: 50%;
   background: color-mix(in srgb, var(--surface, #fff) 88%, transparent);
   box-shadow: 0 1px 4px rgba(20, 35, 25, 0.16);
-  backdrop-filter: blur(4px);
   color: color-mix(in srgb, currentColor 60%, transparent);
   opacity: 0;
   transform: scale(0.85);
@@ -2589,7 +2595,6 @@
   transform: rotate(-30deg);
   background: transparent;
   box-shadow: none;
-  backdrop-filter: none;
   color: var(--rd-accent);
 }
 .readings .rd-row.pinned .rd-pin:hover {
@@ -2598,12 +2603,12 @@
   box-shadow: 0 1px 4px rgba(20, 35, 25, 0.16);
 }
 /* Con portada, el clip de un fijado va sobre la imagen. */
-.readings .rd-row.pinned:has(.rd-thumb:not([hidden])) .rd-pin {
+.readings .rd-row.pinned.has-thumb .rd-pin {
   background: color-mix(in srgb, var(--surface, #fff) 88%, transparent);
   box-shadow: 0 1px 4px rgba(20, 35, 25, 0.16);
 }
 /* Deja sitio al clip junto al título cuando no hay portada. */
-.rd-row:not(:has(.rd-thumb:not([hidden]))) .read-row strong {
+.rd-row:not(.has-thumb) .read-row strong {
   padding-right: 26px;
 }
 @media (hover: none) {
@@ -2626,7 +2631,6 @@
   border-radius: 50%;
   background: color-mix(in srgb, var(--surface, #fff) 88%, transparent);
   box-shadow: 0 1px 4px rgba(20, 35, 25, 0.16);
-  backdrop-filter: blur(4px);
   color: color-mix(in srgb, currentColor 60%, transparent);
   opacity: 0;
   transform: scale(0.85);
@@ -2889,6 +2893,53 @@
 .reader-dialog .rd-dlg-x:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+/* Confirmaciones (eliminar…): Cancelar y la acción, a la derecha. */
+.reader-dialog .rd-dlg-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+.reader-dialog .rd-dlg-btn {
+  flex: none;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    transform 0.1s;
+}
+.reader-dialog .rd-dlg-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.reader-dialog .rd-dlg-btn.ghost {
+  border: 1px solid #e3e8de;
+  background: #fff;
+  color: #3f4a3d;
+}
+.reader-dialog .rd-dlg-btn.ghost:hover:not(:disabled) {
+  border-color: #d6ddd0;
+  background: #f3f6f1;
+}
+.reader-dialog .rd-dlg-btn.danger {
+  background: #b8412f;
+  box-shadow:
+    0 1px 2px rgba(120, 30, 20, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.reader-dialog .rd-dlg-btn.danger:hover:not(:disabled) {
+  background: #9f3626;
+}
+.reader-dialog .rd-dlg-foot + [role='alert'] {
+  margin-top: 10px;
 }
 
 /* ── Guardar enlaces: uno o un lote entero ── */

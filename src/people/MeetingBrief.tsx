@@ -24,6 +24,7 @@ import { interestsOf, relationMeta, relationOf, relativeDay, statsFor } from '..
 import { ME, groupsOf, kindWord, tiesOf } from '../lib/relations';
 import { genderOf } from '../lib/gender';
 import { updateKindList, updateKinds, updatesOf } from '../lib/updates';
+import { deduceTastes, tastesLabel, withTastes } from '../lib/tastes';
 import { Avatar } from './Avatar';
 import './brief.css';
 
@@ -417,15 +418,24 @@ function After({ person, entry, onDone }: { person: Person; entry?: Entry; onDon
         ...(entry?.episode_id && { episodeId: entry.episode_id }),
       });
     const remaining = (current.profile.askNext ?? []).filter((q) => !asked.includes('q:' + q));
+    // Lo que la novedad deja ver de sus gustos va en la misma escritura.
+    const tastes = news.trim() ? withTastes(current, deduceTastes(news)) : null;
     if (news.trim() || asked.length)
       await patchPerson(
         current,
-        { profile: { ...current.profile, updates, askNext: remaining } },
+        {
+          ...(tastes?.changed && { interests: tastes.interests }),
+          profile: {
+            ...(tastes?.changed ? tastes.profile : current.profile),
+            updates,
+            askNext: remaining,
+          },
+        },
         true,
       );
     setBusy(false);
     notify(
-      `Encuentro con ${first} cerrado${saved ? ` · ${saved} ${saved === 1 ? 'pendiente' : 'pendientes'}` : ''}${news.trim() ? ' · novedad guardada' : ''}.`,
+      `Encuentro con ${first} cerrado${saved ? ` · ${saved} ${saved === 1 ? 'pendiente' : 'pendientes'}` : ''}${news.trim() ? ' · novedad guardada' : ''}${tastes?.changed ? ` · su perfil suma: ${tastesLabel(tastes.added)}` : ''}.`,
     );
     onDone();
   };

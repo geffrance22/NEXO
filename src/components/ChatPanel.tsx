@@ -1,20 +1,21 @@
-import type { FormEvent, ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type FormEvent, type ReactNode } from 'react';
 import {
+  ArrowUp,
   ArrowUpRight,
   Calculator,
   FileText,
   Layers,
-  LoaderCircle,
   MapPin,
+  RotateCcw,
   Search,
-  Send,
   Sparkles,
+  SquarePen,
   UserRound,
   X,
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import type { AssistantSource } from '../assistant';
-import type { Assistant } from '../hooks/useAssistant';
+import type { Assistant, ChatMessage } from '../hooks/useAssistant';
 
 const suggestions = [
   '¿Qué compromisos tengo abiertos y con quién?',
@@ -24,36 +25,15 @@ const suggestions = [
 ];
 
 const sourceIcon = { entry: FileText, person: UserRound, place: MapPin, episode: Layers };
+/** Lo que no cabe en la burbuja: las fuentes que se ven a la vista. */
+const VISIBLE_SOURCES = 4;
 
-export function ChatPanel({ assistant, onClose }: { assistant: Assistant; onClose: () => void }) {
-  const { question, setQuestion, result, busy, ask } = assistant;
-  const { workspace, go, viewEntry, peekPerson } = useApp();
-
-  function submit(ev: FormEvent) {
-    ev.preventDefault();
-    void ask();
-  }
-
-  const open = (s: AssistantSource) => {
-    if (s.type === 'entry') {
-      const e = workspace.entries.find((x) => x.id === s.id);
-      if (e) viewEntry(e);
-    } else if (s.type === 'person') {
-      const p = workspace.people.find((x) => x.id === s.id);
-      if (p) peekPerson(p);
-    } else if (s.type === 'place') {
-      const p = workspace.places.find((x) => x.id === s.id);
-      if (p) go('Lugares', p);
-    } else {
-      const ep = workspace.episodes.find((x) => x.id === s.id);
-      if (ep) go('Episodios', ep);
-    }
-  };
-
-  /** Convierte las citas [r3] de la respuesta en enlaces a sus fuentes. */
-  const render = (text: string): ReactNode[] => {
-    const byRef = new Map((result?.sources ?? []).map((s) => [s.ref, s]));
-    return text.split(/(\[[a-z]\d+(?:\s*,\s*[a-z]\d+)*\])/g).map((part, i) => {
+/** Una respuesta de Nexo: texto con sus citas como enlaces, fuentes y qué consultó. */
+function Answer({ m, open }: { m: ChatMessage; open: (s: AssistantSource) => void }) {
+  const byRef = new Map((m.sources ?? []).map((s) => [s.ref, s]));
+  /** Convierte las citas [r3] en enlaces a sus fuentes. */
+  const render = (text: string): ReactNode[] =>
+    text.split(/(\[[a-z]\d+(?:\s*,\s*[a-z]\d+)*\])/g).map((part, i) => {
       const refs = part.match(/^\[(.+)\]$/)?.[1].split(/\s*,\s*/);
       if (!refs) return part;
       return refs.map((r) => {
@@ -74,100 +54,241 @@ export function ChatPanel({ assistant, onClose }: { assistant: Assistant; onClos
         );
       });
     });
+  const sources = m.sources ?? [];
+  const cov = m.coverage;
+  return (
+    <div className="chat-msg bot">
+      <div className="chat-bubble">
+        {m.text
+          .split('\n')
+          .filter((line) => line.trim())
+          .map((line, i) => (
+            <p key={i} className={/^\s*[-•]\s/.test(line) ? 'li' : undefined}>
+              {render(line)}
+            </p>
+          ))}
+      </div>
+      {sources.length > 0 && (
+        <div className="chat-sources">
+          {sources.slice(0, VISIBLE_SOURCES).map((s) => {
+            const Icon = sourceIcon[s.type];
+            return (
+              <button type="button" key={s.ref} onClick={() => open(s)} title={s.title}>
+                <Icon size={12} /> <span>{s.title}</span>
+              </button>
+            );
+          })}
+          {sources.length > VISIBLE_SOURCES && (
+            <details className="chat-more">
+              <summary>+{sources.length - VISIBLE_SOURCES}</summary>
+              {sources.slice(VISIBLE_SOURCES, 16).map((s) => {
+                const Icon = sourceIcon[s.type];
+                return (
+                  <button type="button" key={s.ref} onClick={() => open(s)} title={s.title}>
+                    <Icon size={12} /> <span>{s.title}</span>
+                    {s.date && <small>{s.date}</small>}
+                  </button>
+                );
+              })}
+            </details>
+          )}
+        </div>
+      )}
+      {cov && (cov.calculations.length > 0 || cov.matching > cov.consulted) && (
+        <details className="chat-coverage">
+          <summary>
+            <Search size={12} /> {cov.consulted} de {cov.matching}{' '}
+            {cov.matching === 1 ? 'recuerdo' : 'recuerdos'}
+            {cov.calculations.length > 0 && (
+              <>
+                {' · '}
+                <Calculator size={12} /> cálculos exactos
+              </>
+            )}
+          </summary>
+          {cov.filters.length > 0 && <span>{cov.filters.join(' · ')}</span>}
+          {cov.calculations.map((c) => (
+            <span key={c} className="calc">
+              {c}
+            </span>
+          ))}
+        </details>
+      )}
+    </div>
+  );
+}
+
+export function ChatPanel({ assistant, onClose }: { assistant: Assistant; onClose: () => void }) {
+  const { messages, input, setInput, busy, send, retry, reset } = assistant;
+  const { workspace, go, viewEntry, peekPerson } = useApp();
+  const scroller = useRef<HTMLDivElement>(null);
+  const area = useRef<HTMLTextAreaElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  // Siempre a la vista lo último (y el «escribiendo…»).
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: messages.length ? 'smooth' : 'auto' });
+  }, [messages.length, busy]);
+
+  useEffect(() => {
+    area.current?.focus({ preventScroll: true });
+  }, []);
+
+  // El campo crece con el texto (hasta un tope) y vuelve a una línea al enviar.
+  useLayoutEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 150) + 'px';
+  }, [input]);
+
+  // Esc cierra el chat, salvo que haya algo abierto encima (la ficha de alguien, un recuerdo…).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (
+        document.querySelector(
+          '.nx-peek, .sheet-backdrop, .confirm-backdrop, .modal-backdrop, .lightbox',
+        )
+      )
+        return;
+      closeRef.current();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  function submit(ev: FormEvent) {
+    ev.preventDefault();
+    void send(input);
+  }
+
+  const open = (s: AssistantSource) => {
+    if (s.type === 'entry') {
+      const e = workspace.entries.find((x) => x.id === s.id);
+      if (e) viewEntry(e);
+    } else if (s.type === 'person') {
+      const p = workspace.people.find((x) => x.id === s.id);
+      if (p) peekPerson(p);
+    } else if (s.type === 'place') {
+      const p = workspace.places.find((x) => x.id === s.id);
+      if (p) go('Lugares', p);
+    } else {
+      const ep = workspace.episodes.find((x) => x.id === s.id);
+      if (ep) go('Episodios', ep);
+    }
   };
 
-  const cov = result?.coverage;
+  const empty = !messages.length && !busy;
+  const lastError = messages[messages.length - 1]?.error;
+
   return (
     <div className="chat-panel" role="dialog" aria-label="Asistente Nexo">
       <header>
         <span>
-          <Sparkles size={19} /> Nexo · con contexto
+          <Sparkles size={18} /> Nexo
         </span>
-        <button className="icon-button" onClick={onClose} aria-label="Cerrar asistente">
-          <X size={20} />
-        </button>
+        <div className="chat-tools">
+          {messages.length > 0 && (
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => {
+                reset();
+                area.current?.focus();
+              }}
+              aria-label="Nueva conversación"
+              title="Nueva conversación"
+            >
+              <SquarePen size={18} />
+            </button>
+          )}
+          <button
+            type="button"
+            className="icon-button"
+            onClick={onClose}
+            aria-label="Cerrar asistente"
+          >
+            <X size={20} />
+          </button>
+        </div>
       </header>
-      <div className="chat-content">
-        {!result && !busy && (
-          <>
+
+      <div className="chat-content" ref={scroller} aria-live="polite">
+        {empty ? (
+          <div className="chat-intro">
             <span className="chat-emblem">
-              <Sparkles size={28} />
+              <Sparkles size={26} />
             </span>
             <h2>Conectemos los puntos.</h2>
-            <p>
-              Pregunta por personas, lugares, compromisos, gastos o recuerdos. Nexo busca por
-              persona, fecha y tipo, calcula lo exacto y te muestra de dónde sacó cada cosa.
-            </p>
+            <p>Personas, lugares, compromisos, gastos, recuerdos… y tú.</p>
             <div className="suggestions">
               {suggestions.map((s) => (
-                <button key={s} onClick={() => setQuestion(s)}>
+                <button type="button" key={s} onClick={() => void send(s)}>
                   {s}
                   <ArrowUpRight size={14} />
                 </button>
               ))}
             </div>
-          </>
-        )}
-        {result && (
-          <div className="answer">
-            {result.answer.split('\n').map((line, i) => (
-              <p key={i}>{render(line)}</p>
-            ))}
+          </div>
+        ) : (
+          <div className="chat-thread">
+            {messages.map((m) =>
+              m.role === 'user' ? (
+                <div className="chat-msg me" key={m.id}>
+                  <div className="chat-bubble">{m.text}</div>
+                </div>
+              ) : m.error ? (
+                <div className="chat-msg bot error" key={m.id}>
+                  <div className="chat-bubble">{m.text}</div>
+                  {m === messages[messages.length - 1] && !busy && (
+                    <button type="button" className="chat-retry" onClick={retry}>
+                      <RotateCcw size={13} /> Reintentar
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <Answer key={m.id} m={m} open={open} />
+              ),
+            )}
+            {busy && (
+              <div className="chat-msg bot">
+                <div className="chat-bubble chat-typing" aria-label="Nexo está pensando">
+                  <i />
+                  <i />
+                  <i />
+                </div>
+              </div>
+            )}
           </div>
         )}
-        {cov && (
-          <div className="chat-coverage">
-            <span>
-              <Search size={13} /> Consulté {cov.consulted} de {cov.matching}{' '}
-              {cov.matching === 1 ? 'recuerdo que coincide' : 'recuerdos que coinciden'}
-              {cov.matching > cov.consulted && ` · ${cov.matching - cov.consulted} quedaron fuera`}
-            </span>
-            {cov.filters.length > 0 && <span>Filtros: {cov.filters.join(' · ')}</span>}
-            <span>
-              Además: {cov.people} personas, {cov.places} lugares, {cov.episodes} episodios
-            </span>
-            {cov.calculations.map((c) => (
-              <span key={c} className="calc">
-                <Calculator size={13} /> {c}
-              </span>
-            ))}
-          </div>
-        )}
-        {result && result.sources.length > 0 && (
-          <div className="chat-sources">
-            <strong>Fuentes</strong>
-            {result.sources.slice(0, 12).map((s) => {
-              const Icon = sourceIcon[s.type];
-              return (
-                <button type="button" key={s.ref} onClick={() => open(s)} title={s.title}>
-                  <Icon size={12} /> {s.title}
-                  {s.date && <small> · {s.date}</small>}
-                </button>
-              );
-            })}
-          </div>
-        )}
-        {busy && <LoaderCircle className="spin" />}
-        <small>
-          Tus datos solo se envían al consultar. Los totales se calculan antes, no los adivina la
-          IA.
-        </small>
       </div>
-      <form onSubmit={submit}>
+
+      <form onSubmit={submit} className={lastError ? 'after-error' : ''}>
         <textarea
-          required
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
+          ref={area}
+          rows={1}
+          value={input}
+          maxLength={2000}
+          onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              if (question.trim() && !busy) void ask();
+              void send(input);
             }
           }}
-          placeholder="Pregúntale a tu memoria…"
+          placeholder={messages.length ? 'Escribe…' : 'Pregúntale a tu memoria…'}
+          aria-label="Mensaje para Nexo"
         />
-        <button className="primary" disabled={busy} aria-label="Enviar pregunta">
-          <Send size={18} />
+        <button
+          className="primary"
+          disabled={busy || !input.trim()}
+          aria-label="Enviar"
+          title="Enviar"
+        >
+          <ArrowUp size={18} />
         </button>
       </form>
     </div>

@@ -26,7 +26,8 @@ import { errorMessage, todayInputValue } from '../lib/format';
 import { prepareImage, uploadToImgbb } from '../lib/imgbb';
 import { relationMeta } from '../lib/people';
 import { ME, canonicalTie, tieKey } from '../lib/relations';
-import { hydrateDismissed, setDismissalSync } from '../relations/dismissed';
+import { forgetDismissed, hydrateDismissed, setDismissalSync } from '../relations/dismissed';
+import { mergedProfile } from '../lib/duplicates';
 import type { Notify } from './useToast';
 
 export type TieInput = {
@@ -78,6 +79,8 @@ const RELATIONS_HINT =
 
 const PROFILE_HINT =
   'Falta ejecutar la migración 202611060005_people_profile.sql en el SQL Editor de Supabase.';
+const MERGE_HINT =
+  'Para unir personas ejecuta la migración 202611080002_merge_people.sql en el SQL Editor de Supabase.';
 const MIGRATION_HINT =
   'Falta ejecutar la migración 202611060004_images_details.sql en el SQL Editor de Supabase.';
 
@@ -783,6 +786,92 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
     [notify, confirm, workspace.entries],
   );
 
+  /**
+   * Une dos fichas de la misma persona. Primero `keep` recibe los datos de la ficha de `drop`;
+   * luego la base mueve sus recuerdos, compromisos, episodios, grupos, vínculos y tarjetas, y borra
+   * `drop` (migración 202611080002_merge_people.sql).
+   */
+  const mergePeople = useCallback(
+    async (keep: Person, drop: Person) => {
+      if (keep.id === drop.id) return false;
+      const merged = mergedProfile(keep, drop);
+      try {
+        const { error } = await supabase.from('people').update(personRow(merged)).eq('id', keep.id);
+        if (error) throw error;
+      } catch (e) {
+        notify(isMissingColumn(e) ? PROFILE_HINT : errorMessage(e));
+        return false;
+      }
+      setWorkspace((w) => ({
+        ...w,
+        people: w.people.map((p) => (p.id === keep.id ? { ...p, ...merged } : p)),
+      }));
+      const { error } = await supabase.rpc('merge_people', { p_keep: keep.id, p_drop: drop.id });
+      if (error) {
+        notify(
+          error.code === 'PGRST202' || /merge_people/.test(error.message)
+            ? MERGE_HINT
+            : errorMessage(error),
+        );
+        return false;
+      }
+      // Lo mismo que hizo la base, aquí.
+      const swap = (ids: string[]) =>
+        !ids.includes(drop.id)
+          ? ids
+          : ids.includes(keep.id)
+            ? ids.filter((id) => id !== drop.id)
+            : ids.map((id) => (id === drop.id ? keep.id : id));
+      setWorkspace((w) => {
+        const otherOf = (t: Tie, id: string) => (t.a === id ? t.b : (t.a ?? ME));
+        const touches = (t: Tie, id: string) => t.a === id || t.b === id;
+        const keepOthers = new Set(
+          w.ties.filter((t) => touches(t, keep.id)).map((t) => otherOf(t, keep.id)),
+        );
+        return {
+          ...w,
+          people: w.people.filter((p) => p.id !== drop.id),
+          entries: w.entries.map((e) => {
+            const owner = e.details.owner === drop.id;
+            const beneficiary = e.details.beneficiary === drop.id;
+            if (!e.person_ids.includes(drop.id) && !owner && !beneficiary) return e;
+            return {
+              ...e,
+              person_ids: swap(e.person_ids),
+              details: {
+                ...e.details,
+                ...(owner && { owner: keep.id }),
+                ...(beneficiary && { beneficiary: keep.id }),
+              },
+            };
+          }),
+          episodes: w.episodes.map((ep) =>
+            ep.person_ids.includes(drop.id) ? { ...ep, person_ids: swap(ep.person_ids) } : ep,
+          ),
+          groups: w.groups.map((g) =>
+            g.member_ids.includes(drop.id) ? { ...g, member_ids: swap(g.member_ids) } : g,
+          ),
+          ties: w.ties
+            .filter((t) => !(touches(t, keep.id) && touches(t, drop.id)))
+            .filter((t) => !touches(t, drop.id) || !keepOthers.has(otherOf(t, drop.id)))
+            .map((t) =>
+              touches(t, drop.id)
+                ? {
+                    ...t,
+                    a: t.a === drop.id ? keep.id : t.a,
+                    b: t.b === drop.id ? keep.id : t.b,
+                  }
+                : t,
+            ),
+        };
+      });
+      forgetDismissed(drop.id);
+      notify(`Listo: ${drop.name.slice(0, 60)} ahora es parte de ${keep.name.slice(0, 60)}.`);
+      return true;
+    },
+    [notify, profileOutdated],
+  );
+
   const savePlace = useCallback(
     async (input: PlaceInput) => {
       try {
@@ -1110,6 +1199,7 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
     savePerson,
     updatePerson,
     removePerson,
+    mergePeople,
     toggleEntry,
     removeEntry,
     openAttachment,

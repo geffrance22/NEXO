@@ -13,6 +13,8 @@ import {
   Check,
   Clock,
   Feather,
+  Flower2,
+  Gift,
   Mail,
   MessageCircle,
   Phone,
@@ -24,29 +26,33 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '../AppContext';
-import type { Entry, Person, PersonUpdate } from '../data';
+import type { Person, PersonUpdate } from '../data';
 import { updateKinds, updatesOf } from '../lib/updates';
-import { friendlyDate, normalizeText, shortDate, todayInputValue } from '../lib/format';
+import { addDays, friendlyDate, normalizeText, shortDate, todayInputValue } from '../lib/format';
 import {
   ageOf,
   closenessLabels,
   closenessOf,
   companionsOf,
   completeness,
+  daysToBirthday,
   exchangeKinds,
   interestsOf,
   relationMeta,
   relationOf,
   relativeDay,
   statsFor,
+  statusMeta,
+  statusOf,
   type PersonStats,
 } from '../lib/people';
 import { MiniPhotos, pastedImages } from '../composer/PhotoBlocks';
 import { useImageUploads } from '../composer/useImageUploads';
 import { PhotoThumbs } from '../components/PhotoThumbs';
-import { RichText } from '../components/RichText';
 import { Avatar } from './Avatar';
+import { GiftIdeas } from './GiftIdeas';
 import { PersonMenu } from './PersonMenu';
+import { Moments, Together } from './Together';
 import { TieChips, TiesTab } from '../relations/TiesTab';
 
 type Tab =
@@ -55,7 +61,7 @@ const tabLabels: Record<Tab, string> = {
   resumen: 'Resumen',
   vinculos: 'Vínculos',
   identidad: 'Identidad',
-  historia: 'Historia',
+  historia: 'Juntos',
   reciprocidad: 'Dar y recibir',
   red: 'Red',
   pendientes: 'Pendientes',
@@ -173,48 +179,6 @@ function ContactActions({ person }: { person: Person }) {
         <CalendarClock size={17} />
       </button>
     </div>
-  );
-}
-
-function Timeline({ entries, limit }: { entries: Entry[]; limit?: number }) {
-  const { viewEntry } = useApp();
-  const list = limit ? entries.slice(0, limit) : entries;
-  if (!list.length) return <p className="pp-empty">Todavía no hay recuerdos con esta persona.</p>;
-  let lastGroup = '';
-  return (
-    <ol className="pp-timeline">
-      {list.map((e) => {
-        const d = new Date(e.created_at);
-        const group = limit ? '' : `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-        const header = group !== lastGroup ? group : '';
-        lastGroup = group;
-        return (
-          <li key={e.id}>
-            {header && <span className="pp-tl-group">{header}</span>}
-            <button type="button" className="pp-tl-row" onClick={() => viewEntry(e)}>
-              <i className={'pp-tl-dot kind-' + e.kind} />
-              <span className="pp-tl-main">
-                <strong>{e.title}</strong>
-                {e.body && (
-                  <small>
-                    <RichText text={e.body.slice(0, 160)} />
-                  </small>
-                )}
-              </span>
-              <span className="pp-tl-date">
-                {shortDate(e.created_at)}
-                <em>{e.kind}</em>
-              </span>
-            </button>
-            {e.images.length > 0 && (
-              <div className="pp-tl-photos">
-                <PhotoThumbs images={e.images} />
-              </div>
-            )}
-          </li>
-        );
-      })}
-    </ol>
   );
 }
 
@@ -435,7 +399,23 @@ function Pendings({ stats, person }: { stats: PersonStats; person: Person }) {
 
 function Alerts({ person, stats }: { person: Person; stats: PersonStats }) {
   const items: { icon: typeof Cake; text: string; tone: string }[] = [];
-  if (stats.birthdayIn !== null && stats.birthdayIn <= 30) {
+  if (statusOf(person) === 'memoria') {
+    // Sin «escríbele» ni balance: solo la fecha, con respeto.
+    const today = todayInputValue();
+    const d = daysToBirthday(person, today);
+    if (d !== null && d <= 30) {
+      const age = ageOf(person, addDays(today, d));
+      const turns = age !== null ? ` ${age} años` : ' años';
+      items.push({
+        icon: Flower2,
+        tone: 'memory',
+        text:
+          d === 0
+            ? `Hoy habría cumplido${turns}.`
+            : `${d === 1 ? 'Mañana' : `En ${d} días`} habría cumplido${turns}.`,
+      });
+    }
+  } else if (stats.birthdayIn !== null && stats.birthdayIn <= 30) {
     const age = ageOf(person, undefined);
     items.push({
       icon: Cake,
@@ -456,7 +436,10 @@ function Alerts({ person, stats }: { person: Person; stats: PersonStats }) {
           : `Llevan ${stats.daysSince} días sin hablar. Tu meta es cada ${person.profile.cadence} días.`,
     });
   }
-  if (stats.reciprocity.state === 'das-mas' || stats.reciprocity.state === 'recibes-mas') {
+  if (
+    statusOf(person) === 'activa' &&
+    (stats.reciprocity.state === 'das-mas' || stats.reciprocity.state === 'recibes-mas')
+  ) {
     items.push({ icon: Scale, tone: 'info', text: stats.reciprocity.hint });
   }
   if (!items.length) return null;
@@ -566,7 +549,7 @@ function Resumen({ person, stats, full }: { person: Person; stats: PersonStats; 
       <h4>
         <Clock size={15} /> Últimos recuerdos
       </h4>
-      <Timeline entries={stats.interactions} limit={full ? 5 : 3} />
+      <Moments entries={stats.interactions} limit={full ? 5 : 3} />
       {(interestsOf(person).length > 0 || (person.profile.likes?.length ?? 0) > 0) && (
         <>
           <h4>Intereses</h4>
@@ -880,6 +863,7 @@ export function PersonPanel({
     ? ['resumen', 'vinculos', 'identidad', 'historia', 'reciprocidad', 'red', 'pendientes']
     : ['resumen', 'vinculos', 'historia', 'pendientes'];
   const [tab, setTab] = useState<Tab>('resumen');
+  const [gifts, setGifts] = useState(false);
   const stats = useMemo(
     () => statsFor(person, app.workspace.entries),
     [person, app.workspace.entries],
@@ -889,10 +873,11 @@ export function PersonPanel({
   const meta = relationMeta[rel];
   const fav = Boolean(person.profile.favorite);
   const pr = person.profile;
+  const status = statusOf(person);
 
   return (
     <article
-      className={'pp-panel ' + variant}
+      className={'pp-panel ' + variant + (status !== 'activa' ? ' ' + status : '')}
       style={{ '--accent': meta.color, '--soft': meta.soft, '--ink': meta.ink } as CSSProperties}
       aria-label={`Ficha de ${person.name}`}
     >
@@ -924,10 +909,16 @@ export function PersonPanel({
             if (f) app.uploadPersonPhoto(person, f);
           }}
         />
+        <h2 className="pp-panel-name">{person.name}</h2>
         <div className="pp-panel-id">
-          <h2>{person.name}</h2>
           <p>
             <span className="pp-rel">{meta.label}</span>
+            {status !== 'activa' && (
+              <span className={'pp-status ' + status}>
+                {status === 'memoria' && <Flower2 size={12} />}
+                {statusMeta[status].label}
+              </span>
+            )}
             {person.role && <span>{person.role}</span>}
             {pr.alias && <span>«{pr.alias}»</span>}
           </p>
@@ -937,9 +928,20 @@ export function PersonPanel({
             ))}
             <span>{closenessLabels[closenessOf(person)]}</span>
           </div>
-          <ContactActions person={person} />
+          {status !== 'memoria' && <ContactActions person={person} />}
         </div>
         <div className="pp-panel-tools">
+          {status !== 'memoria' && (
+            <button
+              type="button"
+              className="pp-icon-btn"
+              title="Ideas de regalo"
+              aria-label={`Ideas de regalo para ${person.name.split(' ')[0]}`}
+              onClick={() => setGifts(true)}
+            >
+              <Gift size={17} />
+            </button>
+          )}
           <button
             type="button"
             className={'pp-icon-btn' + (fav ? ' fav' : '')}
@@ -966,10 +968,22 @@ export function PersonPanel({
       </header>
 
       <div className="pp-metrics">
-        <div>
-          <BondRing value={stats.bond} size={full ? 56 : 46} />
-          <span>Vínculo</span>
-        </div>
+        {status === 'memoria' ? (
+          <div>
+            <span
+              className="pp-ring pp-ring-memory"
+              style={{ width: full ? 56 : 46, height: full ? 56 : 46 }}
+            >
+              <Flower2 size={full ? 20 : 17} />
+            </span>
+            <span>En memoria</span>
+          </div>
+        ) : (
+          <div>
+            <BondRing value={stats.bond} size={full ? 56 : 46} />
+            <span>Vínculo</span>
+          </div>
+        )}
         <div>
           <b>{relativeDay(stats.last)}</b>
           <span>Última vez</span>
@@ -1005,16 +1019,11 @@ export function PersonPanel({
         {tab === 'vinculos' && <TiesTab person={person} />}
         {tab === 'identidad' && <Identidad person={person} />}
         {tab === 'historia' && (
-          <div className="pp-tab">
-            <button
-              type="button"
-              className="pp-text-btn"
-              onClick={() => app.openEntry(undefined, [person.id])}
-            >
-              <Plus size={14} /> Añadir recuerdo
-            </button>
-            <Timeline entries={stats.interactions} />
-          </div>
+          <Together
+            person={person}
+            stats={stats}
+            onReciprocity={full ? () => setTab('reciprocidad') : undefined}
+          />
         )}
         {tab === 'reciprocidad' && <Reciprocidad person={person} stats={stats} />}
         {tab === 'red' && <Red person={person} />}
@@ -1034,6 +1043,9 @@ export function PersonPanel({
       )}
       {full && person.created_at && (
         <span className="pp-since">En tu universo desde el {shortDate(person.created_at)}</span>
+      )}
+      {gifts && (
+        <GiftIdeas key={person.id} person={person} standalone onClose={() => setGifts(false)} />
       )}
     </article>
   );

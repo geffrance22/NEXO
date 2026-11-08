@@ -43,6 +43,12 @@ export function dismiss(...keys: string[]) {
   if (fresh.length) sync?.add(fresh);
 }
 
+/** Olvida en este navegador los descartes que mencionan algo (la base ya los borró). */
+export function forgetDismissed(fragment: string) {
+  if (![...current].some((k) => k.includes(fragment))) return;
+  write(new Set([...current].filter((k) => !k.includes(fragment))));
+}
+
 export function undismiss(...keys: string[]) {
   const next = new Set(current);
   keys.forEach((k) => next.delete(k));

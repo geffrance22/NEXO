@@ -1,12 +1,10 @@
 import { Plus } from 'lucide-react';
 import { useApp } from '../AppContext';
 import type { Page } from '../data';
+import { GreetingHeading } from '../greeting/GreetingHeading';
 
-const headings: Record<Page, { title: string; text: string }> = {
-  'Mi espacio': {
-    title: 'Tu vida tiene muchas conexiones.',
-    text: 'Un lugar para recordarlas, entenderlas y descubrir lo que viene.',
-  },
+// Mi espacio no está aquí: su encabezado es el saludo (ver GreetingHeading).
+const headings: Record<Exclude<Page, 'Mi espacio'>, { title: string; text: string }> = {
   Episodios: {
     title: 'Las historias completas.',
     text: 'Viajes, cenas, proyectos y mudanzas con todo lo que reunieron: personas, lugares, dinero y lo que quedó pendiente.',
@@ -43,6 +41,7 @@ const headings: Record<Page, { title: string; text: string }> = {
 
 export function PageHeading() {
   const { page, selected, openEntry, openPerson, openPlace } = useApp();
+  if (page === 'Mi espacio') return <GreetingHeading />;
   if (page === 'Lecturas' || page === 'Tableros' || page === 'Notas' || page === 'Libroteca')
     return null;
 
@@ -60,9 +59,7 @@ export function PageHeading() {
   return (
     <div className="page-heading">
       <div>
-        <div className="eyebrow">
-          {page === 'Mi espacio' ? 'UN POCO DE TODO LO QUE ERES' : 'TU MEMORIA, CONECTADA'}
-        </div>
+        <div className="eyebrow">TU MEMORIA, CONECTADA</div>
         <h1>{selected ? selected.name : headings[page].title}</h1>
         <p>{selected ? selected.role : headings[page].text}</p>
       </div>

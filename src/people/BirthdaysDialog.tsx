@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { BellPlus, Cake, CalendarPlus, Gift, MessageCircle, PartyPopper, X } from 'lucide-react';
+import {
+  BellPlus,
+  Cake,
+  CalendarPlus,
+  Flower2,
+  Gift,
+  MessageCircle,
+  PartyPopper,
+  X,
+} from 'lucide-react';
 import { useApp } from '../AppContext';
 import { addDays, todayInputValue } from '../lib/format';
 import { ageOf, daysToBirthday, relationMeta, relationOf } from '../lib/people';
@@ -40,6 +49,7 @@ export function BirthdaysDialog({
   const all = useMemo(
     () =>
       workspace.people
+        .filter((p) => p.profile.status !== 'distante')
         .map((p) => ({ p, d: daysToBirthday(p, today) }))
         .filter((x): x is { p: (typeof workspace.people)[number]; d: number } => x.d !== null)
         .sort((a, b) => a.d - b.d),
@@ -47,7 +57,7 @@ export function BirthdaysDialog({
   );
   const soon = all.filter((x) => x.d <= 30);
   const later = all.filter((x) => x.d > 30).slice(0, 4);
-  const missing = workspace.people.filter((p) => !p.profile.birthday);
+  const missing = workspace.people.filter((p) => !p.profile.birthday && !p.profile.status);
   const giftPerson = gift ? workspace.people.find((p) => p.id === gift.id) : undefined;
 
   const row = ({ p, d }: (typeof all)[number], dim = false) => {
@@ -55,12 +65,16 @@ export function BirthdaysDialog({
     const date = addDays(today, d);
     const age = ageOf(p, date);
     const [mm, dd] = (p.profile.birthday ?? '01-01').split('-').map(Number);
-    const digits = (p.profile.phone ?? '').replace(/\D/g, '');
+    // Quien ya no está: se recuerda la fecha, sin felicitar ni regalar.
+    const memory = p.profile.status === 'memoria';
+    const digits = memory ? '' : (p.profile.phone ?? '').replace(/\D/g, '');
     const first = p.name.split(' ')[0];
     return (
       <li
         key={p.id}
-        className={'bday-row' + (d === 0 ? ' today' : '') + (dim ? ' dim' : '')}
+        className={
+          'bday-row' + (d === 0 ? ' today' : '') + (dim ? ' dim' : '') + (memory ? ' memory' : '')
+        }
         style={{ '--accent': meta.color, '--soft': meta.soft, '--ink': meta.ink } as CSSProperties}
       >
         <span className="bday-date">
@@ -71,14 +85,20 @@ export function BirthdaysDialog({
           <Avatar person={p} size={36} />
           <span>
             <strong>{p.name}</strong>
-            <small>{age !== null ? `Cumple ${age}` : meta.label}</small>
+            <small>
+              {memory
+                ? age !== null
+                  ? `Habría cumplido ${age}`
+                  : 'En su memoria'
+                : age !== null
+                  ? `Cumple ${age}`
+                  : meta.label}
+            </small>
           </span>
         </button>
         <span className="bday-when">
           {d === 0 ? (
-            <>
-              <PartyPopper size={13} /> Hoy
-            </>
+            <>{memory ? <Flower2 size={13} /> : <PartyPopper size={13} />} Hoy</>
           ) : d === 1 ? (
             'Mañana'
           ) : (
@@ -86,15 +106,17 @@ export function BirthdaysDialog({
           )}
         </span>
         <span className="bday-actions">
-          <button
-            type="button"
-            className="gift"
-            title="Ideas de regalo"
-            aria-label={`Ideas de regalo para ${first}`}
-            onClick={() => setGift({ id: p.id, turns: age, date })}
-          >
-            <Gift size={15} />
-          </button>
+          {!memory && (
+            <button
+              type="button"
+              className="gift"
+              title="Ideas de regalo"
+              aria-label={`Ideas de regalo para ${first}`}
+              onClick={() => setGift({ id: p.id, turns: age, date })}
+            >
+              <Gift size={15} />
+            </button>
+          )}
           {digits && (
             <a
               href={`https://wa.me/${digits}?text=${encodeURIComponent(`¡Feliz cumpleaños, ${first}! 🎉`)}`}
@@ -112,7 +134,7 @@ export function BirthdaysDialog({
             aria-label={`Recordarme el cumpleaños de ${first}`}
             onClick={() => {
               onClose();
-              openEntry('Pendiente', [p.id], { due: addDays(date, -1) });
+              openEntry('Pendiente', [p.id], { due: memory ? date : addDays(date, -1) });
             }}
           >
             <BellPlus size={15} />
@@ -181,8 +203,7 @@ export function BirthdaysDialog({
         <GiftIdeas
           key={giftPerson.id}
           person={giftPerson}
-          turns={gift.turns}
-          date={gift.date}
+          birthday={{ turns: gift.turns, date: gift.date }}
           onClose={() => setGift(null)}
         />
       )}

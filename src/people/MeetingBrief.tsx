@@ -418,9 +418,10 @@ function After({ person, entry, onDone }: { person: Person; entry?: Entry; onDon
         ...(entry?.episode_id && { episodeId: entry.episode_id }),
       });
     const remaining = (current.profile.askNext ?? []).filter((q) => !asked.includes('q:' + q));
-    // Lo que la novedad deja ver de sus gustos va en la misma escritura.
-    const tastes = news.trim() ? withTastes(current, deduceTastes(news)) : null;
-    if (news.trim() || asked.length)
+    // Lo que la novedad y el encuentro dejan ver de sus gustos va en la misma escritura.
+    const said = [news.trim(), text.trim()].filter(Boolean).join('.\n');
+    const tastes = said ? withTastes(current, deduceTastes(said)) : null;
+    if (news.trim() || asked.length || tastes?.changed)
       await patchPerson(
         current,
         {

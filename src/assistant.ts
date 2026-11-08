@@ -45,12 +45,33 @@ async function call(body: Record<string, unknown>) {
   return data as Record<string, unknown> | null;
 }
 
-/** Consulta la función `assistant`. Si el servidor responde con un error, lanza su mensaje real. */
-export async function askAssistant(question: string): Promise<AssistantAnswer> {
+/** Un mensaje anterior de la conversación con Nexo. */
+export type ChatTurn = { role: 'user' | 'assistant'; text: string };
+
+/** Lo justo de la conversación para entender la pregunta: los últimos turnos, recortados. */
+const HISTORY_TURNS = 6;
+const HISTORY_CHARS = 600;
+
+/**
+ * Consulta la función `assistant`. `history` es la conversación hasta ahora (para entender
+ * «¿y ella?»). Si el servidor responde con un error, lanza su mensaje real.
+ */
+export async function askAssistant(
+  question: string,
+  history: ChatTurn[] = [],
+): Promise<AssistantAnswer> {
   // «Hoy» del usuario (su zona horaria) para entender «este mes», «ayer»…
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const data = await call({ question, today });
+  const turns = history.slice(-HISTORY_TURNS).map((t) => ({
+    role: t.role,
+    // Las citas [r3] de antes no significan nada en la consulta nueva.
+    text: (t.role === 'assistant'
+      ? t.text.replace(/\s*\[[a-z]\d+(?:\s*,\s*[a-z]\d+)*\]/g, '')
+      : t.text
+    ).slice(0, HISTORY_CHARS),
+  }));
+  const data = await call({ question, today, history: turns });
   return {
     answer: typeof data?.answer === 'string' ? data.answer : 'No hay respuesta disponible.',
     sources: Array.isArray(data?.sources) ? (data.sources as AssistantSource[]) : [],
@@ -108,17 +129,34 @@ export async function selfReading(
   };
 }
 
-export type GiftKind = 'objeto' | 'experiencia' | 'detalle' | 'hecho a mano';
-export type GiftPrice = 'bajo' | 'medio' | 'alto';
-export type GiftIdea = { title: string; why: string; kind: GiftKind; price: GiftPrice };
+export type GiftKind = 'objeto' | 'experiencia' | 'hecho a mano' | 'gesto';
+export type GiftPrice = 'gratis' | 'bajo' | 'medio' | 'alto';
+/** `what`: qué es exactamente y dónde conseguirlo. `why`: por qué le va a encantar. */
+export type GiftIdea = {
+  title: string;
+  what: string;
+  why: string;
+  kind: GiftKind;
+  price: GiftPrice;
+};
 
 /** Ideas de regalo para una persona, a partir de todo lo que sabes de ella y de su historia contigo. */
 export async function giftIdeas(
   person: Record<string, unknown>,
   avoid: string[] = [],
+  /** Para qué es el regalo («su cumpleaños», «Navidad», «agradecerle algo»…). */
+  occasion = 'su cumpleaños',
 ): Promise<GiftIdea[]> {
-  const data = await callMode({ mode: 'gift-ideas', person, avoid });
-  const ideas = Array.isArray(data?.ideas) ? (data.ideas as GiftIdea[]) : [];
+  const data = await callMode({ mode: 'gift-ideas', person, avoid, occasion });
+  const ideas = (Array.isArray(data?.ideas) ? (data.ideas as Partial<GiftIdea>[]) : [])
+    .filter((i) => typeof i?.title === 'string' && i.title.trim())
+    .map((i) => ({
+      title: i.title!.trim(),
+      what: typeof i.what === 'string' ? i.what.trim() : '',
+      why: typeof i.why === 'string' ? i.why.trim() : '',
+      kind: i.kind ?? 'objeto',
+      price: i.price ?? 'bajo',
+    }));
   if (!ideas.length) throw new Error('La IA no devolvió ideas. Inténtalo de nuevo.');
   return ideas;
 }

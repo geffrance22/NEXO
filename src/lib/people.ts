@@ -1,4 +1,13 @@
-import type { Entry, Exchange, ExchangeKind, Person, PersonUpdate, Relation } from '../data';
+import type {
+  Entry,
+  Exchange,
+  ExchangeKind,
+  Kind,
+  Person,
+  PersonStatus,
+  PersonUpdate,
+  Relation,
+} from '../data';
 import { addDays, normalizeText, splitList, todayInputValue } from './format';
 
 // ───────────────────────── Catálogos ─────────────────────────
@@ -19,6 +28,15 @@ export const relationOf = (p: Person): Relation => p.profile.relation ?? 'otro';
 
 export const closenessLabels = ['', 'Lejano', 'Conocido', 'Amigo', 'Cercano', 'Íntimo'];
 export const closenessOf = (p: Person) => p.profile.closeness ?? 3;
+
+/** Estado de la relación: con quién ya no hablas y a quién recuerdas. */
+export const statusMeta: Record<PersonStatus, { label: string; short: string }> = {
+  distante: { label: 'Ya no en contacto', short: 'Sin contacto' },
+  memoria: { label: 'En memoria', short: 'En memoria' },
+};
+export const statusOf = (p: Person): PersonStatus | 'activa' => p.profile.status ?? 'activa';
+/** Tiene sentido escribirle, sugerir verla o recordarle su cumpleaños. */
+export const isReachable = (p: Person) => !p.profile.status;
 
 export const exchangeKinds: Record<ExchangeKind, string> = {
   favor: 'Favor',
@@ -89,7 +107,7 @@ export function ageOf(p: Person, today = todayInputValue()) {
  * Recuerdos que cuentan como interacción. Los movimientos, pendientes y las posibles conexiones
  * no: anotar que Andrés podría ayudar a Laura no significa que hablaste con Andrés.
  */
-const isInteraction = (e: Entry) =>
+export const isInteraction = (e: Entry) =>
   e.kind !== 'Pendiente' && e.kind !== 'Movimiento' && !e.tags.includes('conexión');
 
 export type PersonStats = {
@@ -101,6 +119,7 @@ export type PersonStats = {
   nextPending: Entry | null;
   /** Meta de contacto vencida: «toca escribirle». */
   overdue: boolean;
+  /** Días hasta su cumpleaños; null si no hay fecha o si ya no están en contacto. */
   birthdayIn: number | null;
   reciprocity: Reciprocity;
   bond: number;
@@ -129,24 +148,66 @@ export function statsFor(p: Person, all: Entry[], today = todayInputValue()): Pe
     daysSince,
     pending,
     nextPending: pending[0] ?? null,
-    overdue: cadence > 0 && (daysSince === null || daysSince > cadence),
-    birthdayIn: daysToBirthday(p, today),
+    overdue: isReachable(p) && cadence > 0 && (daysSince === null || daysSince > cadence),
+    birthdayIn: isReachable(p) ? daysToBirthday(p, today) : null,
     reciprocity,
-    bond: bondScore(p, yearCount, daysSince, reciprocity),
+    bond: bondScore(p, interactions, daysSince, reciprocity, today),
     yearCount,
   };
 }
 
+/** Cuánto pesa cada tipo de recuerdo como señal de vínculo: verse pesa más que anotar algo. */
+const BOND_WEIGHT: Partial<Record<Kind, number>> = {
+  Encuentro: 1,
+  Nota: 0.5,
+  Película: 0.6,
+  Libro: 0.6,
+  Trabajo: 0.6,
+  Aprendizaje: 0.5,
+};
+
 /**
- * Índice de vínculo de 0 a 100: la cercanía que declaras (45 %), cuánto interactúan en el último año
- * (30 %), qué tan reciente fue la última vez (15 %) y qué tan parejo es el dar y recibir (10 %).
+ * Índice de vínculo de 0 a 100. Se basa sobre todo en lo que de verdad pasa en el último año:
+ * cuánto interactúan (ponderado por tipo), qué tan reciente fue la última vez, qué tan constante es
+ * (meses distintos) y qué tan profundo (encuentros e intercambios). La cercanía que declaras y el
+ * balance de dar y recibir solo suman si existen: si no los llenas, no restan.
  */
-function bondScore(p: Person, yearCount: number, daysSince: number | null, r: Reciprocity) {
-  const closeness = (closenessOf(p) - 1) / 4;
-  const frequency = Math.min(1, Math.log1p(yearCount) / Math.log1p(24));
-  const recency = daysSince === null ? 0 : Math.max(0, 1 - daysSince / 180);
-  const balance = r.total ? 1 - Math.min(1, Math.abs(r.score) / 100) : 0.6;
-  return Math.round(100 * (0.45 * closeness + 0.3 * frequency + 0.15 * recency + 0.1 * balance));
+function bondScore(
+  p: Person,
+  interactions: Entry[],
+  daysSince: number | null,
+  r: Reciprocity,
+  today: string,
+) {
+  const yearAgo = addDays(today, -365);
+  let weight = 0;
+  let meetings = 0;
+  const months = new Set<string>();
+  for (const e of interactions) {
+    const day = localDay(e.created_at);
+    if (day < yearAgo) break; // vienen de la más reciente a la más antigua
+    weight += BOND_WEIGHT[e.kind] ?? 0.5;
+    if (e.kind === 'Encuentro') meetings++;
+    months.add(day.slice(0, 7));
+  }
+  const exchanges = (p.profile.exchanges ?? []).filter((x) => x.date >= yearAgo).length;
+  const frequency = Math.min(1, Math.log1p(weight) / Math.log1p(20));
+  const recency = daysSince === null ? 0 : Math.exp(-daysSince / 75);
+  const consistency = Math.min(1, months.size / 8);
+  const depth = Math.min(1, (meetings + exchanges * 0.5) / 10);
+  const behavior = 0.35 * frequency + 0.25 * recency + 0.2 * consistency + 0.2 * depth;
+
+  let sum = 0.65 * behavior;
+  let used = 0.65;
+  if (p.profile.closeness !== undefined) {
+    sum += 0.25 * ((p.profile.closeness - 1) / 4);
+    used += 0.25;
+  }
+  if (r.total >= 2) {
+    sum += 0.1 * (1 - Math.min(1, Math.abs(r.score) / 100));
+    used += 0.1;
+  }
+  return Math.round((100 * sum) / used);
 }
 
 // ───────────────────────── Reciprocidad ─────────────────────────
@@ -315,7 +376,7 @@ const profileChecks: {
     key: 'cadence',
     label: 'Meta de contacto',
     section: 'esencia',
-    ok: (p) => p.profile.cadence !== undefined,
+    ok: (p) => !isReachable(p) || p.profile.cadence !== undefined,
   },
 ];
 
@@ -366,7 +427,8 @@ export const interestsOf = (p: Person) => splitList(p.interests);
 export type Reminder = {
   id: string;
   person: Person;
-  kind: 'cumple' | 'pendiente' | 'contacto' | 'seguimiento';
+  /** «recuerdo»: el cumpleaños de alguien que ya no está. */
+  kind: 'cumple' | 'recuerdo' | 'pendiente' | 'contacto' | 'seguimiento';
   title: string;
   when: string;
   /** Para ordenar: días desde hoy (negativo = vencido). */
@@ -389,16 +451,20 @@ export function remindersFor(people: Person[], entries: Entry[], today = todayIn
   const out: Reminder[] = [];
   for (const p of people) {
     const s = statsFor(p, entries, today);
-    if (s.birthdayIn !== null && s.birthdayIn <= 30) {
-      const age = ageOf(p, addDays(today, s.birthdayIn));
+    const status = statusOf(p);
+    const bIn = status === 'memoria' ? daysToBirthday(p, today) : s.birthdayIn;
+    if (bIn !== null && bIn <= 30) {
+      const age = ageOf(p, addDays(today, bIn));
+      const memory = status === 'memoria';
       out.push({
         id: 'b' + p.id,
         person: p,
-        kind: 'cumple',
-        title: `Cumpleaños de ${p.name}${age !== null ? ` · cumple ${age}` : ''}`,
-        when:
-          s.birthdayIn === 0 ? 'Hoy' : s.birthdayIn === 1 ? 'Mañana' : `En ${s.birthdayIn} días`,
-        in: s.birthdayIn,
+        kind: memory ? 'recuerdo' : 'cumple',
+        title: memory
+          ? `Cumpleaños de ${p.name} · ${age !== null ? `habría cumplido ${age}` : 'en su memoria'}`
+          : `Cumpleaños de ${p.name}${age !== null ? ` · cumple ${age}` : ''}`,
+        when: bIn === 0 ? 'Hoy' : bIn === 1 ? 'Mañana' : `En ${bIn} días`,
+        in: bIn,
       });
     }
     for (const e of s.pending) {
@@ -423,7 +489,7 @@ export function remindersFor(people: Person[], entries: Entry[], today = todayIn
         entry: e,
       });
     }
-    for (const u of p.profile.updates ?? []) {
+    for (const u of status === 'activa' ? (p.profile.updates ?? []) : []) {
       if (!u.followUp || u.done) continue;
       const d = daysBetween(today, u.followUp);
       if (d > 14) continue;

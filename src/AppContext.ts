@@ -130,6 +130,8 @@ export type AppContextValue = {
   me: MyRecord;
   /** Falta la migración de «Mi ficha»: no se puede guardar. */
   meMissing: boolean;
+  /** Tus datos y tu ficha ya terminaron de cargar (lo que se arma con ambos debe esperar). */
+  dataReady: boolean;
   /** Abre «Mi ficha». */
   openMe: () => void;
   saveMe: (profile: MyProfile) => Promise<boolean>;
@@ -140,6 +142,10 @@ export type AppContextValue = {
   /** Con `silent`, sin preguntar ni avisar (lo elimina otra acción, como borrar una tarjeta). */
   removeEntry: (entry: Entry, silent?: boolean) => void;
   removePerson: (person: Person) => void;
+  /** Une dos fichas de la misma persona: todo lo de `drop` pasa a `keep` y `drop` se borra. */
+  mergePeople: (keep: Person, drop: Person) => Promise<boolean>;
+  /** Abre «Unir fichas»: con `other`, ya con la pareja elegida; sin él, para buscarla. */
+  openMerge: (person: Person, other?: Person) => void;
   openAttachment: (entry: Entry) => void;
 };
 

@@ -24,7 +24,14 @@ import { QuoteOfDayCard } from '../library/QuoteOfDay';
 import { entryImages } from '../lib/moviePosters';
 import { commitmentKinds, commitmentOf, counterpartOf, isOpenTask } from '../lib/commitments';
 import { friendlyDate, money, todayInputValue } from '../lib/format';
-import { closenessOf, relationMeta, relationOf, relativeDay, statsFor } from '../lib/people';
+import {
+  closenessOf,
+  isReachable,
+  relationMeta,
+  relationOf,
+  relativeDay,
+  statsFor,
+} from '../lib/people';
 import { Avatar } from '../people/Avatar';
 import { Masonry } from './Masonry';
 import { ReadingPick } from '../readings/ReadingPick';
@@ -312,7 +319,8 @@ function CircleCard() {
   const { workspace, go, peekPerson } = useApp();
   const people = useMemo(
     () =>
-      [...workspace.people]
+      workspace.people
+        .filter(isReachable)
         .sort(
           (a, b) =>
             Number(Boolean(b.profile.favorite)) - Number(Boolean(a.profile.favorite)) ||

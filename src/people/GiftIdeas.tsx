@@ -1,22 +1,32 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import {
   BookmarkCheck,
   BookmarkPlus,
+  Cake,
+  ChevronDown,
   Gift,
+  HandHeart,
+  Handshake,
   Heart,
+  House,
   Palette,
+  Plus,
   RefreshCw,
   Sparkles,
+  Sprout,
   Ticket,
+  TreePine,
+  Trophy,
   X,
   type LucideIcon,
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { giftIdeas, type GiftIdea, type GiftKind, type GiftPrice } from '../assistant';
 import type { Person, Workspace } from '../data';
-import { errorMessage, friendlyDate, normalizeText } from '../lib/format';
+import { addDays, errorMessage, friendlyDate, normalizeText, todayInputValue } from '../lib/format';
 import { genderOf } from '../lib/gender';
-import { interestsOf, relationMeta, relationOf } from '../lib/people';
+import { ageOf, daysToBirthday, interestsOf, relationMeta, relationOf } from '../lib/people';
 import { ME, groupsOf, kindWord, tiesOf } from '../lib/relations';
 import { updatesOf } from '../lib/updates';
 import './gifts.css';
@@ -24,20 +34,63 @@ import './gifts.css';
 const kinds: Record<GiftKind, { label: string; icon: LucideIcon; tone: string }> = {
   objeto: { label: 'Objeto', icon: Gift, tone: 'obj' },
   experiencia: { label: 'Experiencia', icon: Ticket, tone: 'exp' },
-  detalle: { label: 'Detalle', icon: Heart, tone: 'det' },
   'hecho a mano': { label: 'Hecho a mano', icon: Palette, tone: 'diy' },
+  gesto: { label: 'No se compra', icon: HandHeart, tone: 'det' },
 };
 const prices: Record<GiftPrice, string> = {
+  gratis: 'Gratis',
   bajo: 'Económico',
   medio: 'Precio medio',
   alto: 'Especial',
 };
 
-/** Ideas ya pedidas en esta visita (volver a abrir no gasta otra consulta). */
-const cache = new Map<string, { ideas: GiftIdea[]; seen: string[] }>();
+/** Para qué es el regalo. `ai`: cómo se le explica la ocasión a la IA. */
+type Occasion =
+  | 'cumple'
+  | 'detalle'
+  | 'navidad'
+  | 'gracias'
+  | 'visita'
+  | 'aniversario'
+  | 'perdon'
+  | 'animo'
+  | 'logro';
+const occasions: Record<Occasion, { label: string; icon: LucideIcon; ai: string }> = {
+  cumple: { label: 'Cumpleaños', icon: Cake, ai: 'su cumpleaños' },
+  detalle: { label: 'Sin motivo', icon: Sparkles, ai: 'un detalle sin motivo, cualquier día' },
+  navidad: { label: 'Navidad', icon: TreePine, ai: 'Navidad' },
+  gracias: { label: 'Agradecer', icon: HandHeart, ai: 'agradecerle algo que hizo por el usuario' },
+  visita: { label: 'Visita', icon: House, ai: 'llevarle algo al visitarle en su casa' },
+  aniversario: {
+    label: 'Aniversario',
+    icon: Heart,
+    ai: 'un aniversario de su relación con el usuario',
+  },
+  perdon: { label: 'Disculpa', icon: Handshake, ai: 'pedirle disculpas y reconciliarse' },
+  animo: { label: 'Ánimo', icon: Sprout, ai: 'darle ánimo en un momento difícil' },
+  logro: { label: 'Un logro', icon: Trophy, ai: 'celebrar un logro suyo' },
+};
+const occasionList = Object.keys(occasions) as Occasion[];
+
+/** Tope de ideas en la lista (cada «Más ideas» suma unas 6). */
+const MAX_IDEAS = 30;
+
+/** Ideas ya pedidas en esta visita, por persona y ocasión (volver a abrir no gasta otra consulta). */
+const cache = new Map<string, GiftIdea[]>();
+
+type Birthday = { turns: number | null; date: string };
+
+/** Su próximo cumpleaños (si se sabe). */
+function nextBirthday(p: Person): Birthday | null {
+  const today = todayInputValue();
+  const d = daysToBirthday(p, today);
+  if (d === null) return null;
+  const date = addDays(today, d);
+  return { turns: ageOf(p, date), date };
+}
 
 /** Todo lo que se sabe de la persona y de su historia contigo, para inspirar los regalos. */
-function giftContext(p: Person, ws: Workspace, turns: number | null, date: string) {
+function giftContext(p: Person, ws: Workspace, birthday: Birthday | null) {
   const pr = p.profile;
   const g = genderOf(p);
   const tie = tiesOf(ME, ws.ties).find((v) => v.other === p.id);
@@ -52,8 +105,8 @@ function giftContext(p: Person, ws: Workspace, turns: number | null, date: strin
       .map((x) => `${x.date}: ${x.note || 'un regalo'}`);
   return {
     nombre: p.name,
-    cumpleanos: date,
-    cumple_anos: turns ?? undefined,
+    cumpleanos: birthday?.date,
+    cumple_anos: birthday?.turns ?? undefined,
     sexo: g === 'f' ? 'mujer' : g === 'm' ? 'hombre' : undefined,
     relacion: relationMeta[relationOf(p)].label,
     es_tu: tie ? kindWord(tie.kind, g) : undefined,
@@ -62,6 +115,7 @@ function giftContext(p: Person, ws: Workspace, turns: number | null, date: strin
     ciudad: pr.city,
     ocupacion: pr.occupation,
     empresa: pr.company,
+    antes: pr.history?.map((h) => `${h.field}: ${h.value} (hasta ${h.until})`),
     intereses: interestsOf(p),
     le_gusta: pr.likes,
     no_le_gusta: pr.dislikes,
@@ -89,77 +143,146 @@ function giftContext(p: Person, ws: Workspace, turns: number | null, date: strin
   };
 }
 
-/** Ideas de regalo hechas por la IA con todo lo que sabes de la persona y lo que han vivido. */
+const key = (s: string) => normalizeText(s.trim());
+
+/**
+ * Ideas de regalo hechas por la IA con todo lo que sabes de la persona y lo que han vivido, para
+ * su cumpleaños o cualquier otra ocasión. `standalone`: se abre sola (desde la ficha), con su
+ * propio fondo y su propio Esc; si no, vive dentro de «Próximos cumpleaños».
+ */
 export function GiftIdeas({
   person,
-  turns,
-  date,
+  birthday,
+  standalone = false,
   onClose,
 }: {
   person: Person;
-  /** Años que cumple (si se sabe su año de nacimiento). */
-  turns: number | null;
-  /** AAAA-MM-DD de su próximo cumpleaños. */
-  date: string;
+  /** Si se abre por su cumpleaños: años que cumple y fecha (AAAA-MM-DD). */
+  birthday?: Birthday;
+  standalone?: boolean;
   onClose: () => void;
 }) {
   const { workspace, patchPerson, notify } = useApp();
   const first = person.name.split(' ')[0];
-  const cached = cache.get(person.id);
-  const [ideas, setIdeas] = useState<GiftIdea[] | null>(cached?.ideas ?? null);
-  const [busy, setBusy] = useState(!cached);
+  const bday = birthday ?? nextBirthday(person);
+  // Desde la ficha, el cumpleaños solo es la ocasión por defecto si está cerca.
+  const soon = bday ? Date.parse(bday.date) - Date.now() < 45 * 86_400_000 : false;
+  const [occasion, setOccasion] = useState<Occasion>(birthday || soon ? 'cumple' : 'detalle');
+  const available = occasionList.filter((o) => o !== 'cumple' || bday);
+  const cacheKey = (o: Occasion) => person.id + '|' + o;
+  const cached = cache.get(cacheKey(occasion));
+  const [ideas, setIdeas] = useState<GiftIdea[]>(cached ?? []);
+  // «first»: la primera tanda; «more»: sumando ideas debajo de las que ya hay.
+  const [busy, setBusy] = useState<'first' | 'more' | null>(cached ? null : 'first');
   const [error, setError] = useState('');
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const started = useRef(false);
+  // Cada pedido lleva un número: si cambias de ocasión a mitad, la respuesta vieja se descarta.
+  const seq = useRef(0);
+  const list = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   const pr = person.profile;
-  const known = interestsOf(person).length + (pr.likes?.length ?? 0) + (pr.gifts?.length ?? 0);
-  const news = pr.updates?.length ?? 0;
-  const shared = workspace.entries.filter((e) => e.person_ids.includes(person.id)).length;
-  const thin = known + news + shared < 2;
-  const saved = new Set((pr.gifts ?? []).map((g) => normalizeText(g)));
+  const saved = new Set((pr.gifts ?? []).map(key));
 
-  async function ask(more: boolean) {
-    setBusy(true);
+  async function ask(more: boolean, occ: Occasion = occasion) {
+    if (more && busy) return;
+    started.current = true;
+    const n = ++seq.current;
+    setBusy(more ? 'more' : 'first');
     setError('');
-    const seen = cache.get(person.id)?.seen ?? [];
+    const before = more ? ideas : [];
     try {
-      const list = await giftIdeas(
-        giftContext(person, workspace, turns, date),
-        more ? [...seen, ...(pr.gifts ?? [])] : (pr.gifts ?? []),
+      const fresh = await giftIdeas(
+        giftContext(person, workspace, occ === 'cumple' ? bday : null),
+        [...before.map((i) => i.title), ...(pr.gifts ?? [])],
+        occ === 'cumple' && bday?.turns != null
+          ? `su cumpleaños (cumple ${bday.turns})`
+          : occasions[occ].ai,
       );
-      cache.set(person.id, {
-        ideas: list,
-        seen: [...seen, ...list.map((i) => i.title)].slice(-30),
-      });
-      setIdeas(list);
+      if (n !== seq.current) return;
+      const seen = new Set(before.map((i) => key(i.title)));
+      const next = [...before, ...fresh.filter((i) => !seen.has(key(i.title)))].slice(0, MAX_IDEAS);
+      cache.set(cacheKey(occ), next);
+      setIdeas(next);
+      // Las nuevas quedan a la vista.
+      if (more)
+        requestAnimationFrame(() =>
+          list.current
+            ?.querySelector(`[data-n="${before.length}"]`)
+            ?.scrollIntoView({ block: 'start', behavior: 'smooth' }),
+        );
     } catch (e) {
-      setError(errorMessage(e));
+      if (n === seq.current) setError(errorMessage(e));
     } finally {
-      setBusy(false);
+      if (n === seq.current) setBusy(null);
     }
   }
 
   useEffect(() => {
     // Una sola consulta al abrir (también en desarrollo, donde los efectos corren dos veces).
     if (cached || started.current) return;
-    started.current = true;
     void ask(false);
   }, []);
 
+  // Sola, encima de la ficha: Esc la cierra a ella y a nada más.
+  useEffect(() => {
+    if (!standalone) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      closeRef.current();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [standalone]);
+
+  const pick = (o: Occasion) => {
+    if (o === occasion) return;
+    setOccasion(o);
+    setOpen(new Set());
+    setError('');
+    const c = cache.get(cacheKey(o));
+    if (c) {
+      seq.current++;
+      setBusy(null);
+      setIdeas(c);
+      return;
+    }
+    setIdeas([]);
+    void ask(false, o);
+  };
+
+  const toggle = (title: string) =>
+    setOpen((s) => {
+      const next = new Set(s);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
+      return next;
+    });
+
   const keep = async (idea: GiftIdea) => {
     const current = workspace.people.find((p) => p.id === person.id) ?? person;
-    const list = current.profile.gifts ?? [];
-    if (list.some((g) => normalizeText(g) === normalizeText(idea.title))) return;
+    const gifts = current.profile.gifts ?? [];
+    if (gifts.some((g) => key(g) === key(idea.title))) return;
     const ok = await patchPerson(
       current,
-      { profile: { ...current.profile, gifts: [...list, idea.title.slice(0, 80)] } },
+      { profile: { ...current.profile, gifts: [...gifts, idea.title.slice(0, 80)] } },
       true,
     );
     if (ok) notify(`«${idea.title}» quedó en las ideas de regalo de ${first}.`);
   };
 
-  return (
-    <div className="gi-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+  const skeleton = (n: number) =>
+    Array.from({ length: n }, (_, i) => <div className="gi-skel" key={'s' + i} />);
+
+  const dialog = (
+    <div
+      className={'gi-backdrop' + (standalone ? ' gi-solo' : '')}
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+      onPointerDown={(e) => standalone && e.stopPropagation()}
+    >
       <div
         className="gi"
         role="dialog"
@@ -172,63 +295,64 @@ export function GiftIdeas({
           </span>
           <div>
             <h3>Ideas de regalo para {first}</h3>
-            <p>
-              {turns !== null ? `Cumple ${turns} · ` : 'Su cumpleaños: '}
-              {friendlyDate(date).toLowerCase()}
-            </p>
+            {occasion === 'cumple' && bday && (
+              <p>
+                {bday.turns !== null ? `Cumple ${bday.turns} · ` : ''}
+                {friendlyDate(bday.date).toLowerCase()}
+              </p>
+            )}
           </div>
           <button type="button" className="cp-close" aria-label="Cerrar" onClick={onClose}>
             <X size={18} />
           </button>
         </header>
 
-        <div className="gi-body" aria-busy={busy}>
-          {thin && !busy && (
-            <p className="gi-thin">
-              Sé poco de {first}: las ideas son generales. Añade sus gustos o una novedad para
-              afinarlas.
-            </p>
-          )}
-          {busy ? (
-            <>
-              <div className="gi-skel" />
-              <div className="gi-skel" />
-              <div className="gi-skel" />
-              <p className="gi-wait" aria-live="polite">
-                <Sparkles size={14} /> Pensando en {first}…
-              </p>
-            </>
-          ) : error ? (
-            <div className="gi-error" role="alert">
-              <p>{error}</p>
-              <button type="button" className="cp-btn ghost" onClick={() => void ask(false)}>
-                <RefreshCw size={15} /> Reintentar
+        <div className="gi-occ" role="radiogroup" aria-label="Ocasión">
+          {available.map((o) => {
+            const m = occasions[o];
+            return (
+              <button
+                key={o}
+                type="button"
+                role="radio"
+                aria-checked={occasion === o}
+                className={occasion === o ? 'on' : ''}
+                onClick={() => pick(o)}
+              >
+                <m.icon size={13} /> {m.label}
               </button>
-            </div>
-          ) : (
-            ideas?.map((idea, i) => {
-              const k = kinds[idea.kind] ?? kinds.objeto;
-              const isSaved = saved.has(normalizeText(idea.title));
-              return (
-                <article className="gi-card" key={idea.title} style={{ '--i': i } as CSSProperties}>
+            );
+          })}
+        </div>
+
+        <div className="gi-body" ref={list} aria-busy={Boolean(busy)}>
+          {ideas.map((idea, i) => {
+            const k = kinds[idea.kind] ?? kinds.objeto;
+            const isSaved = saved.has(key(idea.title));
+            const expanded = open.has(idea.title);
+            return (
+              <article
+                className={'gi-card' + (expanded ? ' open' : '')}
+                key={idea.title}
+                data-n={i}
+                style={{ '--i': i % 6 } as CSSProperties}
+              >
+                <div className="gi-top">
                   <span className={'gi-kind ' + k.tone} title={k.label}>
                     <k.icon size={17} />
                   </span>
                   <div className="gi-text">
                     <strong>{idea.title}</strong>
-                    {idea.why && <p>{idea.why}</p>}
                     <span className="gi-meta">
-                      <em>{k.label}</em>
-                      <em className={'p-' + idea.price}>{prices[idea.price] ?? prices.medio}</em>
+                      <em className={idea.kind === 'gesto' ? 'free' : ''}>{k.label}</em>
+                      <em className={'p-' + idea.price}>{prices[idea.price] ?? prices.bajo}</em>
                     </span>
                   </div>
                   <button
                     type="button"
                     className={'gi-save' + (isSaved ? ' on' : '')}
                     disabled={isSaved}
-                    title={
-                      isSaved ? 'Ya está en sus ideas de regalo' : 'Guardar en sus ideas de regalo'
-                    }
+                    title={isSaved ? 'Ya está en sus ideas de regalo' : 'Guardar en sus ideas'}
                     aria-label={
                       isSaved
                         ? `${idea.title}: ya está en sus ideas`
@@ -238,28 +362,70 @@ export function GiftIdeas({
                   >
                     {isSaved ? <BookmarkCheck size={17} /> : <BookmarkPlus size={17} />}
                   </button>
-                </article>
-              );
-            })
+                </div>
+                {(idea.what || idea.why) && (
+                  <>
+                    <button
+                      type="button"
+                      className="gi-why-btn"
+                      aria-expanded={expanded}
+                      onClick={() => toggle(idea.title)}
+                    >
+                      ¿Por qué esta idea?
+                      <ChevronDown size={14} />
+                    </button>
+                    {expanded && (
+                      <div className="gi-why">
+                        {idea.what && <p>{idea.what}</p>}
+                        {idea.why && (
+                          <p className="reason">
+                            <Sparkles size={13} /> {idea.why}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </article>
+            );
+          })}
+          {busy === 'first' && (
+            <>
+              {skeleton(3)}
+              <p className="gi-wait" aria-live="polite">
+                <Sparkles size={14} /> Pensando en {first}…
+              </p>
+            </>
+          )}
+          {busy === 'more' && skeleton(2)}
+          {error && (
+            <div className="gi-error" role="alert">
+              <p>{error}</p>
+              {!ideas.length && (
+                <button type="button" className="cp-btn ghost" onClick={() => void ask(false)}>
+                  <RefreshCw size={15} /> Reintentar
+                </button>
+              )}
+            </div>
           )}
         </div>
 
         <footer className="gi-foot">
           <small>
-            Con {known} {known === 1 ? 'gusto' : 'gustos'}, {news}{' '}
-            {news === 1 ? 'novedad' : 'novedades'} y {shared}{' '}
-            {shared === 1 ? 'recuerdo juntos' : 'recuerdos juntos'}.
+            {ideas.length > 0 && `${ideas.length} ${ideas.length === 1 ? 'idea' : 'ideas'}`}
           </small>
           <button
             type="button"
-            className="cp-btn ghost"
-            disabled={busy}
+            className="cp-btn cta gi-more"
+            disabled={Boolean(busy) || ideas.length >= MAX_IDEAS}
             onClick={() => void ask(true)}
           >
-            <RefreshCw size={15} /> Otras ideas
+            {busy === 'more' ? <RefreshCw className="spin" size={15} /> : <Plus size={15} />} Más
+            ideas
           </button>
         </footer>
       </div>
     </div>
   );
+  return standalone ? createPortal(dialog, document.body) : dialog;
 }

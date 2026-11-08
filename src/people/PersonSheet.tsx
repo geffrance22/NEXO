@@ -754,14 +754,37 @@ export function PersonSheet({
               ))}
             </div>
 
-            <Label hint="Te avisaremos si pasa más tiempo">¿Cada cuánto quieres hablar?</Label>
-            <ChoiceChips
-              label="Meta de contacto"
-              options={cadenceOptions.map((c) => ({ value: String(c.value), label: c.label }))}
-              value={d.cadence === undefined ? undefined : String(d.cadence)}
-              clearable
-              onChange={(v) => set('cadence', v === undefined ? undefined : Number(v))}
-            />
+            {person && (
+              <>
+                <Label>Estado de la relación</Label>
+                <ChoiceChips
+                  label="Estado de la relación"
+                  options={[
+                    { value: 'activa', label: 'Activa' },
+                    { value: 'distante', label: 'Ya no en contacto' },
+                    { value: 'memoria', label: 'En memoria' },
+                  ]}
+                  value={d.status ?? 'activa'}
+                  onChange={(v) => set('status', v === 'activa' || !v ? undefined : v)}
+                />
+              </>
+            )}
+
+            {!d.status && (
+              <>
+                <Label hint="Te avisaremos si pasa más tiempo">¿Cada cuánto quieres hablar?</Label>
+                <ChoiceChips
+                  label="Meta de contacto"
+                  options={cadenceOptions.map((c) => ({
+                    value: String(c.value),
+                    label: c.label,
+                  }))}
+                  value={d.cadence === undefined ? undefined : String(d.cadence)}
+                  clearable
+                  onChange={(v) => set('cadence', v === undefined ? undefined : Number(v))}
+                />
+              </>
+            )}
 
             {/* ── Vínculos ── */}
             <Section

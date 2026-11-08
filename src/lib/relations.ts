@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { Gender, Group, GroupKind, Person, Relation, Tie, TieKind, TieNature } from '../data';
+import type { Brain, SurnameLesson } from './brain';
 import { normalizeText } from './format';
 import { genderOf } from './gender';
 
@@ -736,6 +737,28 @@ function kinToMe(role: string): TieKind | null {
 }
 const clip = (s: string) => (s.length > 60 ? s.slice(0, 58).trimEnd() + '…' : s);
 
+// ── Lo aprendido de tus respuestas (lo calcula `learn`, en brain.ts) ──
+const NO_LESSON: SurnameLesson = {
+  mineYes: 0,
+  mineNo: 0,
+  amongYes: 0,
+  amongNo: 0,
+  kinds: [],
+  among: [],
+  rejected: [],
+};
+const lessonOf = (brain: Brain | undefined, s: string) => brain?.surnames.get(s) ?? NO_LESSON;
+/** Ya dijiste varias veces que quien lo lleva no es familia tuya, y casi nunca que sí. */
+export const rejectedForMe = (l: SurnameLesson) => l.mineNo >= 2 && l.mineNo > l.mineYes * 2;
+/** Ya dijiste que quienes lo comparten no son familia entre ellos, y ninguno lo es. */
+export const rejectedAmong = (l: SurnameLesson) => l.amongNo >= 1 && l.amongYes === 0;
+/** Pone primero lo que suele ser verdad (aprendido) sin perder las opciones de siempre. */
+const orderOptions = (learned: TieKind[], base: TieKind[], max = 3): TieKind[] =>
+  [...new Set([...learned.filter((k) => tieKinds[k]?.category === 'familia'), ...base])].slice(
+    0,
+    max,
+  );
+
 export type Suggestion = {
   /** Clave para descartarla. */
   id: string;
@@ -770,6 +793,8 @@ export function suggestTies(
   /** Tus apellidos (de «Mi ficha»), sin tildes: quien los comparte puede ser de tu familia. */
   mySurnames: string[] = [],
   myName = '',
+  /** Lo aprendido de tus respuestas anteriores (ver `learn` en brain.ts). */
+  brain?: Brain,
 ): Suggestion[] {
   const byId = new Map(people.map((p) => [p.id, p]));
   const live = ties.filter((t) => (t.a === null || byId.has(t.a)) && byId.has(t.b));
@@ -831,36 +856,64 @@ export function suggestTies(
     if (!rel || rel.other === p.id) continue;
     const relPerson = byId.get(rel.other)!;
     const shared = sn.get(rel.other)!.filter((s) => mine.includes(s));
+    const lesson = lessonOf(brain, shared[0]);
+    // Ya dijiste varias veces que quienes llevan este apellido no son tu familia.
+    if (rejectedForMe(lesson)) continue;
     add({
       id: 'mine|' + p.id,
       type: 'tuya',
       members: [p.id, ME],
-      options: [...new Set<TieKind>([rel.kind, 'hermano', 'primo', 'familiar'])].slice(0, 3),
+      options: orderOptions(lesson.kinds, [
+        ...new Set<TieKind>([rel.kind, 'hermano', 'primo', 'familiar']),
+      ]),
       reason: `Comparte el apellido ${prettyWord(shared[0], [p.name])} con ${relPerson.name}, tu ${kindWord(rel.kind, genderOf(relPerson))}`,
     });
   }
 
   // Quien comparte tus apellidos (los de «Mi ficha») puede ser de tu familia. Un apellido muy
-  // repetido en tu red (García, Rodríguez…) no dice nada: se ignora.
+  // repetido en tu red (García, Rodríguez…) dice poco por sí solo: se sugiere si ya confirmaste
+  // familia con él, si la persona tiene tus dos apellidos, si su ficha dice «Familia» o si está en
+  // un grupo familiar con alguien de tu familia. Lo que ya descartaste baja el tope o lo apaga.
   if (mySurnames.length) {
     const freq = new Map<string, number>();
     for (const p of people) for (const s of sn.get(p.id)!) freq.set(s, (freq.get(s) ?? 0) + 1);
     const me = normalizeText(myName.trim());
+    const myFamilyIds = new Set(myFamily.map((v) => v.other));
+    const nearFamily = new Set(
+      groups
+        .filter((g) => g.kind === 'familia' && g.member_ids.some((id) => myFamilyIds.has(id)))
+        .flatMap((g) => g.member_ids),
+    );
     for (const p of people) {
       const theirs = sn.get(p.id)!;
-      const shared = theirs.filter((s) => mySurnames.includes(s) && (freq.get(s) ?? 0) <= 12);
-      if (!shared.length || known.has(pairKey(p.id, ME))) continue;
+      if (known.has(pairKey(p.id, ME))) continue;
+      const both = mySurnames.length >= 2 && mySurnames.every((s) => theirs.includes(s));
+      const evidence = both || p.profile.relation === 'familia' || nearFamily.has(p.id);
+      const shared = theirs.filter((s) => {
+        if (!mySurnames.includes(s)) return false;
+        const l = lessonOf(brain, s);
+        if (rejectedForMe(l) && !evidence) return false;
+        const cap = l.mineYes ? Infinity : l.mineNo ? 4 : 12;
+        return evidence || (freq.get(s) ?? 0) <= cap;
+      });
+      if (!shared.length) continue;
       // Si te guardaste a ti mismo como persona, no eres familia tuya.
       if (me && normalizeText(p.name.trim()) === me) continue;
       if (out.some((s) => s.members[0] === p.id && s.members[1] === ME)) continue;
-      const both = mySurnames.length >= 2 && mySurnames.every((s) => theirs.includes(s));
       const label = shared.map((s) => prettyWord(s, [p.name])).join(' ');
+      const lesson = lessonOf(brain, shared[0]);
+      const kin = lesson.mineYes;
       add({
         id: 'mine|' + p.id,
         type: 'tuya',
         members: [p.id, ME],
-        options: both ? ['hermano', 'primo', 'familiar'] : ['familiar', 'primo', 'tio'],
-        reason: both ? `Tiene tus dos apellidos: ${label}` : `Comparte tu apellido ${label}`,
+        options: orderOptions(
+          lesson.kinds,
+          both ? ['hermano', 'primo', 'familiar'] : ['familiar', 'primo', 'tio'],
+        ),
+        reason:
+          (both ? `Tiene tus dos apellidos: ${label}` : `Comparte tu apellido ${label}`) +
+          (kin ? ` · ${kin} de tu familia ${kin === 1 ? 'lo lleva' : 'lo llevan'}` : ''),
       });
     }
   }
@@ -871,6 +924,9 @@ export function suggestTies(
   const clusters = new Map<string, { members: string[]; surnames: string[] }>();
   for (const [s, ids] of bySurname) {
     if (ids.length < 2 || ids.length > 15) continue;
+    // Ya dijiste que quienes llevan este apellido no son familia: no se vuelve a preguntar cada
+    // vez que llega alguien nuevo con él.
+    if (rejectedAmong(lessonOf(brain, s))) continue;
     const k = [...ids].sort().join(',');
     const c = clusters.get(k);
     if (c) c.surnames.push(s);
@@ -886,13 +942,16 @@ export function suggestTies(
     const names = c.members.map((id) => byId.get(id)!.name);
     const label = c.surnames.map((s) => prettyWord(s, names)).join(' ');
     const inGroup = groups.some((g) => c.members.every((m) => g.member_ids.includes(m)));
+    const learned = c.surnames.flatMap((s) => lessonOf(brain, s).among);
     add({
       id: 'sur|' + k,
       type: 'apellido',
       members: c.members,
       pairs,
-      options:
+      options: orderOptions(
+        learned,
         c.surnames.length > 1 ? ['hermano', 'primo', 'familiar'] : ['familiar', 'hermano', 'primo'],
+      ),
       reason:
         c.members.length === 2
           ? `Comparten ${c.surnames.length > 1 ? 'los apellidos' : 'el apellido'} ${label}`

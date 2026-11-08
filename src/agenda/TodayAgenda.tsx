@@ -207,7 +207,8 @@ function AgendaCard({
     return () => document.removeEventListener('pointerdown', off);
   }, [menu]);
   const look = looks[item.kind];
-  const wa = whatsapp(item.person?.profile.phone);
+  const wa =
+    item.person && !item.person.profile.status ? whatsapp(item.person.profile.phone) : null;
 
   const primary = (): { label: string; run: () => void } | null => {
     switch (item.action) {
@@ -262,6 +263,8 @@ function AgendaCard({
               run: () => (wa ? window.open(wa, '_blank', 'noopener') : peekPerson(item.person!)),
             }
           : null;
+      case 'recordar':
+        return item.person ? { label: 'Recordar', run: () => peekPerson(item.person!) } : null;
     }
   };
   const act = primary();
@@ -291,7 +294,7 @@ function AgendaCard({
           </button>
         )}
         <div className="ag-minor">
-          {item.person && item.action !== 'escribir' && (
+          {item.person && item.action !== 'escribir' && item.action !== 'recordar' && (
             <button
               type="button"
               title={`Ver a ${item.person.name}`}

@@ -13,6 +13,7 @@ import {
   Feather,
   IdCard,
   Link2,
+  Merge,
   MoreHorizontal,
   Pencil,
   Phone,
@@ -217,6 +218,9 @@ export function PersonMenu({
             </button>
             <button role="menuitem" onClick={run(() => app.editPerson(person))}>
               <Pencil size={15} /> Editar todo
+            </button>
+            <button role="menuitem" onClick={run(() => app.openMerge(person))}>
+              <Merge size={15} /> Unir con otra ficha…
             </button>
             <button
               role="menuitem"

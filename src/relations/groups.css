@@ -326,3 +326,221 @@
 .pp-pill.gp-filter.one svg {
   color: var(--c);
 }
+
+/* ── Acciones de grupo: escribirles, planear, última vez juntos ── */
+.ga {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.ga.compact {
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+.ga-btn,
+.ga-last {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 650;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.ga-btn {
+  background: #fff;
+  color: var(--c, #3a4433);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c, #6a745f) 25%, transparent);
+}
+.ga-btn:hover:not(:disabled) {
+  background: var(--s, #f3f6ee);
+}
+.ga-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ga.compact .ga-btn {
+  justify-content: center;
+  width: 32px;
+  padding: 0;
+  border-radius: 9px;
+  background: transparent;
+  box-shadow: none;
+  color: #9aa391;
+}
+.ga.compact .ga-btn:hover:not(:disabled) {
+  background: #fff;
+  color: var(--c, #27301f);
+}
+.ga-last {
+  margin-right: auto;
+  padding: 0 4px;
+  color: #6f7966;
+}
+.ga-last:not(:disabled):hover {
+  color: #27301f;
+}
+.ga-last:disabled {
+  opacity: 1;
+  color: #a2aa98;
+  cursor: default;
+}
+.ga-last svg {
+  color: var(--c, #9aa391);
+}
+
+/* En Personas, con un solo grupo filtrado */
+.ga-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 0 0 14px;
+  padding: 10px 12px 10px 14px;
+  border-radius: 16px;
+  background: var(--s);
+  animation: cp-rise 0.18s ease-out;
+}
+.ga-bar-id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.ga-bar-id .pk-tile {
+  background: #fff;
+}
+.ga-bar-id strong {
+  display: block;
+  font-size: 14px;
+  color: #27301f;
+}
+.ga-bar-id small {
+  font-size: 12px;
+  color: #6f7966;
+}
+.ga-bar .ga {
+  flex: 1;
+  justify-content: flex-end;
+}
+.ga-bar .ga-last {
+  margin-right: auto;
+}
+
+/* Escribirles a todos */
+.pk.gmsg {
+  --accent: var(--c);
+  --soft: var(--s);
+  width: min(440px, 100%);
+}
+.gmsg .gp-head {
+  align-items: center;
+}
+.gmsg-compose {
+  position: relative;
+  margin: 8px 16px 6px;
+}
+.gmsg-compose textarea {
+  display: block;
+  width: 100%;
+  min-height: 92px;
+  padding: 12px 14px 34px;
+  border: 0;
+  border-radius: 14px;
+  outline: 0;
+  background: #f3f6ee;
+  font: inherit;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: #27301f;
+  resize: vertical;
+}
+.gmsg-compose textarea:focus {
+  background: #fff;
+  box-shadow:
+    0 0 0 1.5px var(--c),
+    0 0 0 5px var(--s);
+}
+.gmsg-name {
+  position: absolute;
+  bottom: 8px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--c);
+  box-shadow: 0 1px 3px rgba(30, 45, 25, 0.1);
+}
+.gmsg-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 4px 10px 10px;
+  overflow: auto;
+  list-style: none;
+  scrollbar-width: thin;
+}
+.gmsg-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border-radius: 12px;
+}
+.gmsg-list li:hover {
+  background: #f6f8f2;
+}
+.gmsg-who {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #27301f;
+}
+.gmsg-wa {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #e7f5ea;
+  color: #2f8a4a;
+  transition:
+    transform 0.15s,
+    background 0.15s;
+}
+.gmsg-wa:hover {
+  transform: translateY(-1px);
+}
+.gmsg-list li.sent .gmsg-wa {
+  background: #2f8a4a;
+  color: #fff;
+}
+.gmsg-list li.sent .gmsg-who {
+  color: #8a9381;
+}
+.gmsg-none {
+  width: 34px;
+  text-align: center;
+  color: #c4cab9;
+}
+.gmsg .pk-foot .gm-hint {
+  flex: 1;
+}
+.gmsg .pk-foot a.cp-btn {
+  text-decoration: none;
+}

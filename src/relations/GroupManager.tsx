@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Layers, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { useApp } from '../AppContext';
-import { normalizeText } from '../lib/format';
+import { normalizeText, todayInputValue } from '../lib/format';
+import { relativeDay } from '../lib/people';
 import { Avatar } from '../people/Avatar';
+import { GroupActions, lastTogether } from './GroupActions';
 import { groupMeta, groupVars } from './GroupPicker';
 import './groups.css';
 
@@ -18,7 +20,7 @@ export function GroupManager({ onClose }: { onClose: () => void }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       // Con un grupo abierto encima (o la confirmación de borrar), Esc es para ellos.
-      if (document.querySelector('.rl-dialog, .confirm[role="alertdialog"]')) return;
+      if (document.querySelector('.rl-dialog, .confirm[role="alertdialog"], .gmsg')) return;
       e.stopPropagation();
       closeRef.current();
     };
@@ -77,6 +79,7 @@ export function GroupManager({ onClose }: { onClose: () => void }) {
             {groups.map((g) => {
               const m = groupMeta(g.kind);
               const members = g.member_ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
+              const last = lastTogether(g, workspace.people, workspace.entries);
               return (
                 <div className="gm-row" key={g.id} style={groupVars(g.kind)}>
                   <button
@@ -92,7 +95,11 @@ export function GroupManager({ onClose }: { onClose: () => void }) {
                       <strong>{g.name}</strong>
                       <small>
                         {m.label} · {members.length} {members.length === 1 ? 'persona' : 'personas'}
-                        {g.description ? ` · ${g.description}` : ''}
+                        {last
+                          ? ` · juntos ${relativeDay(todayInputValue(new Date(last.created_at))).toLowerCase()}`
+                          : g.description
+                            ? ` · ${g.description}`
+                            : ''}
                       </small>
                     </span>
                     {members.length > 0 && (
@@ -104,6 +111,7 @@ export function GroupManager({ onClose }: { onClose: () => void }) {
                       </span>
                     )}
                   </button>
+                  {members.length > 0 && <GroupActions group={g} compact onLeave={onClose} />}
                   <button
                     type="button"
                     className="gm-act"

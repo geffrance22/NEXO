@@ -35,6 +35,7 @@ function clean(row: Partial<MyRecord> | null): MyRecord {
 export function useMyProfile(user: AppUser, notify: Notify) {
   const [me, setMe] = useState<MyRecord>(EMPTY);
   const [missing, setMissing] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const latest = useRef(me);
   latest.current = me;
 
@@ -47,6 +48,7 @@ export function useMyProfile(user: AppUser, notify: Notify) {
       .maybeSingle()
       .then(({ data, error }) => {
         if (!live) return;
+        setLoaded(true);
         if (error) {
           if (isMissing(error)) setMissing(true);
           return;
@@ -97,5 +99,5 @@ export function useMyProfile(user: AppUser, notify: Notify) {
     [save],
   );
 
-  return { me, meMissing: missing, saveMe, saveMyReading };
+  return { me, meMissing: missing, meLoaded: loaded, saveMe, saveMyReading };
 }

@@ -114,6 +114,9 @@ export type PersonFact = { id: string; label: string; value: string };
 /** Sexo con el que se nombra a la persona: «madre» o «padre», «tía» o «tío»… */
 export type Gender = 'f' | 'm';
 
+/** Estado de la relación. Sin estado = activa. */
+export type PersonStatus = 'distante' | 'memoria';
+
 /** Identidad completa de una persona (columna `profile`). Todo es opcional. */
 export type PersonProfile = {
   photo?: StoredImage;
@@ -123,6 +126,8 @@ export type PersonProfile = {
   relation?: Relation;
   /** 5 íntimo … 1 lejano. */
   closeness?: number;
+  /** «distante»: ya no están en contacto. «memoria»: falleció. */
+  status?: PersonStatus;
   favorite?: boolean;
   phone?: string;
   email?: string;

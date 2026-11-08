@@ -157,10 +157,12 @@ export function weekOf(ws: Workspace, start: string, end: string) {
     .sort((a, b) => (a.details.due ?? '9999').localeCompare(b.details.due ?? '9999'))
     .slice(0, 6);
   const birthdays = ws.people
+    .filter((p) => !p.profile.status)
     .map((p) => ({ person: p, inDays: daysToBirthday(p, end) }))
     .filter((x) => x.inDays !== null && x.inDays >= 1 && x.inDays <= 7)
     .sort((a, b) => a.inDays! - b.inDays!) as { person: Person; inDays: number }[];
   const followUps = ws.people
+    .filter((p) => !p.profile.status)
     .flatMap((p) =>
       (p.profile.updates ?? [])
         .filter((u) => u.followUp && !u.done && u.followUp > end && u.followUp <= nextEnd)

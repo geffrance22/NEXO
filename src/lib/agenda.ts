@@ -2,7 +2,7 @@ import type { Entry, Episode, Person, PersonUpdate, Workspace } from '../data';
 import { ageInDays, commitmentKinds, commitmentOf, counterpartOf, isOpenTask } from './commitments';
 import { addDays, todayInputValue } from './format';
 import { genderOf } from './gender';
-import { closenessOf, daysBetween, daysToBirthday, statsFor } from './people';
+import { ageOf, closenessOf, daysBetween, daysToBirthday, isReachable, statsFor } from './people';
 import { ME, kinCall, tieKinds, tiesOf } from './relations';
 
 /** Qué tipo de cosa merece tu atención. */
@@ -30,7 +30,7 @@ export const agendaKindLabels: Record<AgendaKind, string> = {
 };
 
 export type AgendaAction =
-  'completar' | 'preguntado' | 'preparar' | 'cerrar' | 'abrir' | 'paso' | 'escribir';
+  'completar' | 'preguntado' | 'preparar' | 'cerrar' | 'abrir' | 'paso' | 'escribir' | 'recordar';
 
 export type AgendaItem = {
   /** Clave estable de esta aparición (para posponer o descartar). */
@@ -146,7 +146,7 @@ export function agendaFor(
           detail: e.title,
           why: [commitmentKinds[k].label, 'Sin fecha', `Desde hace ${waited} días`],
           score: Math.min(60, 20 + waited * 2) + prio + closeBonus(who),
-          action: 'escribir',
+          action: !who || isReachable(who) ? 'escribir' : 'abrir',
           person: who ?? undefined,
           entry: e,
         });
@@ -277,7 +277,23 @@ export function agendaFor(
   // ── Cumpleaños ──
   for (const p of ws.people) {
     const d = daysToBirthday(p, today);
-    if (d === null) continue;
+    if (d === null || p.profile.status === 'distante') continue;
+    if (p.profile.status === 'memoria') {
+      // Solo el día: un recuerdo tranquilo, sin «escríbele».
+      if (d !== 0) continue;
+      const age = ageOf(p, today);
+      out.push({
+        id: `b|${p.id}|${today.slice(0, 4)}`,
+        kind: 'cumple',
+        title: `Hoy ${howYouCall(p, ws)} habría cumplido ${age !== null ? age + ' años' : 'años'}`,
+        detail: 'En su memoria',
+        why: ['Hoy', 'En memoria'],
+        score: 50 + closeBonus(p),
+        action: 'recordar',
+        person: p,
+      });
+      continue;
+    }
     const close = closenessOf(p) >= 4 || p.profile.favorite;
     if (d > (close ? 3 : 1)) continue;
     out.push({
@@ -356,7 +372,7 @@ export function agendaFor(
 
   // ── Personas a las que escribir (solo cercanas, como mucho dos) ──
   const contacts = ws.people
-    .filter((p) => closenessOf(p) >= 3 && (p.profile.cadence ?? 0) > 0)
+    .filter((p) => isReachable(p) && closenessOf(p) >= 3 && (p.profile.cadence ?? 0) > 0)
     .map((p) => ({ p, s: statsFor(p, ws.entries, today) }))
     .filter((x) => x.s.overdue)
     .sort((a, b) => (b.s.daysSince ?? 1e4) - (a.s.daysSince ?? 1e4))

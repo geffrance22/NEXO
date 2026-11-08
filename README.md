@@ -44,6 +44,21 @@ Opcional: ejecuta también `supabase/migrations/202611060002_assistant_quota_ref
 
 La función usa el token del usuario y RLS. Busca las notas que contienen alguna de las palabras clave de la pregunta (las más recientes primero), completa hasta 12 con las más recientes y envía hasta 80 perfiles. Limita a 30 consultas diarias por usuario. Los errores se registran en los logs de la función y la interfaz muestra el motivo real (límite diario, secreto sin configurar, función sin desplegar). No envía adjuntos ni calcula totales financieros. No incluye todavía embeddings, extracción automática por IA ni búsqueda exhaustiva: es una primera integración acotada. Configura la retención de datos de Groq antes de usar datos personales.
 
+## Saludo de Mi espacio (IA)
+
+El encabezado de Mi espacio es un saludo escrito por la IA con tu ficha, tu día en Nexo (agenda, cumpleaños, el libro y la serie que llevas) y lo de afuera: el clima de tu ciudad (la de tu ficha; sin ella, la de tu zona horaria) y los titulares del día. Cada vez elige al azar qué toca (un tip, un consejo, un recordatorio, una recomendación, una noticia, una curiosidad, algo de tu serie o tu libro…) y a veces trae accesos directos. Dura entre 10 y 15 minutos y se guarda en el navegador. Mientras llega el nuevo se ve el saludo con tu nombre, y si la función no está disponible aparece uno de respaldo sin IA.
+
+Se despliega una vez, con los mismos secretos que `assistant`:
+
+```powershell
+npx supabase functions deploy greeting --no-verify-jwt --project-ref imdvmlzdbmbvwkfoisgs --use-api
+```
+
+- Usa `GROQ_API_KEY` y `GROQ_MODEL`. Opcional: `GROQ_GREETING_MODEL`, para usar un modelo más rápido solo aquí.
+- No gasta las 30 consultas diarias del asistente. La propia función limita a 8 saludos cada 10 minutos por usuario.
+- El clima viene de Open-Meteo y los titulares de Google Noticias (con BBC Mundo de respaldo). Ninguno necesita clave y, si tardan más de unos 2 segundos, el saludo sale sin ellos.
+- A Groq se envía un resumen corto (tu ficha, la agenda de hoy, cumpleaños cercanos, libro y serie en curso, actividad reciente), no tus notas completas.
+
 ## Funciones incluidas
 
 - Libreta con tipos de registro, fecha, etiquetas y vínculos múltiples.
@@ -77,6 +92,7 @@ src/
   components/         AppShell (estructura general), barra lateral y superior, formularios, tarjetas
   pages/              Una página por sección: personas, conexiones, finanzas…
   library/            Libroteca: pestañas, portadas, lecturas y muro de citas
+  greeting/           Saludo de Mi espacio: resumen del día, caché, respaldo sin IA y llamada a `greeting`
   style.css           Estilos
 ```
 

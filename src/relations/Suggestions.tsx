@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  Brain,
   Check,
   CheckCheck,
   FileText,
   HelpCircle,
   Home,
   LoaderCircle,
+  RotateCcw,
   Sparkles,
   UserRound,
   Users,
@@ -14,6 +16,8 @@ import {
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import type { Tie, TieKind, TieNature } from '../data';
+import { ignoredSurnames, learn } from '../lib/brain';
+import { normalizeText } from '../lib/format';
 import {
   ME,
   explain,
@@ -32,10 +36,22 @@ import { Avatar } from '../people/Avatar';
 import { dismiss, undismiss, useDismissed } from './dismissed';
 import './relations.css';
 
+/** Lo que Nexo aprendió de tus confirmaciones y descartes (por apellido). */
+export function useBrain() {
+  const { workspace, me } = useApp();
+  const skip = useDismissed();
+  const myName = me.profile.name ?? '';
+  return useMemo(
+    () => learn(workspace.people, workspace.ties, workspace.groups, skip, surnamesOf(myName)),
+    [workspace.people, workspace.ties, workspace.groups, skip, myName],
+  );
+}
+
 /** Sugerencias vigentes (todas o las de una persona). */
 export function useSuggestions(personId?: string) {
   const { workspace, me } = useApp();
   const skip = useDismissed();
+  const brain = useBrain();
   // Tus apellidos (de «Mi ficha») también sirven para encontrar a tu familia.
   const myName = me.profile.name ?? '';
   return useMemo(() => {
@@ -46,9 +62,41 @@ export function useSuggestions(personId?: string) {
       skip,
       surnamesOf(myName),
       myName,
+      brain,
     );
     return personId ? all.filter((s) => s.members.includes(personId)) : all;
-  }, [workspace.people, workspace.ties, workspace.groups, skip, personId, myName]);
+  }, [workspace.people, workspace.ties, workspace.groups, skip, personId, myName, brain]);
+}
+
+/** Apellidos que Nexo dejó de sugerir por tus respuestas, con «Restablecer». */
+function Learned() {
+  const { workspace, notify } = useApp();
+  const brain = useBrain();
+  const ignored = ignoredSurnames(brain);
+  if (!ignored.length) return null;
+  const names = workspace.people.map((p) => p.name);
+  const pretty = (s: string) => {
+    for (const n of names)
+      for (const part of n.split(/\s+/)) if (normalizeText(part) === s) return part;
+    return s[0].toUpperCase() + s.slice(1);
+  };
+  return (
+    <div className="rl-learned">
+      <Brain size={14} />
+      <span>Ya no sugiere: {ignored.map((x) => pretty(x.surname)).join(', ')}</span>
+      <button
+        type="button"
+        className="pp-text-btn"
+        onClick={() => {
+          const keys = ignored.flatMap((x) => x.keys);
+          undismiss(...keys);
+          notify('Apellidos restablecidos.', { label: 'Deshacer', run: () => dismiss(...keys) });
+        }}
+      >
+        <RotateCcw size={13} /> Restablecer
+      </button>
+    </div>
+  );
 }
 
 /** Vínculos deducidos que aún no descartaste. */
@@ -372,6 +420,7 @@ export function SuggestionsDialog({ onClose }: { onClose: () => void }) {
             </details>
           )}
         </div>
+        <Learned />
       </div>
     </div>,
     document.body,

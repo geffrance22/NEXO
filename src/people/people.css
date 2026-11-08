@@ -400,6 +400,18 @@ main:has(.pp-page:not(.full)) {
 .bday-row.dim {
   opacity: 0.75;
 }
+/* En memoria: tonos apagados, sin celebración. */
+.bday-row.memory {
+  --soft: #f0eef3;
+  --ink: #5f5870;
+  --accent: #6f6684;
+}
+.bday-row.memory.today {
+  background: linear-gradient(120deg, #f2f0f6, #fff 80%);
+}
+.bday-row.memory.today .bday-when {
+  color: #6f6684;
+}
 .bday-date {
   display: flex;
   flex: none;
@@ -1271,7 +1283,7 @@ main:has(.pp-page:not(.full)) {
   }
 }
 .pp-drawer .pp-panel-head {
-  gap: 14px;
+  column-gap: 14px;
 }
 /* Las pestañas de la ficha lateral quedan a la vista al bajar. */
 .pp-drawer .pp-tabs {
@@ -1305,11 +1317,15 @@ main:has(.pp-page:not(.full)) {
 .pp-back:hover {
   color: #27301f;
 }
+/* Foto a la izquierda; el nombre comparte fila con los botones y lo demás usa todo el ancho. */
 .pp-panel-head {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'photo name tools'
+    'photo id id';
   align-items: start;
-  gap: 16px;
+  gap: 2px 16px;
 }
 .pp-panel.full .pp-panel-head {
   padding: 26px;
@@ -1319,7 +1335,18 @@ main:has(.pp-page:not(.full)) {
 }
 .pp-photo-btn {
   position: relative;
+  grid-area: photo;
   border-radius: 50%;
+}
+/* Un botón que solo envuelve una cara mide lo mismo que ella: así su anillo queda redondo. */
+.pp-photo-btn,
+.rl-faces > button,
+.rl-float-members > button,
+.wr-faces > button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  padding: 0;
 }
 .pp-photo-btn i {
   position: absolute;
@@ -1345,18 +1372,22 @@ main:has(.pp-page:not(.full)) {
   transform: none;
 }
 .pp-panel-id {
+  grid-area: id;
   min-width: 0;
 }
-.pp-panel-id h2 {
-  margin: 2px 0 4px;
+.pp-panel-name {
+  grid-area: name;
+  align-self: center;
+  min-width: 0;
+  margin: 0;
   font:
     750 20px/1.25 'Manrope',
     sans-serif;
   letter-spacing: -0.4px;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   color: #27301f;
 }
-.pp-panel.full .pp-panel-id h2 {
+.pp-panel.full .pp-panel-name {
   font-size: 30px;
   letter-spacing: -0.9px;
 }
@@ -1400,15 +1431,18 @@ main:has(.pp-page:not(.full)) {
 }
 .pp-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
 }
 .pp-action {
   display: grid;
+  flex: none;
   place-items: center;
   width: 36px;
   height: 36px;
-  border-radius: 12px;
+  padding: 0;
+  border-radius: 50%;
   background: var(--soft);
   color: var(--ink);
   transition:
@@ -1428,6 +1462,7 @@ main:has(.pp-page:not(.full)) {
 }
 .pp-panel-tools {
   display: flex;
+  grid-area: tools;
   gap: 2px;
 }
 .pp-metrics {
@@ -3677,11 +3712,13 @@ main:has(.pp-page:not(.full)) {
 }
 @media (max-width: 600px) {
   .pp-panel-head {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      'tools tools'
+      'photo name'
+      'photo id';
   }
   .pp-panel-tools {
-    grid-column: 1 / -1;
-    grid-row: 1;
     justify-content: flex-end;
   }
   .pp-metrics,
@@ -3837,4 +3874,447 @@ body:has(.nx-peek) :is(.sheet-backdrop, .modal-backdrop) {
   color: #b8412f;
   text-decoration: line-through;
   text-decoration-color: rgba(184, 65, 47, 0.35);
+}
+
+/* ════════════════ Juntos: todo lo que compartes con una persona ════════════════ */
+.pj-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.pj-stats > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 6px;
+  border-radius: 14px;
+  background: #f6f8f2;
+  text-align: center;
+}
+.pj-stats b {
+  overflow: hidden;
+  max-width: 100%;
+  font:
+    750 16px/1.2 'Manrope',
+    sans-serif;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #27301f;
+}
+.pj-stats span {
+  font-size: 11px;
+  color: #9aa391;
+}
+.pj > .pp-text-btn {
+  align-self: flex-start;
+}
+
+/* Episodios: una fila que se desliza */
+.pj-eps {
+  display: flex;
+  gap: 8px;
+  margin: 0 -2px;
+  padding: 2px 2px 4px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+.pj-eps::-webkit-scrollbar {
+  display: none;
+}
+.pj-ep {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  width: 200px;
+  padding: 10px 12px 10px 10px;
+  border: 1px solid #edf0e8;
+  border-radius: 14px;
+  background: #fff;
+  text-align: left;
+  scroll-snap-align: start;
+  transition:
+    border-color 0.15s,
+    transform 0.15s;
+}
+.pj-ep:hover {
+  border-color: color-mix(in srgb, var(--c) 35%, #edf0e8);
+  transform: translateY(-1px);
+}
+.pj-ep i,
+.pj-media i,
+.pj-m-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--s);
+  color: var(--c);
+}
+.pj-ep i {
+  width: 34px;
+  height: 34px;
+}
+.pj-ep span,
+.pj-media span {
+  min-width: 0;
+}
+.pj-ep strong,
+.pj-ep small,
+.pj-media strong,
+.pj-media small {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pj-ep strong,
+.pj-media strong {
+  font-size: 13px;
+  color: #27301f;
+}
+.pj-ep small,
+.pj-media small {
+  margin-top: 1px;
+  font-size: 11.5px;
+  color: #9aa391;
+}
+
+/* Lugares */
+.pj-places {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pj-places button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px 6px 9px;
+  border-radius: 999px;
+  background: var(--s);
+  font-size: 12.5px;
+  font-weight: 650;
+  color: #3a4433;
+  transition: filter 0.15s;
+}
+.pj-places button svg {
+  color: var(--c);
+}
+.pj-places button:hover {
+  filter: brightness(0.97);
+}
+.pj-places em {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  font-size: 11px;
+  font-style: normal;
+  color: #6f7966;
+}
+
+/* Libros y películas */
+.pj-media {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px;
+}
+.pj-media button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px 8px 8px;
+  border-radius: 12px;
+  text-align: left;
+  transition: background 0.15s;
+}
+.pj-media button:hover {
+  background: #f7f9f4;
+}
+.pj-media i {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+}
+
+/* Dinero */
+.pj-money {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+}
+.pj-money > div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #fbf1ec;
+  color: #b0553d;
+}
+.pj-money > div svg {
+  grid-row: span 2;
+}
+.pj-money > div.in {
+  background: #eaf4ec;
+  color: #3f7d4a;
+}
+.pj-money > div.n {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  background: #f6f8f2;
+  color: #6f7966;
+}
+.pj-money b {
+  font:
+    750 14.5px/1.25 'Manrope',
+    sans-serif;
+  color: #27301f;
+}
+.pj-money span {
+  font-size: 11px;
+  color: #9aa391;
+}
+
+/* Compromisos y dar y recibir */
+.pj-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pj-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 12px;
+}
+.pj-row:hover {
+  background: #f7f9f4;
+}
+.pj-row-main {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.pj-row-main strong {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #27301f;
+}
+.pj-row-main small {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 1px;
+  font-size: 11.5px;
+  color: #9aa391;
+}
+.pj-row-main small svg {
+  color: var(--c, #9aa391);
+}
+.pj-row time {
+  flex: none;
+  font-size: 11.5px;
+  color: #a2aa98;
+}
+.pj-x-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  background: #fbf1ec;
+  color: #b0553d;
+}
+.pj-row.recibir .pj-x-icon {
+  background: #eaf4ec;
+  color: #3f7d4a;
+}
+
+/* Filtros de la línea de tiempo */
+.pj-filter {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pj-filter::-webkit-scrollbar {
+  display: none;
+}
+.pj-filter button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border: 1px solid #e9ede3;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: #6f7966;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.pj-filter button:hover {
+  background: #f7f9f4;
+}
+.pj-filter button.on {
+  border-color: transparent;
+  background: #27301f;
+  color: #fff;
+}
+.pj-filter em {
+  font-size: 11px;
+  font-style: normal;
+  opacity: 0.6;
+}
+
+/* Recuerdos con contexto */
+.pj-moments {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pj-month {
+  display: block;
+  margin: 12px 0 4px 8px;
+  font:
+    700 11px 'Manrope',
+    sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #a2aa98;
+}
+.pj-moments li:first-child .pj-month {
+  margin-top: 2px;
+}
+.pj-m {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 8px;
+  border-radius: 12px;
+  text-align: left;
+  transition: background 0.15s;
+}
+.pj-m:hover {
+  background: #f7f9f4;
+}
+.pj-m-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+.pj-m-main {
+  flex: 1;
+  min-width: 0;
+}
+.pj-m-main strong {
+  display: block;
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: #27301f;
+}
+.pj-m-main small {
+  display: block;
+  overflow: hidden;
+  margin-top: 1px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #a2aa98;
+}
+.pj-m-body {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #6f7966;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.pj-m time {
+  flex: none;
+  padding-top: 2px;
+  font-size: 11.5px;
+  color: #a2aa98;
+}
+.pj-m-photos {
+  padding: 0 8px 6px 52px;
+}
+.pj-m-photos .ph-thumbs {
+  margin-top: 0;
+}
+@media (max-width: 520px) {
+  .pj-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pj-money {
+    grid-template-columns: 1fr 1fr;
+  }
+  .pj-money > div.n {
+    display: none;
+  }
+}
+
+/* ════════════════ Estado de la relación ════════════════ */
+.pp-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #f0eef3;
+  font-size: 12px;
+  font-weight: 650;
+  color: #5f5870;
+}
+.pp-status.distante {
+  background: #f1f2ee;
+  color: #6f7966;
+}
+.pp-panel.memoria .pp-closeness i.on {
+  background: #a49cb5;
+}
+.pp-ring-memory {
+  border-radius: 50%;
+  background: #f0eef3;
+  color: #6f6684;
+}
+.pp-alert.memory {
+  background: #f2f0f6;
+  color: #5f5870;
+}
+.pf-badge.mem {
+  top: -3px;
+  left: -3px;
+  background: #f0eef3;
+  color: #6f6684;
+}
+.pp-chips span.st {
+  gap: 4px;
+  background: #f0eef3;
+  font-weight: 600;
+  color: #5f5870;
+}
+.pp-chips span.st.distante {
+  background: #f1f2ee;
+  color: #6f7966;
 }

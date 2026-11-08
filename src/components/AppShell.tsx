@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LoaderCircle, Lock } from 'lucide-react';
 import { AppProvider, type AppContextValue, type QuickMode } from '../AppContext';
 import { supabase } from '../backend';
@@ -7,6 +7,7 @@ import type {
   AppUser,
   Entry,
   EntryDetails,
+  EntryInput,
   Episode,
   EpisodeInput,
   EpisodeOrigin,
@@ -17,6 +18,15 @@ import type {
   Place,
   StoredImage,
 } from '../data';
+import {
+  deduceTastes,
+  hasTastes,
+  newTastes,
+  tasteSources,
+  tastesLabel,
+  withTastes,
+  type Tastes,
+} from '../lib/tastes';
 import { CaptureDialog } from '../capture/CaptureDialog';
 import { EpisodeSheet } from '../episodes/EpisodeSheet';
 import { EpisodesPage } from '../episodes/EpisodesPage';
@@ -34,6 +44,7 @@ import { useToast } from '../hooks/useToast';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { useMyProfile } from '../hooks/useMyProfile';
 import { MyProfileSheet } from '../people/MyProfileSheet';
+import { MergeDialog } from '../people/MergeDialog';
 import { parseHash, toHash, type Route } from '../lib/route';
 import { ComparePage } from '../pages/ComparePage';
 import { ConnectionsPage } from '../pages/ConnectionsPage';
@@ -140,9 +151,77 @@ export function AppShell({ user }: { user: AppUser }) {
   const [weekly, setWeekly] = useState(false);
   // Actualizar el progreso de un libro o una serie (puede abrirse encima de su ficha).
   const [progress, setProgress] = useState<string | null>(null);
+  // Unir dos fichas de la misma persona (con la otra ya elegida o por elegir).
+  const [merge, setMerge] = useState<{ personId: string; otherId?: string } | null>(null);
 
   const { workspace } = data;
   const { page } = route;
+  // Siempre lo último (para lo que corre después de un guardado).
+  const latest = useRef(workspace);
+  latest.current = workspace;
+
+  /**
+   * Gustos que deja ver una nota o un encuentro («le encanta el café», «empezó clases de salsa»):
+   * se suman a la ficha de quien corresponde, con «Quitar» en el aviso. Al editar, solo lo nuevo.
+   */
+  async function learnTastes(input: EntryInput, before?: Entry) {
+    if (input.kind !== 'Nota' && input.kind !== 'Encuentro') return;
+    const textOf = (title: string, body: string) =>
+      body.trim().startsWith(title.trim()) ? body : `${title}.\n${body}`;
+    const people = input.personIds.flatMap(
+      (id) => latest.current.people.find((p) => p.id === id) ?? [],
+    );
+    const parts = tasteSources(textOf(input.title, input.body), people);
+    const old = before ? tasteSources(textOf(before.title, before.body), people) : null;
+    const done: { before: Person; added: Tastes }[] = [];
+    for (const [id, said] of parts) {
+      let t = deduceTastes(said);
+      const prev = old?.get(id);
+      if (prev) t = newTastes(t, deduceTastes(prev));
+      if (!hasTastes(t)) continue;
+      const current = latest.current.people.find((p) => p.id === id);
+      if (!current) continue;
+      const next = withTastes(current, t);
+      if (!next.changed) continue;
+      if (
+        await data.patchPerson(current, { interests: next.interests, profile: next.profile }, true)
+      )
+        done.push({ before: current, added: next.added });
+    }
+    if (!done.length) return;
+    const first = (p: Person) => p.name.split(' ')[0];
+    notify(
+      done.length === 1
+        ? `Guardado · ${first(done[0].before)} suma a su perfil: ${tastesLabel(done[0].added)}.`
+        : `Guardado · gustos nuevos en las fichas de ${done.map((d) => first(d.before)).join(' y ')}.`,
+      {
+        label: 'Quitar',
+        run: () => {
+          for (const d of done) {
+            const now = latest.current.people.find((p) => p.id === d.before.id);
+            if (!now) continue;
+            void data.patchPerson(
+              now,
+              {
+                interests: d.before.interests,
+                profile: {
+                  ...now.profile,
+                  likes: d.before.profile.likes,
+                  dislikes: d.before.profile.dislikes,
+                },
+              },
+              true,
+            );
+          }
+        },
+      },
+    );
+  }
+  const savedThen = async (ok: Promise<boolean>, input: EntryInput, before?: Entry) => {
+    const saved = await ok;
+    if (saved) void learnTastes(input, before);
+    return saved;
+  };
   const selected = route.personId
     ? (workspace.people.find((p) => p.id === route.personId) ?? null)
     : null;
@@ -276,7 +355,7 @@ export function AppShell({ user }: { user: AppUser }) {
     uploadPersonPhoto: (person, file) => void data.uploadPersonPhoto(person, file),
     saveQuickNote: (person, text, images = []) => {
       const body = text.trim();
-      return data.saveEntry({
+      const input: EntryInput = {
         // Una nota solo con fotos se titula «Foto» / «Fotos».
         title: body.split('\n')[0].slice(0, 80) || (images.length > 1 ? 'Fotos' : 'Foto'),
         body,
@@ -291,7 +370,8 @@ export function AppShell({ user }: { user: AppUser }) {
         details: {},
         file: null,
         removeFile: false,
-      });
+      };
+      return savedThen(data.saveEntry(input), input);
     },
     createEntry: data.createEntry,
     patchEntry: data.patchEntry,
@@ -313,6 +393,7 @@ export function AppShell({ user }: { user: AppUser }) {
     openChat: () => setChat(true),
     me: mine.me,
     meMissing: mine.meMissing,
+    dataReady: data.loaded && mine.meLoaded,
     openMe: () => setMeOpen(true),
     saveMe: mine.saveMe,
     saveMyReading: mine.saveMyReading,
@@ -322,6 +403,13 @@ export function AppShell({ user }: { user: AppUser }) {
     removePerson: async (person) => {
       if ((await data.removePerson(person)) && selected?.id === person.id) go('Personas');
     },
+    mergePeople: async (keep, drop) => {
+      const ok = await data.mergePeople(keep, drop);
+      if (ok && selected?.id === drop.id) go('Personas', keep);
+      if (ok && peek === drop.id) setPeek(keep.id);
+      return ok;
+    },
+    openMerge: (person, other) => setMerge({ personId: person.id, otherId: other?.id }),
     openAttachment: (entry) => void data.openAttachment(entry),
   };
 
@@ -334,6 +422,7 @@ export function AppShell({ user }: { user: AppUser }) {
   const quickTarget = quick ? workspace.people.find((p) => p.id === quick.personId) : undefined;
   const peekTarget = peek ? workspace.people.find((p) => p.id === peek) : undefined;
   const progressTarget = progress ? workspace.entries.find((e) => e.id === progress) : undefined;
+  const mergeTarget = merge ? workspace.people.find((p) => p.id === merge.personId) : undefined;
 
   return (
     <AppProvider value={context}>
@@ -470,10 +559,10 @@ export function AppShell({ user }: { user: AppUser }) {
         {composing && (
           <ComposeModal
             init={composing}
-            onSave={
+            onSave={(input) =>
               composing.entry
-                ? (input) => data.updateEntry(composing.entry!, input)
-                : data.saveEntry
+                ? savedThen(data.updateEntry(composing.entry, input), input, composing.entry)
+                : savedThen(data.saveEntry(input), input)
             }
             onClose={closeModal}
           />
@@ -517,6 +606,14 @@ export function AppShell({ user }: { user: AppUser }) {
         )}
         {chat && <ChatPanel assistant={assistant} onClose={() => setChat(false)} />}
         {meOpen && <MyProfileSheet onClose={() => setMeOpen(false)} />}
+        {mergeTarget && merge && (
+          <MergeDialog
+            key={merge.personId + (merge.otherId ?? '')}
+            person={mergeTarget}
+            other={workspace.people.find((p) => p.id === merge.otherId)}
+            onClose={() => setMerge(null)}
+          />
+        )}
         {confirmDialog}
       </div>
     </AppProvider>

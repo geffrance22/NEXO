@@ -189,6 +189,48 @@ export function deduceTastes(raw: string): Tastes {
 
 export const hasTastes = (t: Tastes) => t.interests.length + t.likes.length + t.dislikes.length > 0;
 
+/** Lo de `t` que no estaba ya en `prev` (al editar un recuerdo solo cuenta lo nuevo). */
+export function newTastes(t: Tastes, prev: Tastes): Tastes {
+  const not = (list: string[], old: string[]) =>
+    list.filter((v) => !old.some((o) => key(o) === key(v)));
+  return {
+    interests: not(t.interests, prev.interests),
+    likes: not(t.likes, prev.likes),
+    dislikes: not(t.dislikes, prev.dislikes),
+  };
+}
+
+/**
+ * De quién habla cada parte de una nota o un encuentro. Con una sola persona, todo es de ella. Con
+ * varias, una frase es de quien nombra (por su nombre o su alias); si nombra a varias o a nadie,
+ * no se le atribuye a nadie: mejor no anotar que anotar en la ficha equivocada.
+ */
+export function tasteSources(text: string, people: Person[]) {
+  const out = new Map<string, string>();
+  if (!text.trim() || !people.length) return out;
+  if (people.length === 1) {
+    out.set(people[0].id, text);
+    return out;
+  }
+  const firsts = people.map((p) => ({
+    id: p.id,
+    first: normalizeText(p.name.split(/\s+/)[0] ?? ''),
+    alias: normalizeText(p.profile.alias ?? '').trim(),
+  }));
+  const repeated = new Set(firsts.map((f) => f.first).filter((f, i, all) => all.indexOf(f) !== i));
+  for (const sentence of text.split(/(?<=[.;!?\n])/)) {
+    const words = ' ' + normalizeText(sentence).replace(/[^a-z0-9]+/g, ' ') + ' ';
+    const hits = firsts.filter(
+      (f) =>
+        (f.first.length >= 3 && !repeated.has(f.first) && words.includes(` ${f.first} `)) ||
+        (f.alias.length >= 3 && words.includes(` ${f.alias} `)),
+    );
+    if (hits.length !== 1) continue;
+    out.set(hits[0].id, (out.get(hits[0].id) ?? '') + sentence + '\n');
+  }
+  return out;
+}
+
 /**
  * Suma lo deducido a la ficha. Lo más reciente manda: si antes le gustaba y ahora no, pasa a
  * «no le gusta» (y al revés). Devuelve los cambios para `patchPerson` (sin tocar lo demás) y qué

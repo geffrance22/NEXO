@@ -16,7 +16,9 @@ import {
   Cake,
   ChevronDown,
   ChevronRight,
+  Flower2,
   Sparkles,
+  UsersRound,
   CircleCheck,
   CircleUserRound,
   Clock,
@@ -39,16 +41,20 @@ import { groupKinds, groupsOf } from '../lib/relations';
 import { normalizeText } from '../lib/format';
 import {
   interestsOf,
+  isReachable,
   relationMeta,
   relationOf,
   relativeDay,
   remindersFor,
   searchText,
   statsFor,
+  statusMeta,
   type PersonStats,
 } from '../lib/people';
 import { Avatar } from '../people/Avatar';
 import { BondRing } from '../people/PersonPanel';
+import { DuplicatesDialog, useDuplicates } from '../people/MergeDialog';
+import { GroupActions } from '../relations/GroupActions';
 import { PersonMenu } from '../people/PersonMenu';
 import { PersonPanel } from '../people/PersonPanel';
 import { BirthdaysDialog } from '../people/BirthdaysDialog';
@@ -97,6 +103,21 @@ const varsOf = (p: Person) => {
 const openOnEnter = (onOpen: () => void) => (e: ReactKeyboardEvent) => {
   if (e.key === 'Enter' && e.target === e.currentTarget) onOpen();
 };
+
+/** Índice de vínculo; para quien ya no está, una flor en su lugar. */
+function Bond({ row, size }: { row: Row; size: number }) {
+  if (row.person.profile.status === 'memoria')
+    return (
+      <span
+        className="pp-ring pp-ring-memory"
+        style={{ width: size, height: size }}
+        title="En memoria"
+      >
+        <Flower2 size={Math.round(size * 0.42)} />
+      </span>
+    );
+  return <BondRing value={row.stats.bond} size={size} />;
+}
 
 function PersonCard({ row, active, onOpen }: ItemProps) {
   const { openEntry, patchPerson, quickPerson } = useApp();
@@ -165,6 +186,12 @@ function PersonCard({ row, active, onOpen }: ItemProps) {
       </header>
       <div className="pp-chips small">
         <span className="rel">{meta.label}</span>
+        {p.profile.status && (
+          <span className={'st ' + p.profile.status}>
+            {p.profile.status === 'memoria' && <Flower2 size={11} />}
+            {statusMeta[p.profile.status].short}
+          </span>
+        )}
         {row.groups.slice(0, 2).map((g) => {
           const gm = groupKinds[g.kind] ?? groupKinds.otro;
           return (
@@ -194,7 +221,7 @@ function PersonCard({ row, active, onOpen }: ItemProps) {
         )}
       </div>
       <div className="pc-meta">
-        <BondRing value={s.bond} size={34} />
+        <Bond row={row} size={34} />
         <div>
           <span>
             <Clock size={12} /> <b>{relativeDay(s.last)}</b>
@@ -242,6 +269,11 @@ function PersonFace({ row, active, onOpen }: ItemProps) {
             <Star size={11} />
           </i>
         )}
+        {p.profile.status === 'memoria' && (
+          <i className="pf-badge mem" title="En memoria">
+            <Flower2 size={11} />
+          </i>
+        )}
         {(soon || s.overdue) && (
           <i
             className={'pf-badge ' + (soon ? 'cake' : 'alert')}
@@ -282,7 +314,7 @@ function PersonRow({ row, active, onOpen }: ItemProps) {
       <span className="pr-rel">{meta.label}</span>
       <span className="pr-last">{relativeDay(s.last)}</span>
       <span className="pr-pend">{s.nextPending?.title ?? '—'}</span>
-      <BondRing value={s.bond} size={30} />
+      <Bond row={row} size={30} />
       <span onClick={(e) => e.stopPropagation()}>
         <PersonMenu person={p} />
       </span>
@@ -301,7 +333,8 @@ export function PeoplePage() {
   const [sort, setSort] = useState<Sort>('reciente');
   const [view, setView] = useState<View>(storedView);
   const [peek, setPeek] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<'cumples' | 'sugerencias' | null>(null);
+  const [dialog, setDialog] = useState<'cumples' | 'sugerencias' | 'duplicados' | null>(null);
+  const duplicates = useDuplicates();
   const [remOpen, setRemOpen] = useState(() => localStorage.getItem('nexo-reminders') === 'open');
   const suggestions = useSuggestions();
   const seen = useSeen();
@@ -403,9 +436,16 @@ export function PeoplePage() {
         case 'reciente':
           return (b.stats.last ?? '').localeCompare(a.stats.last ?? '');
         case 'vinculo':
-          return b.stats.bond - a.stats.bond;
+          return (
+            Number(isReachable(b.person)) - Number(isReachable(a.person)) ||
+            b.stats.bond - a.stats.bond
+          );
         case 'olvidados':
-          return (b.stats.daysSince ?? 1e6) - (a.stats.daysSince ?? 1e6);
+          // Con quien ya no estás en contacto no es «olvido»: va al final.
+          return (
+            Number(isReachable(b.person)) - Number(isReachable(a.person)) ||
+            (b.stats.daysSince ?? 1e6) - (a.stats.daysSince ?? 1e6)
+          );
         case 'nombre':
           return a.person.name.localeCompare(b.person.name, 'es');
         case 'nuevos':
@@ -445,6 +485,17 @@ export function PeoplePage() {
       tab: 'contactar',
       tone: counts.contactar > 0 ? 'alert' : undefined,
     },
+    ...(duplicates.length > 0
+      ? [
+          {
+            icon: UsersRound,
+            value: duplicates.length,
+            label: duplicates.length === 1 ? 'posible duplicado' : 'posibles duplicados',
+            onClick: () => setDialog('duplicados'),
+            tone: 'sug' as const,
+          },
+        ]
+      : []),
     ...(pending > 0
       ? [
           {
@@ -605,6 +656,29 @@ export function PeoplePage() {
           </div>
         </div>
 
+        {activeGroups.length === 1 &&
+          (() => {
+            const g = activeGroups[0];
+            const gm = groupKinds[g.kind] ?? groupKinds.otro;
+            const n = inGroups?.size ?? 0;
+            return (
+              <div className="ga-bar" style={groupVars(g.kind)}>
+                <div className="ga-bar-id">
+                  <span className="pk-tile">
+                    <gm.icon size={17} />
+                  </span>
+                  <span>
+                    <strong>{g.name}</strong>
+                    <small>
+                      {n} {n === 1 ? 'persona' : 'personas'}
+                    </small>
+                  </span>
+                </div>
+                <GroupActions group={g} />
+              </div>
+            );
+          })()}
+
         {visible.length > 0 &&
           (view === 'list' ? (
             <div className="pp-list">
@@ -710,6 +784,8 @@ export function PeoplePage() {
                     </button>
                   ) : r.kind === 'cumple' ? (
                     <Cake size={16} />
+                  ) : r.kind === 'recuerdo' ? (
+                    <Flower2 size={16} />
                   ) : (
                     <MessageCircleWarning size={16} />
                   )}
@@ -757,6 +833,7 @@ export function PeoplePage() {
         />
       )}
       {dialog === 'sugerencias' && <SuggestionsDialog onClose={() => setDialog(null)} />}
+      {dialog === 'duplicados' && <DuplicatesDialog onClose={() => setDialog(null)} />}
       {groupPick && (
         <GroupPicker
           title="Filtrar por grupo"

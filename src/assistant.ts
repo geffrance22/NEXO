@@ -160,3 +160,22 @@ export async function giftIdeas(
   if (!ideas.length) throw new Error('La IA no devolvió ideas. Inténtalo de nuevo.');
   return ideas;
 }
+
+export type SparkIdea = { idea: string; step: string; why: string };
+
+/**
+ * Una idea concreta para sacarle partido a algo que guardaste (una cita, un resaltado) a partir de
+ * lo que conecta con ello (un proyecto, una persona…). `avoid` son las ideas que ya viste.
+ */
+export async function reviewSpark(input: {
+  idea: Record<string, unknown>;
+  link: Record<string, unknown> | null;
+  me: Record<string, unknown>;
+  avoid: string[];
+}): Promise<SparkIdea> {
+  const data = await callMode({ mode: 'review-spark', ...input });
+  const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const idea = text(data?.idea);
+  if (!idea) throw new Error('La IA no devolvió una idea. Inténtalo de nuevo.');
+  return { idea, step: text(data?.step), why: text(data?.why) };
+}

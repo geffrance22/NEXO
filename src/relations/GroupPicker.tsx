@@ -39,6 +39,8 @@ export function GroupPicker({
   selected,
   onToggle,
   suggested = [],
+  pinned = [],
+  pinnedLabel = 'Elegidos',
   pending = [],
   onCreate,
   onRemovePending,
@@ -51,6 +53,12 @@ export function GroupPicker({
   onToggle: (id: string) => void;
   /** Grupos que tienen sentido aquí (p. ej. los de su familia): salen primero. */
   suggested?: string[];
+  /**
+   * Grupos fijos arriba con su propio título (p. ej. «Está en»). No se mueven al marcar o
+   * desmarcar: así la lista no salta mientras eliges.
+   */
+  pinned?: string[];
+  pinnedLabel?: string;
   /** Nombres de grupos nuevos que aún no existen (se crean al guardar). */
   pending?: string[];
   onCreate?: (name: string) => void;
@@ -84,8 +92,9 @@ export function GroupPicker({
   const exact =
     all.find((g) => normalizeText(g.name.trim()) === needle) ??
     (pending.some((n) => normalizeText(n) === needle) ? null : undefined);
-  const hints = needle ? [] : all.filter((g) => suggested.includes(g.id));
-  const rest = needle ? matches : all.filter((g) => !hints.includes(g));
+  const top = needle ? [] : all.filter((g) => pinned.includes(g.id));
+  const hints = needle ? [] : all.filter((g) => suggested.includes(g.id) && !top.includes(g));
+  const rest = needle ? matches : all.filter((g) => !hints.includes(g) && !top.includes(g));
   const canCreate = Boolean(onCreate && query.trim() && exact === undefined);
   const chosen = [
     ...all.filter((g) => selected.includes(g.id)).map((g) => ({ name: g.name, kind: g.kind })),
@@ -227,14 +236,22 @@ export function GroupPicker({
               })}
             </>
           )}
+          {top.length > 0 && (
+            <>
+              <span className="pk-group">{pinnedLabel}</span>
+              {top.map(row)}
+            </>
+          )}
           {hints.length > 0 && (
             <>
               <span className="pk-group">
                 <Sparkles size={12} /> Sugeridos
               </span>
               {hints.map(row)}
-              {rest.length > 0 && <span className="pk-group">Todos</span>}
             </>
+          )}
+          {(top.length > 0 || hints.length > 0) && rest.length > 0 && (
+            <span className="pk-group">{top.length ? 'Otros grupos' : 'Todos'}</span>
           )}
           {rest.map(row)}
           {!all.length && !pending.length && !query.trim() && (

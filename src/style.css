@@ -48,9 +48,10 @@ a:focus-visible {
   outline: 2px solid #6d8650;
   outline-offset: 4px;
 }
-input:focus,
-textarea:focus,
-select:focus {
+/* Contorno de foco por defecto, sin peso (:where): este archivo carga después de los estilos de
+   cada sección, así que con peso normal pisaba a los buscadores que ya marcan el foco a su manera
+   (borde, anillo suave) y dibujaba un recuadro encima. Así manda el estilo propio de cada campo. */
+:where(input, textarea, select):where(:focus) {
   outline: 2px solid #a9bd8c;
   outline-offset: 1px;
 }

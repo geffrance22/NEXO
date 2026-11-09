@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Quote, Shuffle } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { todayInputValue } from '../lib/format';
+import { randomBelow } from '../lib/random';
 import { quotesOf, type BookQuote } from './Quotes';
 import './quoteOfDay.css';
 
@@ -18,20 +19,6 @@ function readSaved(): Saved | null {
   } catch {
     return null;
   }
-}
-
-/** Entero al azar de 0 a n-1 con la misma probabilidad para todos (sin sesgo de módulo). */
-function randomBelow(n: number) {
-  if (n < 2) return 0;
-  const webCrypto = globalThis.crypto;
-  if (!webCrypto?.getRandomValues) return Math.floor(Math.random() * n);
-  // Se descarta el sobrante al final del rango para que ningún número pese más que otro.
-  const limit = Math.floor(2 ** 32 / n) * n;
-  const buf = new Uint32Array(1);
-  do {
-    webCrypto.getRandomValues(buf);
-  } while (buf[0] >= limit);
-  return buf[0] % n;
 }
 
 /** Una cita cualquiera entre todas (cada una con la misma probabilidad), distinta de `avoid`. */

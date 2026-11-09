@@ -25,6 +25,7 @@ export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
     'pagesTotal',
     'rating',
     'quotes',
+    'quoteReview',
     'pageLog',
     'follow',
   ],

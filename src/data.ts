@@ -265,6 +265,11 @@ export type EntryDetails = {
   /** Calificación de 1 a 5: películas y libros. */
   rating?: number;
   quotes?: string[];
+  /**
+   * Repaso espaciado de las citas: por cada una (ver `quoteKey`), cuántas veces seguidas la
+   * recordaste y cuándo toca volver a verla (AAAA-MM-DD). No hace falta ninguna migración.
+   */
+  quoteReview?: Record<string, { step: number; due: string | null }>;
   stage?: 'idea' | 'curso' | 'pausa' | 'listo';
   priority?: 'baja' | 'media' | 'alta';
   nextStep?: string;

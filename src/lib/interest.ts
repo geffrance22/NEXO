@@ -77,7 +77,7 @@ const UPDATE_TOPIC: Record<string, string> = {
 
 /** Raíz corta para que «diseñadora» y «diseño» coincidan. */
 const stem = (w: string) => (w.length > 6 ? w.slice(0, 6) : w);
-const wordsOf = (text: string) =>
+export const wordsOf = (text: string) =>
   normalizeText(text)
     .split(/[^a-z0-9]+/)
     .filter((w) => w.length >= 4 && !STOP.has(w) && !/^\d+$/.test(w));

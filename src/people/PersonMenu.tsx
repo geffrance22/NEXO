@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import type { Person } from '../data';
+import { PersonGroupsDialog } from '../relations/TiesTab';
 
 /** Botón «⋯» con todos los accesos rápidos para alimentar la ficha de una persona. */
 export function PersonMenu({
@@ -36,6 +37,7 @@ export function PersonMenu({
 }) {
   const app = useApp();
   const [open, setOpen] = useState(false);
+  const [groups, setGroups] = useState(false);
   const [pos, setPos] = useState<CSSProperties>({ visibility: 'hidden' });
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -181,8 +183,8 @@ export function PersonMenu({
             <button role="menuitem" onClick={run(() => app.openTie(person))}>
               <Link2 size={15} /> Vincular con alguien
             </button>
-            <button role="menuitem" onClick={run(() => app.openGroup(undefined, [person.id]))}>
-              <Users size={15} /> Nuevo grupo con {person.name.split(' ')[0]}
+            <button role="menuitem" onClick={run(() => setGroups(true))}>
+              <Users size={15} /> Añadir a un grupo
             </button>
             <button role="menuitem" onClick={run(() => app.quickPerson(person, 'dato'))}>
               <Plus size={15} /> Un dato sobre su vida
@@ -232,6 +234,7 @@ export function PersonMenu({
           </div>,
           document.body,
         )}
+      {groups && <PersonGroupsDialog person={person} onClose={() => setGroups(false)} />}
     </div>
   );
 }

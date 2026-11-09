@@ -400,12 +400,14 @@
 }
 .rv-wrap {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
   background: linear-gradient(180deg, #f4f2fc 0, #fff 160px);
 }
 .rv-head {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 12px;
   padding: 16px 16px 0 22px;
@@ -444,13 +446,46 @@
 .rv-head .cp-close {
   margin-left: auto;
 }
+/* La tarjeta se desplaza dentro de .rv-scroll y los botones de abajo quedan siempre a la vista. */
 .rv-body {
   display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  animation: cp-swap 0.22s ease-out;
+}
+.rv-scroll {
+  display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 12px;
-  padding: 18px 24px 22px;
+  min-height: 0;
+  padding: 16px 16px 14px 24px;
   overflow-y: auto;
-  animation: cp-swap 0.22s ease-out;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(90, 73, 184, 0.28) transparent;
+}
+/* Nada dentro se encoge: si no cabe, se desplaza. */
+.rv-scroll > * {
+  flex: none;
+}
+.rv-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.rv-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.rv-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(90, 73, 184, 0.28);
+  background-clip: padding-box;
+}
+.rv-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(90, 73, 184, 0.5);
+  background-clip: padding-box;
 }
 .rv-source {
   display: inline-flex;
@@ -459,12 +494,18 @@
   gap: 6px;
   max-width: 100%;
   padding: 0;
-  overflow: hidden;
   font-size: 12.5px;
   font-weight: 600;
+  color: #7b8573;
+}
+.rv-source svg {
+  flex: none;
+}
+.rv-source span {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #7b8573;
 }
 .rv-source:hover {
   color: #4b3da0;
@@ -473,8 +514,9 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-height: 190px;
+  min-height: 150px;
   padding: 22px;
+  overflow-wrap: anywhere;
   border: 1px solid #e6e2f3;
   border-radius: 20px;
   background: #fff;
@@ -550,10 +592,13 @@
 .rv-back .rd-ai-text ul {
   margin: 0 0 6px;
 }
+/* Pie fijo: los botones nunca se tapan ni se mueven, sea cual sea el largo del texto. */
 .rv-grades {
   display: grid;
+  flex: none;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+  padding: 10px 24px 18px;
   transition: opacity 0.2s;
 }
 .rv-grades.wait {
@@ -647,11 +692,227 @@
     transform: scale(0.6);
   }
 }
+
+/* ── Cuando el momento se da: con qué conecta la idea y qué hacer con eso ── */
+.rv-idea {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: #756da8;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.rv-idea:hover {
+  background: #f1eefb;
+  color: #4b3da0;
+}
+.rv-link {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #f6f4fd;
+  overflow-wrap: anywhere;
+  animation: cp-rise 0.22s ease-out;
+}
+.rv-link.construir {
+  background: #f2f7ec;
+}
+.rv-link.idear {
+  background: #fbf5e8;
+}
+.rv-link-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font:
+    700 10.5px 'Manrope',
+    sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #6b5fc4;
+}
+.rv-link.construir .rv-link-head {
+  color: #4d7a37;
+}
+.rv-link.idear .rv-link-head {
+  color: #9a6a1c;
+}
+.rv-link-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+.rv-link-ico {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: #fff;
+  color: #5a49b8;
+}
+.rv-link-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.rv-link-text small {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #7e77ae;
+}
+.rv-link-text strong {
+  font:
+    700 14px/1.35 'Manrope',
+    sans-serif;
+  color: #27301f;
+}
+.rv-link-text em {
+  font-size: 12.5px;
+  font-style: normal;
+  line-height: 1.45;
+  color: #5d6754;
+}
+.rv-link-words {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: #6f7966;
+}
+.rv-link-ask {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #3d4636;
+}
+.rv-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.rv-spark,
+.rv-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  transition:
+    background 0.15s,
+    transform 0.12s;
+}
+.rv-spark {
+  background: #5a49b8;
+  color: #fff;
+}
+.rv-spark:hover:not(:disabled) {
+  background: #4b3da0;
+}
+.rv-ghost {
+  padding: 0 12px;
+  background: #fff;
+  color: #4b3da0;
+}
+.rv-ghost:hover:not(:disabled) {
+  background: #ece8fa;
+}
+.rv-spark:active:not(:disabled),
+.rv-ghost:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.rv-kept {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: #3a7a52;
+}
+.rv-spark-out {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fff;
+}
+.rv-spark-out small {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #7e6ee0;
+}
+.rv-spark-out p {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #343c2e;
+}
+.rv-spark-out .rv-spark-idea {
+  font:
+    700 15px/1.4 'Manrope',
+    sans-serif;
+  color: #27301f;
+}
+.rv-spark-out .rv-spark-why {
+  color: #6a7361;
+}
+.rv-spark-out .rv-link-actions {
+  margin-top: 4px;
+}
+.rv-link-also {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 2px 0;
+  font-size: 12.5px;
+  text-align: left;
+  color: #6a7361;
+}
+.rv-link-also span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rv-link-also:hover {
+  color: #4b3da0;
+}
+
 @media (max-width: 600px) {
-  .rv-body {
-    padding: 14px 16px 18px;
+  .rv-scroll {
+    padding: 14px 8px 10px 16px;
+  }
+  .rv-grades {
+    padding: 8px 16px 14px;
   }
   .rv-card {
     padding: 18px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-body,
+  .rv-link,
+  .rv-back {
+    animation: none;
   }
 }

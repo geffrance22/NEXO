@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { Check, CheckCheck, Link2, Plus, Sparkles, UserRound, Users, X } from 'lucide-react';
 import { useApp } from '../AppContext';
 import type { Person } from '../data';
@@ -7,6 +7,7 @@ import {
   explain,
   groupKinds,
   groupsOf,
+  guessGroupKind,
   kindWithNature,
   kindWord,
   tieCategories,
@@ -19,69 +20,89 @@ import {
 import { genderOf } from '../lib/gender';
 import { Avatar } from '../people/Avatar';
 import { dismiss, undismiss } from './dismissed';
+import { GroupPicker } from './GroupPicker';
 import { SuggestionList, useInferred, useSuggestions } from './Suggestions';
 
-/** Botón «Añadir a grupo» con la lista de grupos existentes y la opción de crear uno. */
-function GroupAdder({ person }: { person: Person }) {
-  const { workspace, updateGroup, openGroup } = useApp();
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => !root.current?.contains(e.target as Node) && setOpen(false);
-    document.addEventListener('pointerdown', onDown);
-    return () => document.removeEventListener('pointerdown', onDown);
-  }, [open]);
+/**
+ * Los grupos de una persona en una ventana: arriba en los que ya está; debajo los sugeridos (los
+ * de su gente) y los demás. Buscas, te sugiere los que existen y, si no está, lo creas ahí mismo.
+ * Cada cambio se guarda al instante.
+ */
+export function PersonGroupsDialog({ person, onClose }: { person: Person; onClose: () => void }) {
+  const { workspace, updateGroup, saveGroup, openGroup, notify } = useApp();
+  const first = person.name.split(' ')[0];
+  const mine = workspace.groups.filter((g) => g.member_ids.includes(person.id)).map((g) => g.id);
+  // Fijos arriba: en los que estaba al abrir y los que crees aquí (no saltan al marcar).
+  const [pinned, setPinned] = useState(mine);
+  const near = new Set(tiesOf(person.id, workspace.ties).map((v) => v.other));
+  const suggested = workspace.groups
+    .filter((g) => !mine.includes(g.id) && g.member_ids.some((m) => near.has(m)))
+    .map((g) => g.id);
+
+  const toggle = (id: string) => {
+    const g = workspace.groups.find((x) => x.id === id);
+    if (!g) return;
+    const on = g.member_ids.includes(person.id);
+    void updateGroup(
+      g,
+      {
+        member_ids: on ? g.member_ids.filter((x) => x !== person.id) : [...g.member_ids, person.id],
+      },
+      true,
+    );
+  };
+  const create = async (name: string) => {
+    const g = await saveGroup(
+      { name, kind: guessGroupKind(name), description: '', member_ids: [person.id] },
+      true,
+    );
+    if (!g) return;
+    setPinned((p) => [...p, g.id]);
+    notify(`Grupo «${g.name}» creado con ${first}.`);
+  };
+
   return (
-    <div className="pp-menu" ref={root}>
-      <button
-        type="button"
-        className="pp-btn"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <Users size={15} /> Añadir a grupo
+    <GroupPicker
+      title={`Grupos de ${first}`}
+      hint={
+        mine.length
+          ? `Está en ${mine.length} ${mine.length === 1 ? 'grupo' : 'grupos'}`
+          : 'Aún no está en ningún grupo'
+      }
+      selected={mine}
+      pinned={pinned}
+      pinnedLabel="Está en"
+      suggested={suggested}
+      onToggle={toggle}
+      onCreate={(name) => void create(name)}
+      footer={
+        <button
+          type="button"
+          className="gp-foot-link"
+          onClick={() => {
+            onClose();
+            openGroup(undefined, [person.id]);
+          }}
+        >
+          <Plus size={15} /> Nuevo grupo con detalles
+        </button>
+      }
+      onClose={onClose}
+    />
+  );
+}
+
+/** Botón «Grupos» de la ficha: abre la ventana de sus grupos. */
+function GroupAdder({ person }: { person: Person }) {
+  const [open, setOpen] = useState(false);
+  const count = useApp().workspace.groups.filter((g) => g.member_ids.includes(person.id)).length;
+  return (
+    <>
+      <button type="button" className="pp-btn" aria-haspopup="dialog" onClick={() => setOpen(true)}>
+        <Users size={15} /> {count ? 'Sus grupos' : 'Añadir a grupo'}
       </button>
-      {open && (
-        <div className="pp-dropdown left rl-groups-menu" role="menu">
-          {workspace.groups.map((g) => {
-            const on = g.member_ids.includes(person.id);
-            const m = groupKinds[g.kind] ?? groupKinds.otro;
-            return (
-              <button
-                role="menuitemcheckbox"
-                aria-checked={on}
-                key={g.id}
-                onClick={() =>
-                  void updateGroup(
-                    g,
-                    {
-                      member_ids: on
-                        ? g.member_ids.filter((x) => x !== person.id)
-                        : [...g.member_ids, person.id],
-                    },
-                    true,
-                  )
-                }
-              >
-                <m.icon size={15} /> <span>{g.name}</span>
-                {on && <Check size={14} className="rl-on" />}
-              </button>
-            );
-          })}
-          {workspace.groups.length > 0 && <span className="pp-dropdown-sep" />}
-          <button
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              openGroup(undefined, [person.id]);
-            }}
-          >
-            <Plus size={15} /> Nuevo grupo con {person.name.split(' ')[0]}
-          </button>
-        </div>
-      )}
-    </div>
+      {open && <PersonGroupsDialog person={person} onClose={() => setOpen(false)} />}
+    </>
   );
 }
 

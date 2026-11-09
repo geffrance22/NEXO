@@ -100,6 +100,9 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
         : meta;
   const Icon = series ? Tv : meta.icon;
   const View = views[c.kind];
+  // «Parte de» (episodio): en Película y Libro no se muestra.
+  const showEpisode =
+    !experiencesMissing && episodes.length > 0 && c.kind !== 'Película' && c.kind !== 'Libro';
 
   // Al pasar a escribir, el cursor va al campo principal.
   useEffect(() => {
@@ -300,7 +303,7 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
 
           <div className="cp-scroll">
             <View key={c.kind} c={c} />
-            {!experiencesMissing && episodes.length > 0 && (
+            {showEpisode && (
               <label className="cp-episode">
                 <Layers size={15} aria-hidden="true" />
                 <span>Parte de</span>

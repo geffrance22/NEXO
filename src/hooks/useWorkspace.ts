@@ -64,7 +64,10 @@ const PLACES_HINT =
 
 /** ¿Falta una tabla (migración sin ejecutar)? */
 function isMissingTable(e: unknown, table = 'places') {
-  const { code = '', message = '' } = (e ?? {}) as { code?: string; message?: string };
+  const { code = '', message = '' } = (e ?? {}) as {
+    code?: string;
+    message?: string;
+  };
   return (
     code === '42P01' ||
     code === 'PGRST205' ||
@@ -86,7 +89,10 @@ const MIGRATION_HINT =
 
 /** ¿El error indica que la tabla no tiene las columnas `images` o `details`? */
 function isMissingColumn(e: unknown) {
-  const { code = '', message = '' } = (e ?? {}) as { code?: string; message?: string };
+  const { code = '', message = '' } = (e ?? {}) as {
+    code?: string;
+    message?: string;
+  };
   return (
     (code === '42703' || code === 'PGRST204' || /does not exist|schema cache/i.test(message)) &&
     /\b(images|details|profile|episode_id|recorded_at|nature|updates|links)\b/.test(message)
@@ -118,7 +124,10 @@ function normalizePerson(p: Person): Person {
   const updates = Array.isArray(pr.updates)
     ? pr.updates.map((u) =>
         u.images
-          ? { ...u, images: Array.isArray(u.images) ? u.images.filter((i) => isHttps(i?.url)) : [] }
+          ? {
+              ...u,
+              images: Array.isArray(u.images) ? u.images.filter((i) => isHttps(i?.url)) : [],
+            }
           : u,
       )
     : undefined;
@@ -335,7 +344,10 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
         const entry = normalizeEntry(e);
         return entry.person_ids.every((pid) => known.has(pid))
           ? entry
-          : { ...entry, person_ids: entry.person_ids.filter((pid) => known.has(pid)) };
+          : {
+              ...entry,
+              person_ids: entry.person_ids.filter((pid) => known.has(pid)),
+            };
       });
       const placeIds = new Set(places.map((p) => p.id));
       setWorkspace({
@@ -395,9 +407,10 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
           details: input.details,
           ...(input.episodeId && !experiencesMissing && { episode_id: input.episodeId }),
         };
-        const { error } = await supabase
-          .from('entries')
-          .insert({ ...withoutEmptyExtras(entry, schemaOutdated), owner_id: user.id });
+        const { error } = await supabase.from('entries').insert({
+          ...withoutEmptyExtras(entry, schemaOutdated),
+          owner_id: user.id,
+        });
         if (error) throw error;
         const saved = { ...entry, recorded_at: new Date().toISOString() };
         setWorkspace((w) => ({ ...w, entries: [saved, ...w.entries] }));
@@ -414,6 +427,48 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
   const saveEntry = useCallback(
     async (input: EntryInput) => Boolean(await createEntry(input)),
     [createEntry],
+  );
+
+  /**
+   * Crea muchos recuerdos de una vez (p. ej. al importar), en tandas de 100 y sin avisos. Sin
+   * adjuntos ni episodio. Devuelve los guardados, o null si alguna tanda falló.
+   */
+  const createEntries = useCallback(
+    async (inputs: EntryInput[]) => {
+      const saved: Entry[] = [];
+      for (let i = 0; i < inputs.length; i += 100) {
+        const rows: Entry[] = inputs.slice(i, i + 100).map((input) => ({
+          id: crypto.randomUUID(),
+          title: input.title.trim().slice(0, 180) || input.kind,
+          body: input.body.trim(),
+          kind: input.kind,
+          tags: input.tags,
+          person_ids: input.personIds,
+          created_at: dateToTimestamp(input.date),
+          amount: input.amount,
+          direction: input.direction,
+          status: input.status,
+          images: input.images,
+          details: input.details,
+        }));
+        const { error } = await supabase.from('entries').insert(
+          rows.map((r) => ({
+            ...withoutEmptyExtras(r, schemaOutdated),
+            owner_id: user.id,
+          })),
+        );
+        if (error) {
+          notify(isMissingColumn(error) ? MIGRATION_HINT : errorMessage(error));
+          return null;
+        }
+        const now = new Date().toISOString();
+        const batch = rows.map((r) => ({ ...r, recorded_at: now }));
+        saved.push(...batch);
+        setWorkspace((w) => ({ ...w, entries: [...batch, ...w.entries] }));
+      }
+      return saved;
+    },
+    [user.id, notify, schemaOutdated],
   );
 
   /** Pone (o quita, con null) varios recuerdos en un episodio. */
@@ -691,11 +746,19 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
     async (person: Person, changes: Partial<Omit<Person, 'id' | 'created_at'>>, silent = false) => {
       const next = { ...person, ...changes };
       // Se aplica al instante y se revierte si el servidor falla.
-      setWorkspace((w) => ({ ...w, people: w.people.map((p) => (p.id === person.id ? next : p)) }));
+      setWorkspace((w) => ({
+        ...w,
+        people: w.people.map((p) => (p.id === person.id ? next : p)),
+      }));
       try {
         const { data, error } = await supabase
           .from('people')
-          .update(personRow({ ...changes, profile: changes.profile ?? person.profile }))
+          .update(
+            personRow({
+              ...changes,
+              profile: changes.profile ?? person.profile,
+            }),
+          )
           .eq('id', person.id)
           .select('id');
         if (error) throw error;
@@ -722,7 +785,9 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
         interests: input.interests.trim(),
         bio: input.bio.trim(),
         profile: input.profile,
-        ...(input.profile.relation && { color: relationMeta[input.profile.relation].soft }),
+        ...(input.profile.relation && {
+          color: relationMeta[input.profile.relation].soft,
+        }),
       }),
     [patchPerson],
   );
@@ -776,7 +841,10 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
         })),
         entries: w.entries.map((e) =>
           e.person_ids.includes(person.id)
-            ? { ...e, person_ids: e.person_ids.filter((id) => id !== person.id) }
+            ? {
+                ...e,
+                person_ids: e.person_ids.filter((id) => id !== person.id),
+              }
             : e,
         ),
       }));
@@ -806,7 +874,10 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
         ...w,
         people: w.people.map((p) => (p.id === keep.id ? { ...p, ...merged } : p)),
       }));
-      const { error } = await supabase.rpc('merge_people', { p_keep: keep.id, p_drop: drop.id });
+      const { error } = await supabase.rpc('merge_people', {
+        p_keep: keep.id,
+        p_drop: drop.id,
+      });
       if (error) {
         notify(
           error.code === 'PGRST202' || /merge_people/.test(error.message)
@@ -898,7 +969,10 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
   const updatePlace = useCallback(
     async (place: Place, changes: Partial<PlaceInput>, silent = false) => {
       const next = { ...place, ...changes };
-      setWorkspace((w) => ({ ...w, places: w.places.map((p) => (p.id === place.id ? next : p)) }));
+      setWorkspace((w) => ({
+        ...w,
+        places: w.places.map((p) => (p.id === place.id ? next : p)),
+      }));
       const { data, error } = await supabase
         .from('places')
         .update(changes)
@@ -933,7 +1007,10 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
         notify(error.message);
         return false;
       }
-      setWorkspace((w) => ({ ...w, places: w.places.filter((p) => p.id !== place.id) }));
+      setWorkspace((w) => ({
+        ...w,
+        places: w.places.filter((p) => p.id !== place.id),
+      }));
       notify('Lugar eliminado.');
       return true;
     },
@@ -952,11 +1029,12 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
   /** Inserta filas ya normalizadas (también sirve para deshacer un borrado). */
   const insertTies = useCallback(
     async (rows: Tie[]) => {
-      const { error } = await supabase
-        .from('person_ties')
-        .insert(
-          rows.map(({ inferred: _i, why: _w, via: _v, ...t }) => ({ ...t, owner_id: user.id })),
-        );
+      const { error } = await supabase.from('person_ties').insert(
+        rows.map(({ inferred: _i, why: _w, via: _v, ...t }) => ({
+          ...t,
+          owner_id: user.id,
+        })),
+      );
       if (error) {
         const msg = errorMessage(error);
         notify(
@@ -969,7 +1047,10 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
         return false;
       }
       const ids = new Set(tiesRef.current.map((t) => t.id));
-      setWorkspace((w) => ({ ...w, ties: [...w.ties, ...rows.filter((t) => !ids.has(t.id))] }));
+      setWorkspace((w) => ({
+        ...w,
+        ties: [...w.ties, ...rows.filter((t) => !ids.has(t.id))],
+      }));
       return true;
     },
     [user.id, notify],
@@ -1030,7 +1111,10 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
         notify(error.message);
         return false;
       }
-      setWorkspace((w) => ({ ...w, ties: w.ties.filter((t) => !ids.includes(t.id)) }));
+      setWorkspace((w) => ({
+        ...w,
+        ties: w.ties.filter((t) => !ids.includes(t.id)),
+      }));
       if (!silent)
         notify(rows.length === 1 ? 'Vínculo eliminado.' : `${rows.length} vínculos eliminados.`, {
           label: 'Deshacer',
@@ -1075,7 +1159,10 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
   const updateGroup = useCallback(
     async (group: Group, changes: Partial<GroupInput>, silent = false) => {
       const next = { ...group, ...changes };
-      setWorkspace((w) => ({ ...w, groups: w.groups.map((g) => (g.id === group.id ? next : g)) }));
+      setWorkspace((w) => ({
+        ...w,
+        groups: w.groups.map((g) => (g.id === group.id ? next : g)),
+      }));
       const { data, error } = await supabase
         .from('person_groups')
         .update(changes)
@@ -1110,7 +1197,10 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
         notify(error.message);
         return false;
       }
-      setWorkspace((w) => ({ ...w, groups: w.groups.filter((g) => g.id !== group.id) }));
+      setWorkspace((w) => ({
+        ...w,
+        groups: w.groups.filter((g) => g.id !== group.id),
+      }));
       notify('Grupo eliminado.');
       return true;
     },
@@ -1146,7 +1236,10 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
       const { error } = await supabase.from('entries').delete().eq('id', entry.id);
       if (error) return notify(error.message);
       if (entry.file_path) await removeAttachment(entry.file_path);
-      setWorkspace((w) => ({ ...w, entries: w.entries.filter((x) => x.id !== entry.id) }));
+      setWorkspace((w) => ({
+        ...w,
+        entries: w.entries.filter((x) => x.id !== entry.id),
+      }));
       if (!silent) notify('Apunte eliminado.');
     },
     [notify, confirm],
@@ -1176,6 +1269,7 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
     experiencesMissing,
     episodeExtrasMissing,
     createEntry,
+    createEntries,
     patchEntry,
     linkEntries,
     saveEpisode,

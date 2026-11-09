@@ -68,6 +68,18 @@ export async function findMedia(
   year = '',
   type?: MediaType,
 ): Promise<Pick<EntryDetails, 'tmdbPoster' | 'movieInfo' | 'year'> | null> {
+  return (await findMediaHit(title, year, type))?.details ?? null;
+}
+
+/** Como `findMedia`, pero también devuelve el resultado de TMDB (con su título en español). */
+export async function findMediaHit(
+  title: string,
+  year = '',
+  type?: MediaType,
+): Promise<{
+  hit: MovieHit;
+  details: Pick<EntryDetails, 'tmdbPoster' | 'movieInfo' | 'year'>;
+} | null> {
   const clean = title.trim();
   if (clean.length < 2) return null;
   const hits = await lookup(clean, year, type);
@@ -79,14 +91,17 @@ export async function findMedia(
   const info = await movieInfo(hit.id, hit.type).catch(() => undefined);
   const finalYear = info?.year || hit.year || year;
   return {
-    tmdbPoster: {
-      id: hit.id,
-      type: hit.type,
-      path: hit.path || undefined,
-      key: normal(clean) + '|' + finalYear,
+    hit,
+    details: {
+      tmdbPoster: {
+        id: hit.id,
+        type: hit.type,
+        path: hit.path || undefined,
+        key: normal(clean) + '|' + finalYear,
+      },
+      movieInfo: info,
+      year: finalYear || undefined,
     },
-    movieInfo: info,
-    year: finalYear || undefined,
   };
 }
 

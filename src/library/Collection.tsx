@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   ArrowUpDown,
   Check,
@@ -13,7 +13,7 @@ import {
 import { Avatar } from '../people/Avatar';
 import { isActive, progressOf } from './progress';
 import { useApp } from '../AppContext';
-import type { Entry } from '../data';
+import type { Entry, Person } from '../data';
 import { Masonry } from '../components/Masonry';
 import { kindMeta } from '../composer/kinds';
 import {
@@ -208,6 +208,22 @@ export function RatingPill({ value }: { value?: number }) {
   );
 }
 
+/** Póster ya en caché: se muestra sin fundido. */
+const showIfLoaded = (el: HTMLImageElement | null) => {
+  if (el?.complete && el.naturalWidth) el.classList.add('on');
+};
+
+/** Índice de personas por id, uno por lista (las tarjetas no recorren a todos cada vez). */
+const peopleIndex = new WeakMap<Person[], Map<string, Person>>();
+function personMap(people: Person[]) {
+  let map = peopleIndex.get(people);
+  if (!map) {
+    map = new Map(people.map((p) => [p.id, p]));
+    peopleIndex.set(people, map);
+  }
+  return map;
+}
+
 /** Portada sin imagen: el título en grande, como la tapa de un libro o un póster tipográfico. */
 export function CoverPlaceholder({
   icon: Icon,
@@ -241,7 +257,12 @@ export function Poster({ entry }: { entry: Entry }) {
         src={src}
         alt=""
         loading="lazy"
+        decoding="async"
         referrerPolicy="no-referrer"
+        className="lt-fade"
+        // Ya en caché: sin fundido. Si no, aparece suave al terminar de cargar.
+        ref={showIfLoaded}
+        onLoad={(e) => e.currentTarget.classList.add('on')}
         onError={() => setBroken(src)}
       />
     );
@@ -250,7 +271,7 @@ export function Poster({ entry }: { entry: Entry }) {
 }
 
 /** Una película, serie o libro en la cuadrícula de portadas: solo el póster. */
-function CoverTile({ entry }: { entry: Entry }) {
+function CoverTileBase({ entry }: { entry: Entry }) {
   const { viewEntry } = useApp();
   const label = [entry.title, captionOf(entry)].filter(Boolean).join(' · ');
   return (
@@ -274,7 +295,7 @@ export function CoverGrid({ children }: { children: ReactNode }) {
 }
 
 /** Fila de la vista de lista: miniatura, título, datos y fecha. */
-function EntryRow({ entry, today }: { entry: Entry; today: string }) {
+function EntryRowBase({ entry, today }: { entry: Entry; today: string }) {
   const { workspace, viewEntry, toggleEntry } = useApp();
   const tone = toneOf(entry);
   const img = entryImages(entry)[0];
@@ -359,13 +380,14 @@ const MAX_FACES = 3;
  * tenga (reseña, frase, con quién). Sin reseña, la tarjeta se queda en póster y título; el texto
  * largo se corta y se lee completo en la ficha.
  */
-function MediaCard({ entry }: { entry: Entry }) {
+function MediaCardBase({ entry }: { entry: Entry }) {
   const { workspace, viewEntry, openProgress } = useApp();
   const status = statusOf(entry);
   const pace = bookPace(entry);
   const caption = captionOf(entry);
   const text = entrySummary(entry);
-  const people = workspace.people.filter((p) => entry.person_ids.includes(p.id));
+  const byId = personMap(workspace.people);
+  const people = entry.person_ids.flatMap((id) => byId.get(id) ?? []);
   const active = isActive(entry);
   const where = active && entry.kind === 'Película' ? progressOf(entry).text : '';
   return (
@@ -414,6 +436,12 @@ function MediaCard({ entry }: { entry: Entry }) {
 }
 
 /** Recuerdos en la vista elegida. Con `media`, las tarjetas son de póster (películas y libros). */
+// Memorizadas: cargar otra tanda (o escribir en el buscador) no repinta las que ya están.
+const MediaCard = memo(MediaCardBase);
+const CoverTile = memo(CoverTileBase);
+const EntryRow = memo(EntryRowBase);
+const mediaCard = (e: Entry) => <MediaCard entry={e} />;
+
 export function EntryCollection({
   entries,
   view,
@@ -432,16 +460,7 @@ export function EntryCollection({
         ))}
       </CoverGrid>
     );
-  if (media)
-    return (
-      <Masonry
-        entries={entries}
-        min={190}
-        max={5}
-        gap={16}
-        render={(e) => <MediaCard entry={e} />}
-      />
-    );
+  if (media) return <Masonry entries={entries} min={190} max={5} gap={16} render={mediaCard} />;
   return <Masonry entries={entries} />;
 }
 

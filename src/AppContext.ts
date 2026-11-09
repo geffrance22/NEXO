@@ -91,6 +91,8 @@ export type AppContextValue = {
   saveQuickNote: (person: Person, text: string, images?: StoredImage[]) => Promise<boolean>;
   /** Crea un recuerdo y lo devuelve (para encadenar piezas de una experiencia). */
   createEntry: (input: EntryInput, silent?: boolean) => Promise<Entry | null>;
+  /** Crea muchos recuerdos de una vez, sin avisos (importaciones). null si algo falló. */
+  createEntries: (inputs: EntryInput[]) => Promise<Entry[] | null>;
   /** Cambia solo detalles, estado o personas de un recuerdo (posponer, completar…). */
   patchEntry: (
     entry: Entry,
@@ -137,6 +139,8 @@ export type AppContextValue = {
   meMissing: boolean;
   /** Tus datos y tu ficha ya terminaron de cargar (lo que se arma con ambos debe esperar). */
   dataReady: boolean;
+  /** La carga de tus datos ya terminó (bien o con error): se puede dejar de mostrar esqueletos. */
+  dataSettled: boolean;
   /** Abre «Mi ficha». */
   openMe: () => void;
   saveMe: (profile: MyProfile) => Promise<boolean>;

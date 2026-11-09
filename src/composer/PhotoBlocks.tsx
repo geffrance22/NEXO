@@ -1,4 +1,4 @@
-import type { CSSProperties, ChangeEvent, ClipboardEvent } from 'react';
+import type { CSSProperties, ChangeEvent, ClipboardEvent } from "react";
 import {
   FileText,
   ImagePlus,
@@ -7,18 +7,22 @@ import {
   RotateCw,
   X,
   type LucideIcon,
-} from 'lucide-react';
-import type { ImageUploads, UploadItem } from './useImageUploads';
+} from "lucide-react";
+import type { ImageUploads, UploadItem } from "./useImageUploads";
 
 const pick = (e: ChangeEvent<HTMLInputElement>) => {
   const files = Array.from(e.target.files ?? []);
-  e.target.value = ''; // permite elegir la misma foto otra vez
+  e.target.value = ""; // permite elegir la misma foto otra vez
   return files;
 };
 
 function Progress({ item }: { item: UploadItem }) {
   return (
-    <span className="cp-progress" style={{ '--p': item.progress } as CSSProperties} role="status">
+    <span
+      className="cp-progress"
+      style={{ "--p": item.progress } as CSSProperties}
+      role="status"
+    >
       <i />
       {Math.round(item.progress * 100)}%
     </span>
@@ -28,20 +32,20 @@ function Progress({ item }: { item: UploadItem }) {
 /** Varias fotos en una fila de miniaturas, con progreso de subida y reintento. */
 export function PhotoStrip({
   uploads,
-  addLabel = 'Añadir fotos',
+  addLabel = "Añadir fotos",
 }: {
   uploads: ImageUploads;
   addLabel?: string;
 }) {
-  const failed = uploads.items.find((i) => i.status === 'error');
+  const failed = uploads.items.find((i) => i.status === "error");
   return (
     <div className="cp-photos-wrap">
       <div className="cp-photos">
         {uploads.items.map((item) => (
-          <div className={'cp-photo ' + item.status} key={item.id}>
+          <div className={"cp-photo " + item.status} key={item.id}>
             <img src={item.preview} alt="" loading="lazy" />
-            {item.status === 'uploading' && <Progress item={item} />}
-            {item.status === 'error' && (
+            {item.status === "uploading" && <Progress item={item} />}
+            {item.status === "error" && (
               <button
                 type="button"
                 className="cp-photo-retry"
@@ -83,7 +87,7 @@ export function PhotoStrip({
 
 /** Imágenes pegadas desde el portapapeles (Ctrl+V) en un campo de texto. */
 export const pastedImages = (e: ClipboardEvent<HTMLElement>) =>
-  Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'));
+  Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
 
 /**
  * Fotos para notas y novedades: un botón pequeño y, al lado, miniaturas. Sirve para varias
@@ -91,21 +95,27 @@ export const pastedImages = (e: ClipboardEvent<HTMLElement>) =>
  */
 export function MiniPhotos({
   uploads,
-  label = 'Foto',
+  label = "Foto",
   hint,
+  className = "",
 }: {
   uploads: ImageUploads;
   label?: string;
   /** Texto suave que se ve mientras no hay fotos (p. ej. «o pégalas con Ctrl+V»). */
   hint?: string;
+  /** «roomy»: miniaturas más grandes (fotos de un libro). */
+  className?: string;
 }) {
-  const failed = uploads.items.find((i) => i.status === 'error');
+  const failed = uploads.items.find((i) => i.status === "error");
   const full = uploads.items.length >= uploads.max;
   return (
-    <div className="cp-mini">
+    <div className={"cp-mini" + (className ? " " + className : "")}>
       <div className="cp-mini-row">
         {!full && (
-          <label className="cp-mini-add" title="Añadir fotos · también puedes pegarlas con Ctrl+V">
+          <label
+            className="cp-mini-add"
+            title="Añadir fotos · también puedes pegarlas con Ctrl+V"
+          >
             <input
               type="file"
               accept="image/*"
@@ -118,14 +128,18 @@ export function MiniPhotos({
           </label>
         )}
         {uploads.items.map((item) => (
-          <div className={'cp-mini-item ' + item.status} key={item.id}>
+          <div className={"cp-mini-item " + item.status} key={item.id}>
             <img src={item.preview} alt="" />
-            {item.status === 'uploading' && (
-              <span className="cp-mini-busy" role="status" aria-label="Subiendo foto">
+            {item.status === "uploading" && (
+              <span
+                className="cp-mini-busy"
+                role="status"
+                aria-label="Subiendo foto"
+              >
                 <LoaderCircle className="spin" size={15} />
               </span>
             )}
-            {item.status === 'error' && (
+            {item.status === "error" && (
               <button
                 type="button"
                 className="cp-mini-retry"
@@ -146,7 +160,9 @@ export function MiniPhotos({
             </button>
           </div>
         ))}
-        {hint && !uploads.items.length && <span className="cp-mini-hint">{hint}</span>}
+        {hint && !uploads.items.length && (
+          <span className="cp-mini-hint">{hint}</span>
+        )}
       </div>
       {uploads.notice && <p className="cp-notice">{uploads.notice}</p>}
       {failed && <p className="cp-notice error">{failed.error}</p>}
@@ -160,7 +176,7 @@ export function CoverDrop({
   icon: Icon,
   title,
   hint,
-  shape = 'poster',
+  shape = "poster",
   external,
   clearExternal,
 }: {
@@ -170,11 +186,11 @@ export function CoverDrop({
   hint: string;
   external?: string;
   clearExternal?: () => void;
-  shape?: 'poster' | 'wide';
+  shape?: "poster" | "wide";
 }) {
   const item = uploads.items[0];
   return (
-    <div className={'cp-cover ' + shape + (item ? ' filled' : '')}>
+    <div className={"cp-cover " + shape + (item ? " filled" : "")}>
       <label className="cp-cover-drop">
         <input
           type="file"
@@ -194,10 +210,14 @@ export function CoverDrop({
             <span>{hint}</span>
           </>
         )}
-        {item?.status === 'uploading' && <Progress item={item} />}
+        {item?.status === "uploading" && <Progress item={item} />}
       </label>
-      {item?.status === 'error' && (
-        <button type="button" className="cp-cover-retry" onClick={() => uploads.retry(item.id)}>
+      {item?.status === "error" && (
+        <button
+          type="button"
+          className="cp-cover-retry"
+          onClick={() => uploads.retry(item.id)}
+        >
           <RotateCw size={14} /> Reintentar
         </button>
       )}
@@ -215,14 +235,22 @@ export function CoverDrop({
         </button>
       )}
       {uploads.notice && <p className="cp-notice">{uploads.notice}</p>}
-      {item?.status === 'error' && <p className="cp-notice error">{item.error}</p>}
+      {item?.status === "error" && (
+        <p className="cp-notice error">{item.error}</p>
+      )}
     </div>
   );
 }
 
 /** Documento (PDF o texto) que va a Supabase; las fotos van a ImgBB. */
 /** Botón compacto para elegir fotos (se usa en la barra inferior de las notas). */
-export function PhotoButton({ uploads, label }: { uploads: ImageUploads; label: string }) {
+export function PhotoButton({
+  uploads,
+  label,
+}: {
+  uploads: ImageUploads;
+  label: string;
+}) {
   return (
     <label className="cp-tray-btn">
       <input
@@ -253,13 +281,19 @@ export function DocAttach({
   onFile: (file: File | null) => void;
   notice: string;
 }) {
-  const currentName = currentPath ? `Documento .${currentPath.split('.').pop()}` : null;
+  const currentName = currentPath
+    ? `Documento .${currentPath.split(".").pop()}`
+    : null;
   return (
     <div className="cp-doc">
       {currentName && !removed && !file && (
         <span className="cp-doc-chip">
           <FileText size={15} /> {currentName}
-          <button type="button" aria-label="Quitar documento" onClick={() => onRemoveCurrent(true)}>
+          <button
+            type="button"
+            aria-label="Quitar documento"
+            onClick={() => onRemoveCurrent(true)}
+          >
             <X size={13} />
           </button>
         </span>
@@ -275,7 +309,11 @@ export function DocAttach({
       {file ? (
         <span className="cp-doc-chip">
           <FileText size={15} /> {file.name}
-          <button type="button" aria-label="Quitar documento nuevo" onClick={() => onFile(null)}>
+          <button
+            type="button"
+            aria-label="Quitar documento nuevo"
+            onClick={() => onFile(null)}
+          >
             <X size={13} />
           </button>
         </span>
@@ -288,7 +326,9 @@ export function DocAttach({
             onChange={(e) => onFile(e.target.files?.[0] ?? null)}
           />
           <Paperclip size={15} />
-          {currentName && !removed ? 'Reemplazar documento' : 'Adjuntar PDF o texto'}
+          {currentName && !removed
+            ? "Reemplazar documento"
+            : "Adjuntar PDF o texto"}
         </label>
       )}
       {notice && <p className="cp-notice error">{notice}</p>}

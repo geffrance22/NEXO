@@ -18,7 +18,6 @@ const headings: Record<Exclude<Page, 'Mi espacio'>, { title: string; text: strin
     title: 'Lugares con historia.',
     text: 'Donde pasan las cosas: cafés, casas, viajes y todo lo que viviste en cada uno.',
   },
-  Notas: { title: 'Notas', text: '' },
   Tableros: { title: 'Tableros', text: '' },
   Lecturas: { title: 'Lecturas', text: 'Artículos guardados para leer y anotar.' },
   Libroteca: { title: 'Libroteca', text: '' },
@@ -39,7 +38,6 @@ export function PageHeading() {
   if (
     page === 'Lecturas' ||
     page === 'Tableros' ||
-    page === 'Notas' ||
     page === 'Libroteca' ||
     page === 'Agenda' ||
     page === 'Conexiones'

@@ -1,5 +1,6 @@
 import type { AppContextValue } from '../AppContext';
 import type { Page } from '../data';
+import { goLibroteca } from '../library/shelf';
 import { feedCard } from '../planner/boardFeed';
 import { aimBoard } from '../planner/boardView';
 
@@ -12,7 +13,6 @@ const PAGES: readonly Page[] = [
   'Episodios',
   'Lugares',
   'Finanzas',
-  'Notas',
   'Conexiones',
 ];
 
@@ -56,6 +56,8 @@ export function resolveAction(
   const ref = id.slice(cut + 1);
 
   if (kind === 'go') {
+    // Las notas libres ahora son una pestaña de Libroteca (saludos guardados con «Notas»).
+    if (ref === 'Notas') return { icon: 'go', run: () => goLibroteca(app.go, 'lienzo') };
     const page = PAGES.find((p) => p === ref);
     return page ? { icon: 'go', run: () => app.go(page) } : null;
   }

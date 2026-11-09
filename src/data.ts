@@ -1,41 +1,40 @@
 export const kinds = [
-  'Nota',
-  'Encuentro',
-  'Película',
-  'Libro',
-  'Trabajo',
-  'Aprendizaje',
-  'Movimiento',
-  'Pendiente',
+  "Nota",
+  "Encuentro",
+  "Película",
+  "Libro",
+  "Trabajo",
+  "Aprendizaje",
+  "Movimiento",
+  "Pendiente",
 ] as const;
 export type Kind = (typeof kinds)[number];
-export type Direction = 'ingreso' | 'egreso';
-export type Status = 'pendiente' | 'completado';
+export type Direction = "ingreso" | "egreso";
+export type Status = "pendiente" | "completado";
 export type Page =
-  | 'Mi espacio'
-  | 'Episodios'
-  | 'Personas'
-  | 'Conexiones'
-  | 'Lugares'
-  | 'Lecturas'
-  | 'Notas'
-  | 'Tableros'
-  | 'Agenda'
-  | 'Libroteca'
-  | 'Finanzas'
-  | 'Ajustes';
+  | "Mi espacio"
+  | "Episodios"
+  | "Personas"
+  | "Conexiones"
+  | "Lugares"
+  | "Lecturas"
+  | "Tableros"
+  | "Agenda"
+  | "Libroteca"
+  | "Finanzas"
+  | "Ajustes";
 
 export type PlaceKind =
-  | 'cafe'
-  | 'comida'
-  | 'casa'
-  | 'trabajo'
-  | 'naturaleza'
-  | 'viaje'
-  | 'bar'
-  | 'cultura'
-  | 'deporte'
-  | 'otro';
+  | "cafe"
+  | "comida"
+  | "casa"
+  | "trabajo"
+  | "naturaleza"
+  | "viaje"
+  | "bar"
+  | "cultura"
+  | "deporte"
+  | "otro";
 
 /** Un lugar con historia. Sus visitas son los recuerdos que lo enlazan (`details.placeId`). */
 export type Place = {
@@ -50,19 +49,21 @@ export type Place = {
   created_at: string;
 };
 
-export type PlaceInput = Omit<Place, 'id' | 'created_at'>;
+export type PlaceInput = Omit<Place, "id" | "created_at">;
 
 export type AppUser = { id: string; email?: string };
 
-export type Relation = 'familia' | 'pareja' | 'amistad' | 'trabajo' | 'conocido' | 'otro';
-export type ExchangeKind = 'favor' | 'regalo' | 'apoyo' | 'tiempo' | 'dinero' | 'iniciativa';
+export type Relation =
+  "familia" | "pareja" | "amistad" | "trabajo" | "conocido" | "otro";
+export type ExchangeKind =
+  "favor" | "regalo" | "apoyo" | "tiempo" | "dinero" | "iniciativa";
 
 /** Algo que diste o recibiste de una persona: alimenta el balance de reciprocidad. */
 export type Exchange = {
   id: string;
   /** AAAA-MM-DD */
   date: string;
-  dir: 'dar' | 'recibir';
+  dir: "dar" | "recibir";
   kind: ExchangeKind;
   /** Cuánto pesó: 1 detalle, 2 importante, 3 enorme. */
   weight: 1 | 2 | 3;
@@ -70,16 +71,16 @@ export type Exchange = {
 };
 
 export type UpdateKind =
-  | 'trabajo'
-  | 'estudios'
-  | 'salud'
-  | 'amor'
-  | 'familia'
-  | 'hogar'
-  | 'logro'
-  | 'viaje'
-  | 'animo'
-  | 'otro';
+  | "trabajo"
+  | "estudios"
+  | "salud"
+  | "amor"
+  | "familia"
+  | "hogar"
+  | "logro"
+  | "viaje"
+  | "animo"
+  | "otro";
 
 /** Novedad de su vida con su fecha: con el tiempo arma la historia de esa persona contigo. */
 export type PersonUpdate = {
@@ -102,7 +103,7 @@ export type PersonUpdate = {
 
 /** Un dato que cambió con el tiempo: «Trabajó en Rappi hasta junio». */
 export type ProfileChange = {
-  field: 'occupation' | 'company' | 'city';
+  field: "occupation" | "company" | "city";
   value: string;
   /** AAAA-MM-DD: hasta cuándo fue cierto. */
   until: string;
@@ -112,10 +113,10 @@ export type ProfileChange = {
 export type PersonFact = { id: string; label: string; value: string };
 
 /** Sexo con el que se nombra a la persona: «madre» o «padre», «tía» o «tío»… */
-export type Gender = 'f' | 'm';
+export type Gender = "f" | "m";
 
 /** Estado de la relación. Sin estado = activa. */
-export type PersonStatus = 'distante' | 'memoria';
+export type PersonStatus = "distante" | "memoria";
 
 /** Identidad completa de una persona (columna `profile`). Todo es opcional. */
 export type PersonProfile = {
@@ -189,6 +190,8 @@ export type MyProfile = {
   goals?: string[];
   /** Lo que quieras que Nexo sepa de ti, en tus palabras. */
   about?: string;
+  /** Meta de lectura de cada año: cuántos libros quieres terminar («2026»: 24). */
+  readingGoals?: Record<string, number>;
 };
 
 /** Tu ficha guardada y la lectura que hace la IA de todo lo que hay de ti en Nexo. */
@@ -206,10 +209,21 @@ export type StoredImage = { url: string; medium?: string; thumb?: string };
 
 /** Para qué sirve una pregunta del ritual de cierre (decide qué parte del aprendizaje alimenta). */
 export type RitualTopic =
-  'llevar' | 'cambio' | 'recomendar' | 'momento' | 'emocion' | 'critica' | 'conexion';
+  | "llevar"
+  | "cambio"
+  | "recomendar"
+  | "momento"
+  | "emocion"
+  | "critica"
+  | "conexion";
 
 /** Una pregunta del ritual de cierre con lo que respondiste (el texto se guarda tal como se vio). */
-export type RitualAnswer = { id: string; topic: RitualTopic; q: string; a: string };
+export type RitualAnswer = {
+  id: string;
+  topic: RitualTopic;
+  q: string;
+  a: string;
+};
 
 /** Una pregunta del test de la IA: opciones, la correcta, la que elegiste y por qué. */
 export type RitualQuizItem = {
@@ -244,7 +258,7 @@ export type EntryDetails = {
   movieInfo?: {
     id: number;
     /** De TMDB: película o serie (las fichas antiguas no lo traen y son películas). */
-    type?: 'movie' | 'tv';
+    type?: "movie" | "tv";
     year: string;
     /** Minutos de la película o de un episodio. */
     runtime: number | null;
@@ -260,7 +274,7 @@ export type EntryDetails = {
   };
   tmdbPoster?: {
     id?: number;
-    type?: 'movie' | 'tv';
+    type?: "movie" | "tv";
     path?: string;
     key?: string;
     manual?: boolean;
@@ -268,7 +282,7 @@ export type EntryDetails = {
   year?: string;
   platform?: string;
   /** «Viendo» solo aplica a las series. */
-  watch?: 'quiero' | 'viendo' | 'vista';
+  watch?: "quiero" | "viendo" | "vista";
   /**
    * Serie (no película). Si no se indica, se deduce de TMDB o de la etiqueta «serie»; elegirlo
    * en el formulario manda sobre lo detectado.
@@ -280,9 +294,30 @@ export type EntryDetails = {
   episodeAt?: number;
   /** Anclado en «Mi espacio» para seguir su progreso (libros que lees, series que ves). */
   follow?: boolean;
-  bookEdition?: { isbn: string; image: string; publisher: string; date: string };
+  bookEdition?: {
+    isbn: string;
+    image: string;
+    publisher: string;
+    date: string;
+  };
   author?: string;
-  read?: 'quiero' | 'leyendo' | 'terminado';
+  /** En qué lo lees: libro en papel o PDF / digital (los antiguos no lo traen). */
+  bookFormat?: "fisico" | "digital";
+  /** De quién es el ejemplar físico: tuyo (está en tu estantería) o prestado. */
+  bookOwner?: "mio" | "prestado";
+  /** Quién te lo prestó (su nombre, tal como se muestra). */
+  lentBy?: string;
+  /** La persona de Nexo que te lo prestó (si está en tus personas). */
+  lentById?: string;
+  /**
+   * Estado de lectura. «estante»: solo lo tienes en tu estantería, sin decir si lo leerás.
+   * Sin estado cuenta como «leyendo» (así se guardaban los primeros libros).
+   */
+  read?: "estante" | "quiero" | "leyendo" | "terminado";
+  /** Fotos del libro aparte de la portada (ImgBB): tu ejemplar, páginas, dedicatorias… */
+  bookPhotos?: StoredImage[];
+  /** AAAA-MM-DD: el día que marcaste el libro como terminado (cuenta para la meta del año). */
+  finishedAt?: string;
   pagesRead?: number;
   pagesTotal?: number;
   /**
@@ -298,8 +333,8 @@ export type EntryDetails = {
    * recordaste y cuándo toca volver a verla (AAAA-MM-DD). No hace falta ninguna migración.
    */
   quoteReview?: Record<string, { step: number; due: string | null }>;
-  stage?: 'idea' | 'curso' | 'pausa' | 'listo';
-  priority?: 'baja' | 'media' | 'alta';
+  stage?: "idea" | "curso" | "pausa" | "listo";
+  priority?: "baja" | "media" | "alta";
   nextStep?: string;
   /** Fecha límite AAAA-MM-DD: trabajo y pendientes. */
   due?: string;
@@ -351,33 +386,33 @@ export type Entry = {
   recorded_at?: string;
 };
 
-export type CommitmentKind = 'quiero' | 'prometi' | 'espero' | 'depende';
+export type CommitmentKind = "quiero" | "prometi" | "espero" | "depende";
 
 export type EpisodeKind =
-  | 'viaje'
-  | 'encuentro'
-  | 'celebracion'
-  | 'evento'
-  | 'proyecto'
-  | 'colaboracion'
-  | 'negocio'
-  | 'empleo'
-  | 'estudio'
-  | 'salud'
-  | 'deporte'
-  | 'aventura'
-  | 'familia'
-  | 'pareja'
-  | 'mascota'
-  | 'hogar'
-  | 'mudanza'
-  | 'compra'
-  | 'tramite'
-  | 'creativo'
-  | 'voluntariado'
-  | 'etapa'
-  | 'dificil'
-  | 'otro';
+  | "viaje"
+  | "encuentro"
+  | "celebracion"
+  | "evento"
+  | "proyecto"
+  | "colaboracion"
+  | "negocio"
+  | "empleo"
+  | "estudio"
+  | "salud"
+  | "deporte"
+  | "aventura"
+  | "familia"
+  | "pareja"
+  | "mascota"
+  | "hogar"
+  | "mudanza"
+  | "compra"
+  | "tramite"
+  | "creativo"
+  | "voluntariado"
+  | "etapa"
+  | "dificil"
+  | "otro";
 /** Lo que se guarda: un tipo de la lista o «otro:» con el nombre que escribiste («otro:Boda»). */
 export type EpisodeKindValue = EpisodeKind | `otro:${string}`;
 
@@ -386,7 +421,7 @@ export type Episode = {
   id: string;
   title: string;
   kind: EpisodeKindValue;
-  status: 'activo' | 'cerrado';
+  status: "activo" | "cerrado";
   /** AAAA-MM-DD */
   starts_on: string | null;
   ends_on: string | null;
@@ -410,10 +445,14 @@ export type EpisodeExtras = {
   /** Fotos añadidas directamente al episodio (ImgBB). */
   images: StoredImage[];
 };
-export type EpisodeInput = Omit<Episode, 'id' | 'created_at' | keyof EpisodeExtras>;
+export type EpisodeInput = Omit<
+  Episode,
+  "id" | "created_at" | keyof EpisodeExtras
+>;
 export type EpisodeChanges = Partial<EpisodeInput & EpisodeExtras>;
 
-export type EpisodeUpdateKind = 'avance' | 'decision' | 'cambio' | 'problema' | 'logro' | 'nota';
+export type EpisodeUpdateKind =
+  "avance" | "decision" | "cambio" | "problema" | "logro" | "nota";
 
 /** Una entrada de la bitácora: «Firmamos el contrato», «Se movió la fecha del vuelo»… */
 export type EpisodeUpdate = {
@@ -430,42 +469,46 @@ export type EpisodeUpdate = {
  * Relación entre dos episodios, vista desde el que la guarda:
  * «se convirtió en», «es continuación de», «es parte de» o simplemente «relacionado con».
  */
-export type EpisodeLinkKind = 'relacionado' | 'derivo' | 'continua' | 'parte';
+export type EpisodeLinkKind = "relacionado" | "derivo" | "continua" | "parte";
 export type EpisodeLink = { id: string; kind: EpisodeLinkKind };
 
 /**
  * Un episodio nuevo que nace de otro. `holder` dice quién guarda el vínculo: el de origen
  * («A se convirtió en B») o el nuevo («B es continuación de A»).
  */
-export type EpisodeOrigin = { episode: Episode; kind: EpisodeLinkKind; holder: 'source' | 'new' };
+export type EpisodeOrigin = {
+  episode: Episode;
+  kind: EpisodeLinkKind;
+  holder: "source" | "new";
+};
 
 export type TieKind =
-  | 'padre'
-  | 'hijo'
-  | 'hermano'
-  | 'abuelo'
-  | 'nieto'
-  | 'tio'
-  | 'sobrino'
-  | 'primo'
-  | 'suegro'
-  | 'yerno'
-  | 'cunado'
-  | 'familiar'
-  | 'pareja'
-  | 'expareja'
-  | 'mejoramigo'
-  | 'amigo'
-  | 'companero'
-  | 'vecino'
-  | 'conocido'
-  | 'colega'
-  | 'jefe'
-  | 'subordinado'
-  | 'socio'
-  | 'mentor'
-  | 'aprendiz'
-  | 'otro';
+  | "padre"
+  | "hijo"
+  | "hermano"
+  | "abuelo"
+  | "nieto"
+  | "tio"
+  | "sobrino"
+  | "primo"
+  | "suegro"
+  | "yerno"
+  | "cunado"
+  | "familiar"
+  | "pareja"
+  | "expareja"
+  | "mejoramigo"
+  | "amigo"
+  | "companero"
+  | "vecino"
+  | "conocido"
+  | "colega"
+  | "jefe"
+  | "subordinado"
+  | "socio"
+  | "mentor"
+  | "aprendiz"
+  | "otro";
 
 /** Vínculo directo entre dos personas: «a» es kind de «b».  = null es «Tú». */
 export type Tie = {
@@ -484,18 +527,19 @@ export type Tie = {
   nature?: TieNature | null;
 };
 
-export type TieNature = 'biologica' | 'adoptiva' | 'crianza' | 'politica' | 'medio';
+export type TieNature =
+  "biologica" | "adoptiva" | "crianza" | "politica" | "medio";
 
 export type GroupKind =
-  | 'familia'
-  | 'trabajo'
-  | 'iglesia'
-  | 'estudio'
-  | 'amigos'
-  | 'deporte'
-  | 'comunidad'
-  | 'viaje'
-  | 'otro';
+  | "familia"
+  | "trabajo"
+  | "iglesia"
+  | "estudio"
+  | "amigos"
+  | "deporte"
+  | "comunidad"
+  | "viaje"
+  | "otro";
 
 /** Algo en común entre varias personas: la iglesia, un trabajo, la familia Gómez… */
 export type Group = {
@@ -506,7 +550,7 @@ export type Group = {
   member_ids: string[];
   created_at: string;
 };
-export type GroupInput = Omit<Group, 'id' | 'created_at'>;
+export type GroupInput = Omit<Group, "id" | "created_at">;
 
 export type Workspace = {
   people: Person[];

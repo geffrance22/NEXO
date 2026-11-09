@@ -1,0 +1,330 @@
+/* ════════ Cita como imagen ════════ */
+.sheet.qi {
+  max-width: 860px;
+  padding: 0;
+}
+.qi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 4px;
+}
+.qi-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  color: #3d2f22;
+}
+.qi-head h2 svg {
+  color: #8c6d4f;
+}
+.qi-head button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: #7b8573;
+}
+.qi-head button:hover {
+  background: #f3f5ef;
+}
+.qi-body {
+  /* Alto fijo para la vista previa: la ventana no cambia de tamaño al cambiar el formato. */
+  --qi-h: clamp(380px, calc(min(92vh, 900px) - 100px), 560px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 20px;
+  min-height: 0;
+  padding: 12px 20px 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Vista previa: el lienzo real, escalado dentro de un marco que encaja en el escenario. */
+.qi-stage {
+  position: relative;
+  min-height: var(--qi-h);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 1px 1px, rgba(60, 50, 40, 0.09) 1px, transparent 0) 0 0 / 14px 14px,
+    #f5f4f0;
+}
+.qi-fit {
+  position: absolute;
+  inset: 22px;
+  display: grid;
+  place-items: center;
+  container-type: size;
+}
+.qi-frame {
+  width: min(100cqw, calc(100cqh * var(--ar)));
+  height: min(100cqh, calc(100cqw / var(--ar)));
+  overflow: hidden;
+  border-radius: 10px;
+  box-shadow:
+    0 24px 48px -20px rgba(40, 30, 20, 0.45),
+    0 2px 6px rgba(40, 30, 20, 0.12);
+  transition:
+    width 0.32s cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.qi-stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.qi-stage canvas.on {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .qi-frame {
+    transition: none;
+  }
+}
+.qi-wait {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #9aa391;
+}
+.qi-wait svg {
+  animation: qi-spin 0.9s linear infinite;
+}
+@keyframes qi-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.qi-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+.qi-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.qi-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #9aa391;
+}
+.qi-themes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.qi-themes button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+  font:
+    700 22px/1 Georgia,
+    serif;
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+.qi-themes button span {
+  margin-top: 10px;
+}
+.qi-themes button:hover {
+  transform: translateY(-1px);
+}
+.qi-themes button.on {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px #2f3d2a;
+}
+
+/* Fuentes: «Aa» en cada letra, en una cuadrícula de 3. */
+.qi-fonts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.qi-fonts button,
+.qi-formats button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 50px;
+  border: 1px solid #e7ebdf;
+  border-radius: 11px;
+  color: #5f6957;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.qi-fonts button span {
+  font-size: 18px;
+  line-height: 1;
+}
+.qi-fonts small,
+.qi-formats small,
+.qi-formats span {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.qi-fonts small,
+.qi-formats small {
+  color: #9aa391;
+}
+.qi-fonts button:hover,
+.qi-formats button:hover {
+  background: #f6f7f2;
+}
+.qi-fonts button.on,
+.qi-formats button.on {
+  border-color: #2f3d2a;
+  background: #f4f6ef;
+  color: #232b1e;
+}
+.qi-formats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.qi-formats button {
+  height: 66px;
+}
+.qi-formats span {
+  color: inherit;
+}
+.qi-ratio {
+  flex: none;
+  width: 16px;
+  margin-bottom: 2px;
+  border: 1.6px solid currentColor;
+  border-radius: 3px;
+  opacity: 0.7;
+}
+.qi-ratio.cuadrado {
+  height: 16px;
+}
+.qi-ratio.vertical {
+  width: 14px;
+  height: 18px;
+}
+.qi-ratio.historia {
+  width: 11px;
+  height: 20px;
+}
+
+/* Interruptor «Mostrar la portada». */
+.qi-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #5f6957;
+  cursor: pointer;
+}
+.qi-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.qi-switch span {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: #dfe3d8;
+  transition: background 0.18s;
+}
+.qi-switch span::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.18s;
+}
+.qi-switch input:checked + span {
+  background: #2f3d2a;
+}
+.qi-switch input:checked + span::after {
+  transform: translateX(14px);
+}
+.qi-switch input:focus-visible + span {
+  box-shadow: 0 0 0 3px #dfe8d4;
+}
+
+.qi-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+}
+.qi-actions .lt-add {
+  width: 100%;
+}
+.qi-actions-row {
+  display: flex;
+  gap: 8px;
+}
+.qi-actions-row:empty {
+  display: none;
+}
+.qi-actions-row .lt-add {
+  flex: 1;
+}
+
+@media (max-width: 720px) {
+  .qi-body {
+    grid-template-columns: 1fr;
+  }
+  .qi-stage {
+    min-height: min(44dvh, 420px);
+  }
+  .qi-fit {
+    inset: 14px;
+  }
+}
+
+/* Pantallas bajas: el escenario se encoge antes de que aparezca el scroll. */
+@media (min-width: 721px) and (max-height: 620px) {
+  .qi-body {
+    --qi-h: calc(min(92vh, 900px) - 100px);
+  }
+  .qi-themes button {
+    width: 34px;
+    height: 34px;
+  }
+  .qi-fonts button {
+    height: 42px;
+  }
+  .qi-formats button {
+    height: 54px;
+  }
+}
+
+/* Modo oscuro: la vista previa y las muestras conservan sus colores reales. */
+html[data-theme='dark'] :is(.qi-stage canvas, .qi-themes button) {
+  filter: invert(1) hue-rotate(180deg);
+}

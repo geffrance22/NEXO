@@ -13,6 +13,7 @@ import {
   Link2,
   Search,
   SquareCheck,
+  StickyNote,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useApp } from "../AppContext";
@@ -25,6 +26,8 @@ import { relationMeta, relationOf } from "../lib/people";
 import { placeKinds } from "../lib/places";
 import { ME, groupKinds, tieCategories, tieKinds } from "../lib/relations";
 import { searchWorkspace, type SearchHit } from "../lib/search";
+import { plainOf } from "../notes/links";
+import { useNoteSearch, type NoteHit } from "../notes/search";
 import { Avatar } from "../people/Avatar";
 import { ensureFresh, useBoardFeed } from "../planner/boardFeed";
 import { aimBoard } from "../planner/boardView";
@@ -35,7 +38,7 @@ import {
 } from "../readings/search";
 
 type Look = { icon: LucideIcon; color: string; soft: string };
-type Hit = SearchHit | ReadingHit;
+type Hit = SearchHit | ReadingHit | NoteHit;
 
 const hostOf = (url: string) => {
   try {
@@ -50,6 +53,19 @@ const clip = (s: string, n: number) =>
 /** Ícono, colores y textos de una fila de resultado. */
 function describe(hit: Hit): { title: string; sub: string; look: Look | null } {
   switch (hit.type) {
+    case "note": {
+      const text = plainOf(hit.body).replace(/\s+/g, " ").trim();
+      return {
+        title: hit.title || clip(text, 80) || "Nota",
+        sub: [
+          hit.archived ? "Nota archivada" : "Nota",
+          hit.title && text ? clip(text, 70) : shortDate(hit.created_at),
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        look: { icon: StickyNote, color: "#8a6d1f", soft: "#fbf1c2" },
+      };
+    }
     case "reading":
       return {
         title: hit.title,
@@ -140,7 +156,7 @@ function describe(hit: Hit): { title: string; sub: string; look: Look | null } {
   }
 }
 
-/** Campo de búsqueda del encabezado: personas, recuerdos, tarjetas, lugares, vínculos, grupos y lecturas. */
+/** Campo de búsqueda del encabezado: personas, recuerdos, notas, tarjetas, lugares, vínculos, grupos y lecturas. */
 export function GlobalSearch() {
   const { workspace, go, viewEntry, openTie, openGroup } = useApp();
   const feed = useBoardFeed();
@@ -150,20 +166,22 @@ export function GlobalSearch() {
   const root = useRef<HTMLDivElement>(null);
   const listId = useId();
   const reading = useReadingSearch(open ? query : "");
+  const notes = useNoteSearch(open ? query : "");
 
   const local = useMemo(
     () => searchWorkspace(workspace, query, feed.cards),
     [workspace, query, feed.cards],
   );
-  // Lecturas llegan un instante después: van al final para no mover lo que ya ves.
+  // Notas y lecturas llegan un instante después: van al final para no mover lo que ya ves.
   const groups = useMemo<{ label: string; hits: Hit[] }[]>(
     () =>
       [
         ...local,
+        { label: "Notas", hits: notes },
         { label: "Lecturas", hits: reading.readings },
         { label: "Resaltados", hits: reading.marks },
       ].filter((g) => g.hits.length > 0),
-    [local, reading.readings, reading.marks],
+    [local, notes, reading.readings, reading.marks],
   );
   const flat = useMemo(() => groups.flatMap((g) => g.hits), [groups]);
   const shown = open && query.trim() !== "";
@@ -177,6 +195,8 @@ export function GlobalSearch() {
     setOpen(false);
     setQuery("");
     switch (hit.type) {
+      case "note":
+        return go("Libroteca", { id: hit.id });
       case "reading":
         return go("Lecturas", { id: hit.id });
       case "mark":

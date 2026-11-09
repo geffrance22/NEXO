@@ -1,17 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Library, Plus, Quote, Search, X } from 'lucide-react';
 import { useApp } from '../AppContext';
+import { LoadMore, useInfinite } from '../components/LoadMore';
 import type { Entry } from '../data';
 import { isOpenTask } from '../lib/commitments';
 import { normalizeText, todayInputValue } from '../lib/format';
 import { Cuadernos } from '../cuadernos/Cuadernos';
 import { NotebookView } from '../cuadernos/NotebookView';
 import { useCuadernos } from '../cuadernos/useCuadernos';
+import { NotesBoard } from '../notes/NotesBoard';
+import { noteText, useNotes } from '../notes/useNotes';
 import { EmptyState, EntryCollection, ShelfChips, SortMenu, ViewSwitch } from './Collection';
 import { useMediaBackfill } from './enrich';
 import { Inicio } from './Inicio';
-import { QuoteSheet, QuoteWall, quotesOf } from './Quotes';
+import { LetterboxdButton } from './LetterboxdImport';
+import { QuoteSheet, QuoteWall, countQuotes } from './Quotes';
+import { ReadingGoal } from './ReadingGoal';
+import { booksFinishedIn } from './goals';
 import { useReadingShelf } from './ReadingShelf';
+import { InicioSkeleton, StatsSkeleton, TabSkeleton } from './Skeletons';
 import {
   entryTabs,
   forgetTab,
@@ -30,7 +37,8 @@ import './libroteca.css';
 
 // Clave nueva: Películas arranca en «Tarjetas» aunque antes se hubiera elegido otra vista.
 const VIEW_KEY = 'nexo-lib-view-2';
-const PAGE = 60;
+/** Tarjetas por tanda (las portadas y la lista cargan más, ver `useInfinite`). */
+const PAGE = 40;
 const PLAIN_VIEWS: ViewMode[] = ['tarjetas', 'lista'];
 /** Pestañas que dicen «Todas» (el resto, «Todos»). */
 const FEMININE = new Set<TabId>(['peliculas', 'series', 'notas']);
@@ -47,9 +55,12 @@ function loadViews(): Partial<Record<TabId, ViewMode>> {
   }
 }
 
-/** Libroteca: películas, series, libros y sus citas. */
-export function Libroteca() {
-  return <ShelfPage section="Libroteca" />;
+/**
+ * Libroteca: películas, series, libros, sus citas y tus notas libres. Con `noteId` abre esa nota
+ * en la pestaña «Notas» (`nueva` abre el cuadro para escribir una).
+ */
+export function Libroteca({ noteId = null }: { noteId?: string | null }) {
+  return <ShelfPage section="Libroteca" noteId={noteId} />;
 }
 
 /**
@@ -66,45 +77,65 @@ export function Agenda({ notebookId }: { notebookId?: string | null }) {
  * o lista) y su botón «Añadir». La primera pestaña de cada página es especial: «Inicio» en
  * Libroteca y «Cuadernos» en Agenda.
  */
-function ShelfPage({ section }: { section: ShelfSection }) {
-  const { workspace, openEntry } = useApp();
+function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?: string | null }) {
+  const { workspace, openEntry, dataSettled } = useApp();
   const tabs = sectionTabs[section];
   const home = tabs[0].id;
-  const [tab, setTabRaw] = useState<TabId>(() => requestedTab(section) ?? home);
+  const [tab, setTab] = useState<TabId>(() =>
+    noteId ? 'lienzo' : (requestedTab(section) ?? home),
+  );
   const [query, setQuery] = useState('');
+  // Filtrar listas largas no frena el teclado: el campo responde ya y la lista, en cuanto pueda.
+  const deferredQuery = useDeferredValue(query);
   const [views, setViews] = useState(loadViews);
   const [sorts, setSorts] = useState<Partial<Record<TabId, SortId>>>({});
   const [shelves, setShelves] = useState<Partial<Record<TabId, string>>>({});
-  const [limit, setLimit] = useState(PAGE);
   const [quoteSheet, setQuoteSheet] = useState(false);
   const [creating, setCreating] = useState(false);
   const readings = useReadingShelf();
   const notebooks = useCuadernos();
+  const notes = useNotes(section === 'Libroteca');
+  const liveNotes = useMemo(
+    () => (notes.notes ?? []).filter((n) => !n.archived && !n.vaulted),
+    [notes.notes],
+  );
+  // Nota por abrir en «Notas» y avisos para abrir «Escribe una nota…».
+  const [openNote, setOpenNote] = useState<string | null>(noteId === 'nueva' ? null : noteId);
+  const [composeTick, setComposeTick] = useState(noteId === 'nueva' ? 1 : 0);
   useEffect(() => forgetTab(section), [section]);
 
   const people = useMemo(() => new Map(workspace.people.map((p) => [p.id, p])), [workspace.people]);
+  // Solo las pestañas de esta página (Libroteca no necesita los pendientes de Agenda, ni al revés).
   const lists = useMemo(() => {
     const out = new Map<TabId, Entry[]>();
-    for (const t of entryTabs) out.set(t.id, workspace.entries.filter(t.match));
+    for (const t of entryTabs)
+      if (tabs.some((s) => s.id === t.id)) out.set(t.id, workspace.entries.filter(t.match));
     return out;
-  }, [workspace.entries]);
+  }, [workspace.entries, tabs]);
   const library = useMemo(() => workspace.entries.filter(isLibrary), [workspace.entries]);
   const watchables = useMemo(
     () => workspace.entries.filter((e) => e.kind === 'Película'),
     [workspace.entries],
   );
-  const quoteCount = useMemo(() => quotesOf(workspace.entries).length, [workspace.entries]);
+  const quoteCount = useMemo(() => countQuotes(workspace.entries), [workspace.entries]);
+  const needle = normalizeText(deferredQuery.trim());
+  const searching = needle !== '';
+  // El índice de búsqueda solo se arma al buscar (y una vez por lista, no en cada tecla).
   const searchIndex = useMemo(
-    () => new Map(workspace.entries.map((e) => [e.id, searchText(e, people)])),
-    [workspace.entries, people],
+    () => (searching ? new Map(workspace.entries.map((e) => [e.id, searchText(e, people)])) : null),
+    [workspace.entries, people, searching],
   );
   // Películas y series guardadas sin póster (p. ej. al capturarlas): se buscan en TMDB.
   useMediaBackfill(section === 'Libroteca' ? watchables : []);
 
-  const setTab = (next: TabId) => {
-    setTabRaw(next);
-    setLimit(PAGE);
-  };
+  // Mientras llegan tus datos (y, en Inicio, tus lecturas y notas) se ven esqueletos.
+  const booting =
+    !dataSettled ||
+    (section === 'Libroteca' &&
+      tab === 'inicio' &&
+      !searching &&
+      (readings === null || notes.notes === null));
+  const countsReady = dataSettled && (section !== 'Libroteca' || notes.notes !== null);
   const viewOf = (id: TabId, allowed: ViewMode[]) => {
     const v = views[id];
     return v && allowed.includes(v) ? v : allowed[0];
@@ -124,9 +155,11 @@ function ShelfPage({ section }: { section: ShelfSection }) {
       ? library.length
       : id === 'citas'
         ? quoteCount
-        : id === 'cuadernos'
-          ? (notebooks.list?.length ?? 0)
-          : (lists.get(id)?.length ?? 0);
+        : id === 'lienzo'
+          ? liveNotes.length
+          : id === 'cuadernos'
+            ? (notebooks.list?.length ?? 0)
+            : (lists.get(id)?.length ?? 0);
 
   // Lo que dice el encabezado: cifras, no frases.
   const today = todayInputValue();
@@ -140,13 +173,12 @@ function ShelfPage({ section }: { section: ShelfSection }) {
       (e) =>
         e.kind === 'Película' && (e.details.watch ?? 'vista') === 'vista' && inYear(e.created_at),
     ).length;
-    const booksDone = library.filter(
-      (e) => e.kind === 'Libro' && e.details.read === 'terminado' && inYear(e.created_at),
-    ).length;
+    const booksDone = booksFinishedIn(library, year).length;
     stats = [
       plural(library.length, 'título', 'títulos'),
       seen ? `${seen} ${seen === 1 ? 'vista' : 'vistas'} en ${year}` : '',
       booksDone ? `${booksDone} ${booksDone === 1 ? 'libro' : 'libros'} en ${year}` : '',
+      liveNotes.length ? plural(liveNotes.length, 'nota', 'notas') : '',
     ];
   } else {
     const open = (lists.get('pendientes') ?? []).filter(isOpenTask);
@@ -170,28 +202,73 @@ function ShelfPage({ section }: { section: ShelfSection }) {
   const add =
     tab === 'citas'
       ? { label: 'Añadir cita', run: () => setQuoteSheet(true) }
-      : tab === 'cuadernos'
-        ? { label: 'Nuevo cuaderno', run: () => setCreating(true) }
-        : entryTab
-          ? {
-              label: 'Añadir ' + entryTab.noun,
-              run: () => openEntry(entryTab.kind, [], entryTab.addDetails?.(shelf)),
-            }
-          : { label: 'Añadir', run: () => openEntry() };
+      : tab === 'lienzo'
+        ? { label: 'Nueva nota', run: () => setComposeTick((t) => t + 1) }
+        : tab === 'cuadernos'
+          ? { label: 'Nuevo cuaderno', run: () => setCreating(true) }
+          : entryTab
+            ? {
+                label:
+                  tab === 'libros' && shelf === 'estanteria'
+                    ? 'Añadir a la estantería'
+                    : 'Añadir ' + entryTab.noun,
+                run: () => openEntry(entryTab.kind, [], entryTab.addDetails?.(shelf)),
+              }
+            : { label: 'Añadir', run: () => openEntry() };
 
-  const needle = normalizeText(query.trim());
-  const matches = (e: Entry) => !needle || Boolean(searchIndex.get(e.id)?.includes(needle));
-  const more = (n: number) =>
-    n > limit && (
-      <button type="button" className="lt-more" onClick={() => setLimit((l) => l + PAGE)}>
-        Ver más <span>{n - limit}</span>
-      </button>
-    );
+  const matches = (e: Entry) => !needle || Boolean(searchIndex?.get(e.id)?.includes(needle));
+  const notesFound =
+    tab === 'inicio' && needle
+      ? liveNotes.filter((n) => normalizeText(noteText(n)).includes(needle)).length
+      : 0;
+
+  // La lista de la pestaña (filtrada, en su estante y ordenada) y su vista.
+  const sort = entryTab ? (sorts[tab] ?? entryTab.sorts[0]) : 'reciente';
+  const view =
+    tab === 'inicio'
+      ? viewOf('inicio', PLAIN_VIEWS)
+      : entryTab
+        ? viewOf(tab, entryTab.views)
+        : 'lista';
+  const pipeline = useMemo(() => {
+    if (tab === 'inicio')
+      return {
+        found: [],
+        sorted: needle ? sortEntries(library.filter(matches), 'reciente') : [],
+      };
+    if (!entryTab) return { found: [], sorted: [] };
+    const found = (lists.get(tab) ?? []).filter(matches);
+    const test = entryTab.shelves?.find((s) => s.id === shelf)?.test;
+    return {
+      found,
+      sorted: sortEntries(test ? found.filter(test) : found, sort),
+    };
+    // `matches` depende solo de `needle` y `searchIndex`.
+  }, [tab, entryTab, lists, library, needle, searchIndex, shelf, sort]);
+  // Por tandas: cuantas más caben, más grande la tanda (las portadas son pequeñas).
+  const pager = useInfinite(
+    pipeline.sorted,
+    view === 'portadas' ? 96 : view === 'lista' ? 60 : PAGE,
+    [section, tab, shelf, sort, view, needle].join('|'),
+  );
+  const loadMore = (
+    <LoadMore rest={pager.rest} onMore={pager.loadMore} shown={pager.visible.length} />
+  );
 
   let content;
-  if (tab === 'inicio' && needle) {
-    const found = sortEntries(library.filter(matches), 'reciente');
-    const view = viewOf('inicio', PLAIN_VIEWS);
+  // Notas y Cuadernos traen sus propios esqueletos.
+  const skeleton = booting && tab !== 'lienzo' && tab !== 'cuadernos';
+  if (skeleton) {
+    content =
+      tab === 'inicio' ? (
+        <InicioSkeleton />
+      ) : tab === 'citas' ? (
+        <TabSkeleton kind="quotes" />
+      ) : (
+        <TabSkeleton kind={MEDIA_TABS.has(tab) ? 'media' : 'plain'} view={view} />
+      );
+  } else if (tab === 'inicio' && needle) {
+    const found = pipeline.sorted;
     content = (
       <>
         <div className="lt-toolbar">
@@ -203,17 +280,31 @@ function ShelfPage({ section }: { section: ShelfSection }) {
           </div>
         </div>
         {found.length ? (
-          <EntryCollection entries={found.slice(0, limit)} view={view} media />
+          <EntryCollection entries={pager.visible} view={view} media />
         ) : (
-          <p className="lt-none">Nada coincide con «{query.trim()}».</p>
+          !notesFound && <p className="lt-none">Nada coincide con «{query.trim()}».</p>
         )}
-        {more(found.length)}
+        {loadMore}
+        {notesFound > 0 && (
+          <button type="button" className="lt-more" onClick={() => setTab('lienzo')}>
+            {notesFound === 1 ? '1 nota coincide' : `${notesFound} notas coinciden`} · Ver en Notas
+          </button>
+        )}
       </>
     );
   } else if (tab === 'inicio') {
     content =
-      library.length || readings?.length ? (
-        <Inicio lists={lists} readings={readings} onTab={setTab} />
+      library.length || readings?.length || liveNotes.length ? (
+        <Inicio
+          lists={lists}
+          readings={readings}
+          notes={liveNotes}
+          onTab={setTab}
+          onOpenNote={(id) => {
+            setOpenNote(id);
+            setTab('lienzo');
+          }}
+        />
       ) : (
         <EmptyState
           icon={Library}
@@ -226,7 +317,7 @@ function ShelfPage({ section }: { section: ShelfSection }) {
       );
   } else if (tab === 'citas') {
     content = quoteCount ? (
-      <QuoteWall query={query} onAdd={() => setQuoteSheet(true)} />
+      <QuoteWall query={deferredQuery} onAdd={() => setQuoteSheet(true)} />
     ) : (
       <EmptyState
         icon={Quote}
@@ -234,25 +325,28 @@ function ShelfPage({ section }: { section: ShelfSection }) {
         action={add}
       />
     );
+  } else if (tab === 'lienzo') {
+    content = (
+      <NotesBoard
+        store={notes}
+        query={deferredQuery}
+        openId={openNote}
+        onOpened={() => setOpenNote(null)}
+        composeTick={composeTick}
+        onComposeHandled={() => setComposeTick(0)}
+      />
+    );
   } else if (tab === 'cuadernos') {
-    content = <Cuadernos query={query} creating={creating} setCreating={setCreating} />;
+    content = <Cuadernos query={deferredQuery} creating={creating} setCreating={setCreating} />;
   } else if (entryTab) {
     const all = lists.get(tab) ?? [];
-    const found = all.filter(matches);
+    const { found, sorted } = pipeline;
     const shelfList = entryTab.shelves ?? [];
-    const test = shelfList.find((s) => s.id === shelf)?.test;
-    const inShelf = test ? found.filter(test) : found;
-    const sort = sorts[tab] ?? entryTab.sorts[0];
-    const sorted = sortEntries(inShelf, sort);
-    const view = viewOf(tab, entryTab.views);
     const summary = tabSummary(entryTab, all, today);
     const chips = shelfList.length ? (
       <ShelfChips
         value={shelf}
-        onChange={(id) => {
-          setShelves((s) => ({ ...s, [tab]: id }));
-          setLimit(PAGE);
-        }}
+        onChange={(id) => setShelves((s) => ({ ...s, [tab]: id }))}
         items={[
           {
             id: 'todos',
@@ -271,13 +365,18 @@ function ShelfPage({ section }: { section: ShelfSection }) {
     );
 
     content = !all.length ? (
-      <EmptyState icon={entryTab.icon} title={entryTab.empty} action={add} />
+      <>
+        <EmptyState icon={entryTab.icon} title={entryTab.empty} action={add} />
+        {tab === 'peliculas' && <LetterboxdButton />}
+      </>
     ) : (
       <>
+        {tab === 'libros' && !needle && <ReadingGoal entries={all} />}
         {summary.length > 0 && <p className="lt-summary lead">{summary.join(' · ')}</p>}
         <div className="lt-toolbar">
           {chips}
           <div className="lt-toolbar-end">
+            {tab === 'peliculas' && <LetterboxdButton />}
             <SortMenu
               options={entryTab.sorts}
               value={sort}
@@ -287,17 +386,17 @@ function ShelfPage({ section }: { section: ShelfSection }) {
           </div>
         </div>
         {sorted.length ? (
-          <EntryCollection
-            entries={sorted.slice(0, limit)}
-            view={view}
-            media={MEDIA_TABS.has(tab)}
-          />
+          <EntryCollection entries={pager.visible} view={view} media={MEDIA_TABS.has(tab)} />
         ) : (
           <p className="lt-none">
-            {needle ? `Nada coincide con «${query.trim()}».` : 'Nada en este estante.'}
+            {needle
+              ? `Nada coincide con «${query.trim()}».`
+              : shelf === 'estanteria'
+                ? 'Tu estantería está vacía. Añade los libros físicos que tienes en casa.'
+                : 'Nada en este estante.'}
           </p>
         )}
-        {more(sorted.length)}
+        {loadMore}
       </>
     );
   }
@@ -307,20 +406,26 @@ function ShelfPage({ section }: { section: ShelfSection }) {
       ? 'Buscar en Libroteca'
       : tab === 'citas'
         ? 'Buscar en tus citas'
-        : tab === 'cuadernos'
-          ? 'Buscar cuadernos'
-          : `Buscar en ${label}`;
+        : tab === 'lienzo'
+          ? 'Buscar en tus notas'
+          : tab === 'cuadernos'
+            ? 'Buscar cuadernos'
+            : `Buscar en ${label}`;
 
   return (
     <div className={'lt' + (section === 'Agenda' ? ' lt-agenda' : '')}>
       <header className="lt-head">
         <div className="lt-title">
           <h1>{section}</h1>
-          <p>
-            {stats.map((s) => (
-              <span key={s}>{s}</span>
-            ))}
-          </p>
+          {countsReady ? (
+            <p className="lt-reveal">
+              {stats.map((s) => (
+                <span key={s}>{s}</span>
+              ))}
+            </p>
+          ) : (
+            <StatsSkeleton />
+          )}
         </div>
         <div className="lt-actions">
           <label className="lt-search">
@@ -330,10 +435,7 @@ function ShelfPage({ section }: { section: ShelfSection }) {
               placeholder={placeholder}
               aria-label={`Buscar en ${section}`}
               value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setLimit(PAGE);
-              }}
+              onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Escape' && query) {
                   e.stopPropagation();
@@ -356,6 +458,13 @@ function ShelfPage({ section }: { section: ShelfSection }) {
       <nav className="lt-tabs" role="tablist" aria-label={`Secciones de ${section}`}>
         {tabs.map((t) => {
           const n = countOf(t.id);
+          const known =
+            dataSettled &&
+            (t.id === 'lienzo'
+              ? notes.notes !== null
+              : t.id === 'cuadernos'
+                ? notebooks.list != null
+                : true);
           return (
             <span key={t.id} className="lt-tab-wrap">
               {t.divider && <span className="lt-tabs-div" aria-hidden="true" />}
@@ -367,7 +476,7 @@ function ShelfPage({ section }: { section: ShelfSection }) {
                 title={t.iconOnly ? t.label : undefined}
                 className={
                   (tab === t.id ? 'on' : '') +
-                  (n === 0 ? ' lt-zero' : '') +
+                  (known && n === 0 ? ' lt-zero' : '') +
                   (t.iconOnly ? ' icon' : '')
                 }
                 onClick={() => setTab(t.id)}
@@ -376,7 +485,11 @@ function ShelfPage({ section }: { section: ShelfSection }) {
                 {!t.iconOnly && (
                   <>
                     {t.label}
-                    <i>{n.toLocaleString('es-CO')}</i>
+                    {known ? (
+                      <i>{n.toLocaleString('es-CO')}</i>
+                    ) : (
+                      <i className="lt-sk-count" aria-hidden="true" />
+                    )}
                   </>
                 )}
               </button>
@@ -385,7 +498,14 @@ function ShelfPage({ section }: { section: ShelfSection }) {
         })}
       </nav>
 
-      <div className="lt-body" role="tabpanel" aria-label={label}>
+      {/* Un fundido corto al llegar los datos o al cambiar de pestaña; nada se desplaza. */}
+      <div
+        className="lt-body lt-reveal"
+        key={tab + (skeleton ? ':sk' : '')}
+        role="tabpanel"
+        aria-label={label}
+        aria-busy={skeleton || undefined}
+      >
         {content}
       </div>
       {quoteSheet && <QuoteSheet onClose={() => setQuoteSheet(false)} />}

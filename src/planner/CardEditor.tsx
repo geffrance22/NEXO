@@ -1045,7 +1045,7 @@ function NexoLinks({
         <button
           type="button"
           className="bdm-note"
-          onClick={() => leave(() => go('Notas', { id: card.note_id! }))}
+          onClick={() => leave(() => go('Libroteca', { id: card.note_id! }))}
         >
           Ver la nota original <ArrowUpRight size={13} />
         </button>

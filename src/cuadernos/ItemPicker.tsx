@@ -121,13 +121,26 @@ export function ItemPicker({
         .from('quick_notes')
         .select('id,title,body,created_at')
         .eq('archived', false)
+        .eq('vaulted', false)
         .order('created_at', { ascending: false })
         .limit(40);
       if (remoteQuery) {
         r = r.ilike('title', like);
         n = n.or(`title.ilike.${like},body.ilike.${like}`);
       }
-      const [rr, nn] = await Promise.all([r, n]);
+      const [rr, first] = await Promise.all([r, n]);
+      // Sin la migración de la bóveda no existe `vaulted`: se repite sin ese filtro.
+      let nn = first;
+      if (first.error?.code === '42703') {
+        let plain = supabase
+          .from('quick_notes')
+          .select('id,title,body,created_at')
+          .eq('archived', false)
+          .order('created_at', { ascending: false })
+          .limit(40);
+        if (remoteQuery) plain = plain.or(`title.ilike.${like},body.ilike.${like}`);
+        nn = await plain;
+      }
       if (!live) return;
       setReadings((rr.data ?? []) as Remote[]);
       setNotes((nn.data ?? []) as Remote[]);

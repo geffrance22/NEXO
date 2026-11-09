@@ -429,7 +429,7 @@ function Board({
         if (extras?.readings.has(it.id)) go('Lecturas', { id: it.id });
         return;
       case 'note':
-        if (extras?.notes.has(it.id)) go('Notas', { id: it.id });
+        if (extras?.notes.has(it.id)) go('Libroteca', { id: it.id });
         return;
       case 'text':
         setEditing(it.key);

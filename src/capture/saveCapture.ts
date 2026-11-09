@@ -1,6 +1,6 @@
-import type { AppContextValue } from '../AppContext';
-import { supabase } from '../backend';
-import { cleanDetails } from '../composer/logic';
+import type { AppContextValue } from "../AppContext";
+import { supabase } from "../backend";
+import { cleanDetails } from "../composer/logic";
 import type {
   Entry,
   EntryDetails,
@@ -12,34 +12,34 @@ import type {
   PersonProfile,
   PersonUpdate,
   PlaceKind,
-} from '../data';
-import type { CapturePlan, MediaPiece, Piece } from '../lib/capture';
-import { normalizeText, splitList, todayInputValue } from '../lib/format';
-import { findMedia } from '../lib/moviePosters';
-import { ME } from '../lib/relations';
-import { deduceTastes } from '../lib/tastes';
-import { capture as captureLink, publicLink } from '../readings/capture';
-import { savePictures } from '../readings/media';
+} from "../data";
+import type { CapturePlan, MediaPiece, Piece } from "../lib/capture";
+import { normalizeText, splitList, todayInputValue } from "../lib/format";
+import { findMedia } from "../lib/moviePosters";
+import { ME } from "../lib/relations";
+import { deduceTastes } from "../lib/tastes";
+import { capture as captureLink, publicLink } from "../readings/capture";
+import { savePictures } from "../readings/media";
 
 /** Las personas que nombra una pieza. */
 export const peopleOf = (p: Piece): string[] => {
   switch (p.kind) {
-    case 'encuentro':
+    case "encuentro":
       return p.personIds;
-    case 'novedad':
-    case 'intercambio':
-    case 'dato':
-    case 'preguntar':
+    case "novedad":
+    case "intercambio":
+    case "dato":
+    case "preguntar":
       return [p.personId];
-    case 'compromiso':
+    case "compromiso":
       return [...p.peopleIds, ...(p.personId ? [p.personId] : [])];
-    case 'conexion':
+    case "conexion":
       return [p.a, p.b];
-    case 'obra':
+    case "obra":
       return [...p.personIds, ...(p.recommendedBy ? [p.recommendedBy] : [])];
-    case 'trabajo':
+    case "trabajo":
       return p.personIds;
-    case 'enlace':
+    case "enlace":
       return p.personId ? [p.personId] : [];
     default:
       return [];
@@ -73,35 +73,59 @@ const addUnique = (list: string[] = [], more: string[]) => {
   const seen = new Set(list.map((x) => normalizeText(x)));
   return [
     ...list,
-    ...more.filter((x) => !seen.has(normalizeText(x)) && seen.add(normalizeText(x))),
+    ...more.filter(
+      (x) => !seen.has(normalizeText(x)) && seen.add(normalizeText(x)),
+    ),
   ];
 };
 
 /** Estado de un libro o una película tal como lo guarda su formulario. */
-function mediaDetails(p: MediaPiece): EntryDetails {
-  if (p.media === 'Libro')
-    return cleanDetails('Libro', {
-      read: p.status === 'listo' ? 'terminado' : p.status === 'curso' ? 'leyendo' : 'quiero',
+function mediaDetails(
+  p: MediaPiece,
+  lender?: { id: string; name: string },
+): EntryDetails {
+  if (p.media === "Libro") {
+    const copy = p.status === "estante" ? "mio" : p.copy;
+    return cleanDetails("Libro", {
+      read:
+        p.status === "estante"
+          ? "estante"
+          : p.status === "listo"
+            ? "terminado"
+            : p.status === "curso"
+              ? "leyendo"
+              : "quiero",
       author: p.author,
       rating: p.rating || undefined,
+      ...(copy && { bookFormat: "fisico", bookOwner: copy }),
+      ...(copy === "prestado" &&
+        lender && { lentBy: lender.name, lentById: lender.id }),
     });
+  }
   // Si no dice que es serie, se deja sin fijar: al abrirla, TMDB puede detectarlo.
-  return cleanDetails('Película', {
-    watch: p.status === 'quiero' ? 'quiero' : p.status === 'curso' && p.series ? 'viendo' : 'vista',
+  return cleanDetails("Película", {
+    watch:
+      p.status === "quiero"
+        ? "quiero"
+        : p.status === "curso" && p.series
+          ? "viendo"
+          : "vista",
     platform: p.platform,
     rating: p.rating || undefined,
     series: p.series || undefined,
   });
 }
 
-const base = (over: Partial<EntryInput> & Pick<EntryInput, 'kind' | 'title'>): EntryInput => ({
-  body: '',
+const base = (
+  over: Partial<EntryInput> & Pick<EntryInput, "kind" | "title">,
+): EntryInput => ({
+  body: "",
   tags: [],
   personIds: [],
   date: todayInputValue(),
   amount: 0,
-  direction: 'egreso',
-  status: 'pendiente',
+  direction: "egreso",
+  status: "pendiente",
   images: [],
   details: {},
   file: null,
@@ -145,8 +169,9 @@ export async function saveCapture(
       .filter((n) => !placed.has(n.id) && says(p.evidence, n.name))
       .map((n) => n.id);
     if (!hits.length) return p;
-    if (p.kind === 'encuentro') return { ...p, personIds: [...new Set([...p.personIds, ...hits])] };
-    if (p.kind === 'compromiso')
+    if (p.kind === "encuentro")
+      return { ...p, personIds: [...new Set([...p.personIds, ...hits])] };
+    if (p.kind === "compromiso")
       return { ...p, peopleIds: [...new Set([...p.peopleIds, ...hits])] };
     return p;
   });
@@ -183,7 +208,8 @@ export async function saveCapture(
   // Persona nueva que nombraste por su parentesco («mi tía Rosa»): nace con su sexo.
   for (const k of plan.kinLinks ?? []) {
     const p = k.personId ? created.get(k.personId) : undefined;
-    if (p && k.gender) profiles.set(p.id, { ...profiles.get(p.id), gender: k.gender });
+    if (p && k.gender)
+      profiles.set(p.id, { ...profiles.get(p.id), gender: k.gender });
   }
   // Los comodines de parentesco sin elegir («kin:…») y las personas nuevas no creadas se omiten.
   const real = (id: string | null | undefined) =>
@@ -191,27 +217,31 @@ export async function saveCapture(
       ? null
       : (created.get(id)?.id ??
         shared.people.get(id)?.id ??
-        (id.startsWith('new:') || id.startsWith('kin:') ? null : id));
+        (id.startsWith("new:") || id.startsWith("kin:") ? null : id));
   const realIds = (ids: string[]) => [
     ...new Set(ids.map(real).filter((x): x is string => Boolean(x))),
   ];
 
   // 2. Lugar nuevo del encuentro o de la visita (se crea su ficha una sola vez).
-  const enc = on.find((p) => p.kind === 'encuentro');
-  const visit = on.find((p) => p.kind === 'visita');
+  const enc = on.find((p) => p.kind === "encuentro");
+  const visit = on.find((p) => p.kind === "visita");
   const madePlaces = shared.places;
   const placeFor = async (id: string | null, name: string, kind: PlaceKind) => {
-    if (id) return { id, name: app.workspace.places.find((p) => p.id === id)?.name ?? '' };
+    if (id)
+      return {
+        id,
+        name: app.workspace.places.find((p) => p.id === id)?.name ?? "",
+      };
     const clean = name.trim();
-    if (!clean) return { id: null, name: '' };
+    if (!clean) return { id: null, name: "" };
     const key = normalizeText(clean);
     if (madePlaces.has(key)) return madePlaces.get(key)!;
     const place = await app.savePlace({
       name: clean.slice(0, 120),
       kind,
-      city: '',
-      address: '',
-      story: '',
+      city: "",
+      address: "",
+      story: "",
       images: [],
       favorite: false,
     });
@@ -221,10 +251,10 @@ export async function saveCapture(
   };
   const encPlace = enc
     ? await placeFor(enc.placeId, enc.placeName, enc.placeKind)
-    : { id: null, name: '' };
+    : { id: null, name: "" };
   const visitPlace = visit
     ? await placeFor(visit.placeId, visit.placeName, visit.placeKind)
-    : { id: null, name: '' };
+    : { id: null, name: "" };
   const placeId = encPlace.id ?? visitPlace.id;
   const placeName = encPlace.name;
   const mood = plan.mood ?? undefined;
@@ -235,18 +265,18 @@ export async function saveCapture(
   if (plan.episode.on && !app.experiencesMissing) {
     episode = await app.saveEpisode(
       {
-        title: plan.episode.title.trim() || 'Experiencia',
+        title: plan.episode.title.trim() || "Experiencia",
         kind: plan.episode.kind,
         // Un encuentro de un día queda cerrado; un viaje o un proyecto sigue activo.
-        status: plan.episode.kind === 'encuentro' ? 'cerrado' : 'activo',
+        status: plan.episode.kind === "encuentro" ? "cerrado" : "activo",
         starts_on: plan.date,
-        ends_on: plan.episode.kind === 'encuentro' ? plan.date : null,
-        summary: '',
+        ends_on: plan.episode.kind === "encuentro" ? plan.date : null,
+        summary: "",
         source: plan.text.slice(0, 4000),
         person_ids: everyone,
         place_ids: placeId ? [placeId] : [],
         budget: null,
-        outcome: '',
+        outcome: "",
       },
       true,
     );
@@ -270,7 +300,7 @@ export async function saveCapture(
     origin = keep(
       await app.createEntry(
         base({
-          kind: 'Encuentro',
+          kind: "Encuentro",
           title: enc.title,
           body: plan.text,
           personIds: realIds(enc.personIds),
@@ -285,11 +315,12 @@ export async function saveCapture(
   const encounterPeople = enc ? realIds(enc.personIds) : [];
   // El encuentro ya estaba registrado: ese es el origen de las demás piezas.
   const dupEnc = !enc
-    ? pieces.find((p) => p.kind === 'encuentro' && !p.on && p.dup?.id)
+    ? pieces.find((p) => p.kind === "encuentro" && !p.on && p.dup?.id)
     : undefined;
   if (dupEnc?.dup?.id) {
     origin = app.workspace.entries.find((e) => e.id === dupEnc.dup!.id) ?? null;
-    if (dupEnc.kind === 'encuentro') encounterPeople.push(...realIds(dupEnc.personIds));
+    if (dupEnc.kind === "encuentro")
+      encounterPeople.push(...realIds(dupEnc.personIds));
   }
 
   // 5. Las demás piezas.
@@ -308,14 +339,14 @@ export async function saveCapture(
     }
     if (!p.on) continue;
     switch (p.kind) {
-      case 'movimiento':
+      case "movimiento":
         keep(
           await app.createEntry(
             base({
-              kind: 'Movimiento',
+              kind: "Movimiento",
               title: p.title || p.category,
               body: p.evidence,
-              tags: p.category && p.category !== 'Otro' ? [p.category] : [],
+              tags: p.category && p.category !== "Otro" ? [p.category] : [],
               personIds: encounterPeople,
               date: p.date,
               amount: p.amount,
@@ -326,17 +357,21 @@ export async function saveCapture(
           ),
         );
         break;
-      case 'compromiso': {
+      case "compromiso": {
         const who = real(p.personId);
-        const details: EntryDetails = { priority: 'media', commitment: p.commitment };
+        const details: EntryDetails = {
+          priority: "media",
+          commitment: p.commitment,
+        };
         if (p.due) details.due = p.due;
-        if (who && p.commitment === 'prometi') details.beneficiary = who;
-        if (who && (p.commitment === 'espero' || p.commitment === 'depende')) details.owner = who;
+        if (who && p.commitment === "prometi") details.beneficiary = who;
+        if (who && (p.commitment === "espero" || p.commitment === "depende"))
+          details.owner = who;
         if (origin) details.sourceId = origin.id;
         keep(
           await app.createEntry(
             base({
-              kind: 'Pendiente',
+              kind: "Pendiente",
               title: p.title,
               body: p.evidence,
               personIds: realIds([...(who ? [who] : []), ...p.peopleIds]),
@@ -349,22 +384,23 @@ export async function saveCapture(
         );
         break;
       }
-      case 'aprendizaje':
+      case "aprendizaje":
         keep(
           await app.createEntry(
             base({
-              kind: 'Aprendizaje',
+              kind: "Aprendizaje",
               title: p.title,
               body: p.evidence,
               personIds: encounterPeople,
               date: plan.date,
-              details: cleanDetails('Aprendizaje', {
-                source: p.source || (enc ? 'Persona' : 'Práctica'),
+              details: cleanDetails("Aprendizaje", {
+                source: p.source || (enc ? "Persona" : "Práctica"),
                 sourceName:
                   p.sourceName ||
-                  (p.source === 'Persona' || (!p.source && enc)
-                    ? (app.workspace.people.find((x) => x.id === encounterPeople[0])?.name ??
-                      enc?.title)
+                  (p.source === "Persona" || (!p.source && enc)
+                    ? (app.workspace.people.find(
+                        (x) => x.id === encounterPeople[0],
+                      )?.name ?? enc?.title)
                     : undefined),
               }),
               episodeId,
@@ -373,12 +409,12 @@ export async function saveCapture(
           ),
         );
         break;
-      case 'nota':
+      case "nota":
         keep(
           await app.createEntry(
             base({
-              kind: 'Nota',
-              title: p.text.split('\n')[0].slice(0, 80) || 'Nota',
+              kind: "Nota",
+              title: p.text.split("\n")[0].slice(0, 80) || "Nota",
               body: p.text,
               personIds: everyone,
               date: plan.date,
@@ -389,17 +425,17 @@ export async function saveCapture(
           ),
         );
         break;
-      case 'conexion': {
+      case "conexion": {
         const a = real(p.a);
         const b = real(p.b);
         if (!a || !b) break;
         keep(
           await app.createEntry(
             base({
-              kind: 'Nota',
-              title: 'Posible conexión',
+              kind: "Nota",
+              title: "Posible conexión",
               body: `${p.text}\n\nDe: «${p.evidence}»`,
-              tags: ['conexión'],
+              tags: ["conexión"],
               personIds: [a, b],
               date: plan.date,
               episodeId,
@@ -409,7 +445,7 @@ export async function saveCapture(
         );
         break;
       }
-      case 'novedad': {
+      case "novedad": {
         const who = real(p.personId);
         if (!who) break;
         // Lo que la novedad deja ver de sus gustos también se suma a su ficha.
@@ -428,29 +464,75 @@ export async function saveCapture(
         });
         break;
       }
-      case 'obra': {
+      case "obra": {
         const who = realIds(p.personIds);
         const rec = real(p.recommendedBy);
-        const recName = rec ? app.workspace.people.find((x) => x.id === rec)?.name : '';
-        const madeName = rec ? [...created.values()].find((x) => x.id === rec)?.name : '';
+        const recName = rec
+          ? app.workspace.people.find((x) => x.id === rec)?.name
+          : "";
+        const madeName = rec
+          ? [...created.values()].find((x) => x.id === rec)?.name
+          : "";
         const by = recName || madeName;
-        let details = mediaDetails(p);
+        const book = p.media === "Libro";
+        const lent = book && p.status !== "estante" && p.copy === "prestado";
+        const lender = lent && rec && by ? { id: rec, name: by } : undefined;
+        let details = mediaDetails(p, lender);
+        // Libro que ya estaba en tu estantería sin empezar: se actualiza su estado.
+        const shelf =
+          book && p.shelfId
+            ? app.workspace.entries.find(
+                (e) =>
+                  e.id === p.shelfId &&
+                  normalizeText(e.title).trim() ===
+                    normalizeText(p.title).trim(),
+              )
+            : undefined;
+        if (shelf && p.status !== "estante") {
+          const ok = await app.patchEntry(shelf, {
+            details: cleanDetails("Libro", {
+              ...shelf.details,
+              ...details,
+              author: details.author || shelf.details.author,
+              bookFormat: "fisico",
+              bookOwner: "mio",
+            }),
+            person_ids: [
+              ...new Set([...shelf.person_ids, ...(rec ? [rec] : []), ...who]),
+            ],
+          });
+          if (ok) {
+            count++;
+            toLink.push(shelf.id);
+          }
+          break;
+        }
         // Películas y series: el póster y la ficha de TMDB desde el primer momento.
-        if (p.media === 'Película')
+        if (p.media === "Película")
           try {
-            const found = await findMedia(p.title, '', p.series ? 'tv' : undefined);
-            if (found) details = cleanDetails('Película', { ...details, ...found });
+            const found = await findMedia(
+              p.title,
+              "",
+              p.series ? "tv" : undefined,
+            );
+            if (found)
+              details = cleanDetails("Película", { ...details, ...found });
           } catch {
             /* Sin TMDB se guarda igual; la Libroteca le buscará el póster después. */
           }
-        keep(
+        const said = by
+          ? lender
+            ? `Te lo prestó ${by.split(" ")[0]}.`
+            : book
+              ? `Te lo recomendó ${by.split(" ")[0]}.`
+              : `Te la recomendó ${by.split(" ")[0]}.`
+          : "";
+        const saved = keep(
           await app.createEntry(
             base({
               kind: p.media,
               title: p.title,
-              body: [by ? `Te la recomendó ${by.split(' ')[0]}.` : '', `«${p.evidence}»`]
-                .filter(Boolean)
-                .join('\n\n'),
+              body: [said, `«${p.evidence}»`].filter(Boolean).join("\n\n"),
               personIds: [...new Set([...(rec ? [rec] : []), ...who])],
               date: plan.date,
               details,
@@ -459,21 +541,35 @@ export async function saveCapture(
             true,
           ),
         );
+        // El préstamo queda como novedad en la ficha de quien te lo prestó.
+        if (saved && lender)
+          addsFor(lender.id).updates.push({
+            id: crypto.randomUUID(),
+            date: plan.date,
+            kind: "otro",
+            text: `Me prestó el libro «${p.title}»${p.author ? ` de ${p.author}` : ""}.`,
+            created_at: new Date().toISOString(),
+            entryId: saved.id,
+            ...(episodeId && { episodeId }),
+          });
         break;
       }
-      case 'idea':
+      case "idea":
         keep(
           await app.createEntry(
             base({
-              kind: p.as === 'trabajo' ? 'Trabajo' : 'Nota',
+              kind: p.as === "trabajo" ? "Trabajo" : "Nota",
               title: p.title,
               body: p.evidence,
-              tags: ['idea'],
+              tags: ["idea"],
               personIds: encounterPeople,
               date: plan.date,
               details:
-                p.as === 'trabajo'
-                  ? cleanDetails('Trabajo', { stage: 'idea', priority: 'media' })
+                p.as === "trabajo"
+                  ? cleanDetails("Trabajo", {
+                      stage: "idea",
+                      priority: "media",
+                    })
                   : {},
               episodeId,
             }),
@@ -481,20 +577,20 @@ export async function saveCapture(
           ),
         );
         break;
-      case 'trabajo':
+      case "trabajo":
         keep(
           await app.createEntry(
             base({
-              kind: 'Trabajo',
+              kind: "Trabajo",
               title: p.title,
               body: p.evidence,
               personIds: realIds(p.personIds),
               date: plan.date,
-              details: cleanDetails('Trabajo', {
+              details: cleanDetails("Trabajo", {
                 stage: p.stage,
                 nextStep: p.nextStep,
                 due: p.due || undefined,
-                priority: 'media',
+                priority: "media",
               }),
               episodeId,
             }),
@@ -502,7 +598,7 @@ export async function saveCapture(
           ),
         );
         break;
-      case 'intercambio': {
+      case "intercambio": {
         const who = real(p.personId);
         if (!who) break;
         addsFor(who).exchanges.push({
@@ -515,34 +611,40 @@ export async function saveCapture(
         });
         break;
       }
-      case 'dato': {
+      case "dato": {
         const who = real(p.personId);
         const value = p.value.trim();
         if (!who || !value) break;
         const a = addsFor(who);
-        if (p.field === 'birthday') a.birthday = value;
-        else if (p.field === 'fact')
-          a.facts.push({ id: crypto.randomUUID(), label: p.label.trim() || 'Dato', value });
+        if (p.field === "birthday") a.birthday = value;
+        else if (p.field === "fact")
+          a.facts.push({
+            id: crypto.randomUUID(),
+            label: p.label.trim() || "Dato",
+            value,
+          });
         else a[p.field].push(value.slice(0, 80));
         break;
       }
-      case 'preguntar': {
+      case "preguntar": {
         const who = real(p.personId);
-        if (who && p.text.trim()) addsFor(who).askNext.push(p.text.trim().slice(0, 200));
+        if (who && p.text.trim())
+          addsFor(who).askNext.push(p.text.trim().slice(0, 200));
         break;
       }
-      case 'visita': {
+      case "visita": {
         const details: EntryDetails = {};
-        if (visitPlace.name || p.placeName) details.place = visitPlace.name || p.placeName;
+        if (visitPlace.name || p.placeName)
+          details.place = visitPlace.name || p.placeName;
         if (visitPlace.id) details.placeId = visitPlace.id;
         if (mood) details.mood = mood;
         keep(
           await app.createEntry(
             base({
-              kind: 'Nota',
+              kind: "Nota",
               title: p.title,
               body: plan.text,
-              tags: ['lugar'],
+              tags: ["lugar"],
               date: p.date,
               details,
               episodeId,
@@ -552,9 +654,9 @@ export async function saveCapture(
         );
         break;
       }
-      case 'enlace': {
+      case "enlace": {
         const who = real(p.personId);
-        const saved = p.save === 'lecturas' && (await saveReading(p.url));
+        const saved = p.save === "lecturas" && (await saveReading(p.url));
         if (saved) {
           count++;
           break;
@@ -563,10 +665,10 @@ export async function saveCapture(
         keep(
           await app.createEntry(
             base({
-              kind: 'Nota',
+              kind: "Nota",
               title: `Para leer: ${p.title}`.slice(0, 180),
               body: `${p.url}\n\n«${p.evidence}»`,
-              tags: ['para leer'],
+              tags: ["para leer"],
               personIds: who ? [who] : [],
               date: plan.date,
               episodeId,
@@ -583,17 +685,17 @@ export async function saveCapture(
 
   // 6. Personas nuevas que no quedaron en ninguna pieza: una nota con lo que se dijo de ellas
   //    (salvo que ya haya una nota general, que las incluye a todas).
-  const hasNote = on.some((p) => p.kind === 'nota');
+  const hasNote = on.some((p) => p.kind === "nota");
   for (const n of hasNote ? [] : loose) {
     const person = created.get(n.id);
     if (!person) continue;
     const said = sentences(plan.text).filter((s) => says(s, n.name));
-    const body = (said.length ? said.join(' ') : plan.text).slice(0, 4000);
+    const body = (said.length ? said.join(" ") : plan.text).slice(0, 4000);
     keep(
       await app.createEntry(
         base({
-          kind: 'Nota',
-          title: (said[0] ?? `Sobre ${person.name.split(' ')[0]}`).slice(0, 80),
+          kind: "Nota",
+          title: (said[0] ?? `Sobre ${person.name.split(" ")[0]}`).slice(0, 80),
           body,
           personIds: [person.id],
           date: plan.date,
@@ -616,12 +718,16 @@ export async function saveCapture(
     const pr = { ...person.profile, ...profiles.get(id) };
     const next: PersonProfile = {
       ...pr,
-      ...(a.updates.length && { updates: [...a.updates, ...(pr.updates ?? [])].slice(0, 300) }),
+      ...(a.updates.length && {
+        updates: [...a.updates, ...(pr.updates ?? [])].slice(0, 300),
+      }),
       ...(a.exchanges.length && {
         exchanges: [...a.exchanges, ...(pr.exchanges ?? [])].slice(0, 500),
       }),
       ...(a.likes.length && { likes: addUnique(pr.likes, a.likes) }),
-      ...(a.dislikes.length && { dislikes: addUnique(pr.dislikes, a.dislikes) }),
+      ...(a.dislikes.length && {
+        dislikes: addUnique(pr.dislikes, a.dislikes),
+      }),
       ...(a.gifts.length && { gifts: addUnique(pr.gifts, a.gifts) }),
       ...(a.askNext.length && { askNext: addUnique(pr.askNext, a.askNext) }),
       ...(a.facts.length && { facts: [...(pr.facts ?? []), ...a.facts] }),
@@ -629,7 +735,9 @@ export async function saveCapture(
     };
     // Intereses nuevos (sin repetir lo que ya es un gusto o algo que no le gusta).
     const taken = new Set(
-      [...(next.likes ?? []), ...(next.dislikes ?? [])].map((x) => normalizeText(x)),
+      [...(next.likes ?? []), ...(next.dislikes ?? [])].map((x) =>
+        normalizeText(x),
+      ),
     );
     const before = splitList(person.interests);
     const interests = addUnique(
@@ -639,14 +747,17 @@ export async function saveCapture(
     const moreInterests = interests.length - before.length;
     const ok = await app.patchPerson(
       person,
-      { profile: next, ...(moreInterests > 0 && { interests: interests.join(', ') }) },
+      {
+        profile: next,
+        ...(moreInterests > 0 && { interests: interests.join(", ") }),
+      },
       true,
     );
     if (ok)
       shared.latest.set(id, {
         ...person,
         profile: next,
-        ...(moreInterests > 0 && { interests: interests.join(', ') }),
+        ...(moreInterests > 0 && { interests: interests.join(", ") }),
       });
     if (ok)
       count +=
@@ -660,7 +771,8 @@ export async function saveCapture(
         a.facts.length +
         (a.birthday ? 1 : 0);
   }
-  if (toLink.length && episodeId) await app.linkEntries(toLink, episodeId, true);
+  if (toLink.length && episodeId)
+    await app.linkEntries(toLink, episodeId, true);
 
   // 8. Parentescos: «Keila es tu mamá» queda guardado para la próxima vez (y su sexo, si faltaba).
   const kinTies = (plan.kinLinks ?? [])
@@ -672,14 +784,22 @@ export async function saveCapture(
     });
   if (kinTies.length) {
     const saved = await app.saveTies(
-      kinTies.map(({ link, id, owner }) => ({ a: id, b: owner, kind: link.kind })),
+      kinTies.map(({ link, id, owner }) => ({
+        a: id,
+        b: owner,
+        kind: link.kind,
+      })),
       true,
     );
     for (const { link, id } of kinTies) {
       if (!link.gender || created.has(link.personId!)) continue;
       const p = app.workspace.people.find((x) => x.id === id);
       if (p && !p.profile.gender)
-        await app.patchPerson(p, { profile: { ...p.profile, gender: link.gender } }, true);
+        await app.patchPerson(
+          p,
+          { profile: { ...p.profile, gender: link.gender } },
+          true,
+        );
     }
     ties = saved.length;
   }
@@ -695,7 +815,8 @@ const sentences = (text: string) =>
     .filter(Boolean);
 
 /** Verbos de conocer a alguien: «conocí a», «me presentaron a»… */
-const MET = /\b(conoci|conocimos|me presento|me presentaron|nos presentaron|presente a)\b/;
+const MET =
+  /\b(conoci|conocimos|me presento|me presentaron|nos presentaron|presente a)\b/;
 
 /** ¿La frase nombra a esta persona? (nombre completo o, si no, el primer nombre). */
 function says(text: string, name: string) {
@@ -703,24 +824,31 @@ function says(text: string, name: string) {
   const full = normalizeText(name.trim());
   if (!full) return false;
   if (t.includes(full)) return true;
-  const first = full.split(/\s+/)[0].replace(/[^\p{L}\p{N}]/gu, '');
-  return first.length > 2 && new RegExp(`(^|[^\\p{L}])${first}([^\\p{L}]|$)`, 'u').test(t);
+  const first = full.split(/\s+/)[0].replace(/[^\p{L}\p{N}]/gu, "");
+  return (
+    first.length > 2 &&
+    new RegExp(`(^|[^\\p{L}])${first}([^\\p{L}]|$)`, "u").test(t)
+  );
 }
 
 /** Guarda un enlace en Lecturas (si ya estaba, lo reutiliza). Devuelve false si no se pudo. */
 async function saveReading(url: string) {
   try {
     const link = publicLink(url);
-    const found = await supabase.from('readings').select('id').eq('url', link).maybeSingle();
+    const found = await supabase
+      .from("readings")
+      .select("id")
+      .eq("url", link)
+      .maybeSingle();
     if (found.error) return false;
     if (found.data) return true;
     const snap = await captureLink(link);
     const { error } = await supabase
-      .from('readings')
+      .from("readings")
       .insert({ url: link, ...snap, media: await savePictures(snap.content) });
     if (error) return false;
     // Lecturas se refresca sola si está abierta.
-    window.dispatchEvent(new Event('nexo:link-saved'));
+    window.dispatchEvent(new Event("nexo:link-saved"));
     return true;
   } catch {
     return false;

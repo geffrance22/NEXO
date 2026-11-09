@@ -8,7 +8,7 @@ import type {
   TieKind,
   UpdateKind,
   Workspace,
-} from '../data';
+} from "../data";
 import {
   BIRTHDAY_DATE,
   URL_RE,
@@ -24,15 +24,31 @@ import {
   moodIn,
   sharedIn,
   workIn,
-} from './captureRules';
-import { moods } from '../composer/controls';
-import { guessCategory } from './captureCategories';
-import { suggestConnections } from './captureConnections';
-import { findDate, futureDate, startsWithDate, stripDates } from './captureDates';
-import { markDuplicates } from './captureDuplicates';
-import { contentWords, learnedPerson, readMemory, usuallyDropped } from './captureMemory';
-import { addDays, friendlyDate, money, normalizeText, todayInputValue } from './format';
-import { recognize, type Mention } from './recognize';
+} from "./captureRules";
+import { moods } from "../composer/controls";
+import { guessCategory } from "./captureCategories";
+import { suggestConnections } from "./captureConnections";
+import {
+  findDate,
+  futureDate,
+  startsWithDate,
+  stripDates,
+} from "./captureDates";
+import { markDuplicates } from "./captureDuplicates";
+import {
+  contentWords,
+  learnedPerson,
+  readMemory,
+  usuallyDropped,
+} from "./captureMemory";
+import {
+  addDays,
+  friendlyDate,
+  money,
+  normalizeText,
+  todayInputValue,
+} from "./format";
+import { recognize, type Mention } from "./recognize";
 
 // ───────────────────────── Piezas de una experiencia ─────────────────────────
 
@@ -48,7 +64,7 @@ type Base = {
   hint?: string;
 };
 export type EncounterPiece = Base & {
-  kind: 'encuentro';
+  kind: "encuentro";
   personIds: string[];
   placeId: string | null;
   /** Lugar nuevo (no está en tus lugares): se crea al guardar si tiene nombre. */
@@ -59,7 +75,7 @@ export type EncounterPiece = Base & {
   title: string;
 };
 export type MoneyPiece = Base & {
-  kind: 'movimiento';
+  kind: "movimiento";
   amount: number;
   direction: Direction;
   category: string;
@@ -73,14 +89,14 @@ export type MoneyPiece = Base & {
   guessed?: boolean;
 };
 export type UpdatePiece = Base & {
-  kind: 'novedad';
+  kind: "novedad";
   personId: string;
   updateKind: UpdateKind;
   text: string;
   date: string;
 };
 export type CommitmentPiece = Base & {
-  kind: 'compromiso';
+  kind: "compromiso";
   title: string;
   commitment: CommitmentKind;
   /** AAAA-MM-DD o vacío. */
@@ -90,25 +106,37 @@ export type CommitmentPiece = Base & {
   /** Todas las personas que aparecen en el compromiso. */
   peopleIds: string[];
 };
-export type ConnectionPiece = Base & { kind: 'conexion'; a: string; b: string; text: string };
+export type ConnectionPiece = Base & {
+  kind: "conexion";
+  a: string;
+  b: string;
+  text: string;
+};
 export type LearningPiece = Base & {
-  kind: 'aprendizaje';
+  kind: "aprendizaje";
   title: string;
   /** Libro, Curso, Video, Artículo, Persona o Práctica (como en el formulario). */
   source: string;
   sourceName: string;
 };
-export type NotePiece = Base & { kind: 'nota'; text: string };
+export type NotePiece = Base & { kind: "nota"; text: string };
 /** Un libro, una película o una serie: vista, leyendo, por ver… con calificación. */
 export type MediaPiece = Base & {
-  kind: 'obra';
-  media: 'Libro' | 'Película';
+  kind: "obra";
+  media: "Libro" | "Película";
   series: boolean;
   title: string;
   author: string;
   platform: string;
-  /** quiero: por ver o leer; curso: leyéndolo o viéndola; listo: terminado o vista. */
-  status: 'quiero' | 'curso' | 'listo';
+  /**
+   * quiero: por ver o leer; curso: leyéndolo o viéndola; listo: terminado o vista.
+   * estante (solo libros): lo tienes en tu estantería, sin decir si lo leerás.
+   */
+  status: "estante" | "quiero" | "curso" | "listo";
+  /** Libros: tu ejemplar en papel («mio», va a tu estantería) o prestado («prestado»). */
+  copy: "mio" | "prestado" | "";
+  /** Libro que ya está en tu estantería sin empezar: se actualiza su estado en vez de duplicarlo. */
+  shelfId?: string;
   rating: number;
   /** Con quién la viste o quién aparece. */
   personIds: string[];
@@ -116,41 +144,45 @@ export type MediaPiece = Base & {
   recommendedBy: string | null;
 };
 export type IdeaPiece = Base & {
-  kind: 'idea';
+  kind: "idea";
   title: string;
   /** nota: idea suelta; trabajo: proyecto en etapa «Idea». */
-  as: 'nota' | 'trabajo';
+  as: "nota" | "trabajo";
 };
 export type WorkPiece = Base & {
-  kind: 'trabajo';
+  kind: "trabajo";
   title: string;
-  stage: 'idea' | 'curso' | 'pausa' | 'listo';
+  stage: "idea" | "curso" | "pausa" | "listo";
   nextStep: string;
   due: string;
   personIds: string[];
 };
 /** Algo que diste o recibiste: alimenta «Dar y recibir» en su ficha. */
 export type ExchangePiece = Base & {
-  kind: 'intercambio';
+  kind: "intercambio";
   personId: string;
-  dir: 'dar' | 'recibir';
+  dir: "dar" | "recibir";
   exchange: ExchangeKind;
   note: string;
   date: string;
 };
 /** Un dato de su ficha: gustos, lo que no le gusta, ideas de regalo, cumpleaños u otro dato. */
 export type FactPiece = Base & {
-  kind: 'dato';
+  kind: "dato";
   personId: string;
-  field: 'likes' | 'dislikes' | 'gifts' | 'birthday' | 'fact';
+  field: "likes" | "dislikes" | "gifts" | "birthday" | "fact";
   label: string;
   value: string;
 };
 /** Para preguntarle la próxima vez («¿Cómo le fue en la entrevista?»). */
-export type AskPiece = Base & { kind: 'preguntar'; personId: string; text: string };
+export type AskPiece = Base & {
+  kind: "preguntar";
+  personId: string;
+  text: string;
+};
 /** Un lugar donde estuviste sin un encuentro con alguien: se guarda como nota en ese lugar. */
 export type VisitPiece = Base & {
-  kind: 'visita';
+  kind: "visita";
   placeId: string | null;
   placeName: string;
   placeKind: PlaceKind;
@@ -160,10 +192,10 @@ export type VisitPiece = Base & {
 };
 /** Un enlace del texto: se guarda en Lecturas (o como nota si no se puede capturar). */
 export type LinkPiece = Base & {
-  kind: 'enlace';
+  kind: "enlace";
   url: string;
   title: string;
-  save: 'lecturas' | 'nota';
+  save: "lecturas" | "nota";
   /** Quién te lo pasó. */
   personId: string | null;
 };
@@ -184,7 +216,7 @@ export type Piece =
   | AskPiece
   | VisitPiece
   | LinkPiece;
-export type PieceKind = Piece['kind'];
+export type PieceKind = Piece["kind"];
 
 /** Nombre que no está en tu universo: se puede crear al guardar. */
 export type NewPerson = {
@@ -206,7 +238,12 @@ export type CapturePlan = {
   pieces: Piece[];
   newPeople: NewPerson[];
   /** Nombres de pila que coinciden con varias personas (la pieza usa la más probable). */
-  ambiguous: { name: string; ids: string[]; chosen: string; learned?: boolean }[];
+  ambiguous: {
+    name: string;
+    ids: string[];
+    chosen: string;
+    learned?: boolean;
+  }[];
   /** Parentescos del texto («mi mamá», «mi tío Carlos») por resolver o guardar como vínculo. */
   kinLinks: KinLink[];
   episode: { on: boolean; title: string; kind: EpisodeKind };
@@ -233,34 +270,35 @@ export type KinLink = {
 };
 
 export const pieceLabels: Record<PieceKind, string> = {
-  encuentro: 'Encuentro',
-  movimiento: 'Movimiento',
-  novedad: 'Novedad en su ficha',
-  compromiso: 'Compromiso',
-  conexion: 'Posible conexión',
-  aprendizaje: 'Aprendizaje',
-  nota: 'Nota',
-  obra: 'Libro o película',
-  idea: 'Idea',
-  trabajo: 'Trabajo',
-  intercambio: 'Dar y recibir',
-  dato: 'Dato de su ficha',
-  preguntar: 'Para preguntarle',
-  visita: 'Lugar visitado',
-  enlace: 'Enlace para leer',
+  encuentro: "Encuentro",
+  movimiento: "Movimiento",
+  novedad: "Novedad en su ficha",
+  compromiso: "Compromiso",
+  conexion: "Posible conexión",
+  aprendizaje: "Aprendizaje",
+  nota: "Nota",
+  obra: "Libro o película",
+  idea: "Idea",
+  trabajo: "Trabajo",
+  intercambio: "Dar y recibir",
+  dato: "Dato de su ficha",
+  preguntar: "Para preguntarle",
+  visita: "Lugar visitado",
+  enlace: "Enlace para leer",
 };
 
 /** Nombre corto de una pieza (para los chips de la vista previa). */
 export function pieceName(p: Piece) {
-  if (p.kind === 'obra') return p.media === 'Libro' ? 'Libro' : p.series ? 'Serie' : 'Película';
-  if (p.kind === 'idea' && p.as === 'trabajo') return 'Idea de proyecto';
+  if (p.kind === "obra")
+    return p.media === "Libro" ? "Libro" : p.series ? "Serie" : "Película";
+  if (p.kind === "idea" && p.as === "trabajo") return "Idea de proyecto";
   return pieceLabels[p.kind];
 }
 
 // ───────────────────────── Fechas en lenguaje natural ─────────────────────────
 
 // Viven en `captureDates`: «ayer», «hace 2 semanas», «dentro de 2 meses», «en un año», «15/03»…
-export { futureDate, pastDate } from './captureDates';
+export { futureDate, pastDate } from "./captureDates";
 
 // ───────────────────────── Personas y lugares mencionados ─────────────────────────
 
@@ -269,36 +307,61 @@ export { futureDate, pastDate } from './captureDates';
 /** Palabras con mayúscula que no son nombres de persona. */
 const NOT_NAMES = new Set(
   (
-    'yo el la los las un una mi su tu hoy ayer manana lunes martes miercoles jueves viernes sabado domingo ' +
-    'enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre dios ' +
-    'whatsapp instagram zoom meet teams google navidad semana santa netflix youtube spotify uber ' +
-    'rappi didi pero luego despues entonces tambien ademas'
-  ).split(' '),
+    "yo el la los las un una mi su tu hoy ayer manana lunes martes miercoles jueves viernes sabado domingo " +
+    "enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre dios " +
+    "whatsapp instagram zoom meet teams google navidad semana santa netflix youtube spotify uber " +
+    "rappi didi pero luego despues entonces tambien ademas"
+  ).split(" "),
 );
 /** Tratamientos que van antes del nombre («don Pedro», «la doctora Ruiz»). */
-const HONORIFIC = /^(?:don|doña|dona|señor|senor|señora|senora|doctor|doctora|dr\.?|dra\.?|profe|profesor|profesora)\s+/i;
+const HONORIFIC =
+  /^(?:don|doña|dona|señor|senor|señora|senora|doctor|doctora|dr\.?|dra\.?|profe|profesor|profesora)\s+/i;
 
 // ───────────────────────── Reglas ─────────────────────────
 
 const ACTIVITY: [RegExp, string, string][] = [
-  [/\b(almorc|almorzamos|almuerzo|almorzar)/, 'Comida', 'Almuerzo'],
-  [/\b(cene|cenamos|cena\b|cenar)/, 'Comida', 'Cena'],
-  [/\b(desayun)/, 'Comida', 'Desayuno'],
-  [/\b(brunch)/, 'Comida', 'Brunch'],
-  [/\b(comimos|comida con|fuimos a comer|salimos a comer|onces)/, 'Comida', 'Comida'],
-  [/\b(cafe|tinto|cafecito)/, 'Café', 'Café'],
-  [/\b(videollamada|zoom|meet\b|teams\b|facetime)/, 'Videollamada', 'Videollamada'],
-  [/\b(llame|llamada|me llamo|hablamos por telefono|nos llamamos)/, 'Llamada', 'Llamada'],
+  [/\b(almorc|almorzamos|almuerzo|almorzar)/, "Comida", "Almuerzo"],
+  [/\b(cene|cenamos|cena\b|cenar)/, "Comida", "Cena"],
+  [/\b(desayun)/, "Comida", "Desayuno"],
+  [/\b(brunch)/, "Comida", "Brunch"],
+  [
+    /\b(comimos|comida con|fuimos a comer|salimos a comer|onces)/,
+    "Comida",
+    "Comida",
+  ],
+  [/\b(cafe|tinto|cafecito)/, "Café", "Café"],
+  [
+    /\b(videollamada|zoom|meet\b|teams\b|facetime)/,
+    "Videollamada",
+    "Videollamada",
+  ],
+  [
+    /\b(llame|llamada|me llamo|hablamos por telefono|nos llamamos)/,
+    "Llamada",
+    "Llamada",
+  ],
   [
     /\b(fiesta|celebramos|festejamos|cumpleanos de|rumba|rumbeamos|discoteca|bailamos|cervezas|tragos)/,
-    'Fiesta',
-    'Celebración',
+    "Fiesta",
+    "Celebración",
   ],
-  [/\b(visite|me visito|fui a su casa|vino a la casa|vinieron a la casa|nos visitaron)/, 'Visita', 'Visita'],
-  [/\b(paseo|caminamos|fuimos a caminar|caminata|senderismo|fuimos al parque)/, 'Paseo', 'Paseo'],
-  [/\b(viaje|viajamos|nos fuimos de viaje)/, 'Viaje', 'Viaje'],
-  [/\b(reuni|reunion|trabajamos|comite|junta\b)/, 'Trabajo', 'Reunión'],
-  [/\b(jugamos|partido|gimnasio|entrenamos|corrimos|montamos bici|nadamos|futbol|tenis|padel)/, 'Deporte', 'Deporte'],
+  [
+    /\b(visite|me visito|fui a su casa|vino a la casa|vinieron a la casa|nos visitaron)/,
+    "Visita",
+    "Visita",
+  ],
+  [
+    /\b(paseo|caminamos|fuimos a caminar|caminata|senderismo|fuimos al parque)/,
+    "Paseo",
+    "Paseo",
+  ],
+  [/\b(viaje|viajamos|nos fuimos de viaje)/, "Viaje", "Viaje"],
+  [/\b(reuni|reunion|trabajamos|comite|junta\b)/, "Trabajo", "Reunión"],
+  [
+    /\b(jugamos|partido|gimnasio|entrenamos|corrimos|montamos bici|nadamos|futbol|tenis|padel)/,
+    "Deporte",
+    "Deporte",
+  ],
 ];
 const MEETING =
   /\b(almorc|almorzamos|cene|cenamos|desayun|comimos|me vi con|nos vimos|vi a|visite|visitamos a|me visito|nos visito|fui con|fuimos|sali con|salimos|tomamos|nos tomamos|tome (?:un )?(?:cafe|tinto)|hable con|hablamos|llame a|me llamo|conversamos|converse|me reuni|nos reunimos|reunion con|estuve con|estuvimos|celebramos|festejamos|jugamos|pasamos|conoci a|me encontre con|nos encontramos|acompane a|recogi a|parchamos|compartimos|cuadramos con|me escribio|nos escribimos)/;
@@ -343,8 +406,8 @@ const NOT_MONEY_AFTER =
 
 const unitValue = (unit: string) => {
   const u = normalizeText(unit);
-  if (u === 'mil' || u === 'k' || u === 'lucas' || u === 'barras') return 1000;
-  if (u.startsWith('millon') || u.startsWith('palo')) return 1e6;
+  if (u === "mil" || u === "k" || u === "lucas" || u === "barras") return 1000;
+  if (u.startsWith("millon") || u.startsWith("palo")) return 1e6;
   return 1;
 };
 
@@ -358,7 +421,7 @@ function amountsIn(text: string): AmountHit[] {
     const start = m.index ?? 0;
     const end = start + m[0].length;
     const digits = m[2];
-    const unit = m[3] ?? '';
+    const unit = m[3] ?? "";
     const currency = Boolean(m[1] || m[4]);
     const grouped = /[.'’,]\d{3}$/.test(digits);
     if (!currency && !unit && !grouped && Number(digits) < 1000) continue;
@@ -371,17 +434,22 @@ function amountsIn(text: string): AmountHit[] {
       !currency &&
       !unit &&
       !grouped &&
-      /\b(?:a las|las|el|del|al)\s*$/.test(n.slice(Math.max(0, start - 7), start))
+      /\b(?:a las|las|el|del|al)\s*$/.test(
+        n.slice(Math.max(0, start - 7), start),
+      )
     )
       continue;
-    const clean = grouped ? digits.replace(/[.'’,]/g, '') : digits.replace(',', '.');
+    const clean = grouped
+      ? digits.replace(/[.'’,]/g, "")
+      : digits.replace(",", ".");
     const value = Math.round(Number(clean) * (unit ? unitValue(unit) : 1));
     if (!value || value > 1e11) continue;
     out.push({ value, start, end, unit: Boolean(unit || currency) });
   }
   for (const m of n.matchAll(WORD_AMOUNT)) {
     const start = m.index ?? 0;
-    if (out.some((a) => start < a.end && start + m[0].length > a.start)) continue;
+    if (out.some((a) => start < a.end && start + m[0].length > a.start))
+      continue;
     out.push({
       value: Math.round(WORD_NUM[m[1]] * unitValue(m[2])),
       start,
@@ -396,12 +464,17 @@ function amountsIn(text: string): AmountHit[] {
 function directionAt(n: string, at: number): Direction | null {
   const verbs: { at: number; end: number; dir: Direction }[] = [];
   for (const m of n.matchAll(MONEY_IN))
-    verbs.push({ at: m.index ?? 0, end: (m.index ?? 0) + m[0].length, dir: 'ingreso' });
+    verbs.push({
+      at: m.index ?? 0,
+      end: (m.index ?? 0) + m[0].length,
+      dir: "ingreso",
+    });
   for (const m of n.matchAll(MONEY_OUT)) {
     const s = m.index ?? 0;
     // «me pagó la cena»: el «pagó la» de adentro no es un gasto.
-    if (verbs.some((v) => v.dir === 'ingreso' && s >= v.at && s < v.end)) continue;
-    verbs.push({ at: s, end: s + m[0].length, dir: 'egreso' });
+    if (verbs.some((v) => v.dir === "ingreso" && s >= v.at && s < v.end))
+      continue;
+    verbs.push({ at: s, end: s + m[0].length, dir: "egreso" });
   }
   if (!verbs.length) return null;
   const before = verbs.filter((v) => v.at <= at).sort((a, b) => b.at - a.at)[0];
@@ -411,30 +484,33 @@ function directionAt(n: string, at: number): Direction | null {
 const UPDATE_RULES: [RegExp, UpdateKind][] = [
   [
     /\b(esta|anda|sigue) buscando (trabajo|empleo|chamba)|consiguio (trabajo|empleo)|empezo a trabajar|tiene (un )?trabajo nuevo|nuevo trabajo|(la|lo) ascendieron|renuncio|(lo|la) despidieron|se quedo sin (trabajo|empleo)|cambio de trabajo|esta trabajando en/,
-    'trabajo',
+    "trabajo",
   ],
   [
     /\bse graduo|esta estudiando|empezo (la|una|su) (maestria|carrera|especializacion)|entro a (la universidad|estudiar)|termino (la|su) (carrera|tesis)/,
-    'estudios',
+    "estudios",
   ],
   [
     /\b(esta|anda) enferm|(la|lo) operaron|esta en el hospital|se lesiono|se fracturo|esta en tratamiento|se esta recuperando/,
-    'salud',
+    "salud",
   ],
   [
     /\bse caso|se va a casar|se comprometio|tiene novi[oa]|termino con su|se separo|se divorcio|esta saliendo con/,
-    'amor',
+    "amor",
   ],
   [
     /\besta embarazada|va a ser (mama|papa)|tuvo (un|una) beb|nacio su|murio su|fallecio su/,
-    'familia',
+    "familia",
   ],
-  [/\bse mudo|se va a mudar|compro (casa|apartamento|apto)|se fue a vivir/, 'hogar'],
-  [/\b(gano|lanzo|abrio su|monto su|termino su primera)/, 'logro'],
-  [/\bse va (de viaje|a viajar)|viaja a|esta de viaje|se va para/, 'viaje'],
+  [
+    /\bse mudo|se va a mudar|compro (casa|apartamento|apto)|se fue a vivir/,
+    "hogar",
+  ],
+  [/\b(gano|lanzo|abrio su|monto su|termino su primera)/, "logro"],
+  [/\bse va (de viaje|a viajar)|viaja a|esta de viaje|se va para/, "viaje"],
   [
     /\b(esta|anda) (muy )?(triste|feliz|estresad|deprimid|content|preocupad|cansad|agotad|ilusionad)/,
-    'animo',
+    "animo",
   ],
 ];
 
@@ -444,10 +520,11 @@ const WANT = /\b(tengo que|debo|necesito|voy a|me toca|hay que)\s+/;
 const WAIT =
   /\b(me va a|me van a|quedo en|quedaron en|estoy esperando (?:que )?|espero que (?:me )?)\s*/;
 const DEPENDS = /\bdepende de\s+/;
-const LEARN = /\b(aprendi(?: que)?|descubri que|me enseno(?: que)?|entendi que)\s+/;
+const LEARN =
+  /\b(aprendi(?: que)?|descubri que|me enseno(?: que)?|entendi que)\s+/;
 
 const capital = (s: string) => {
-  const t = s.trim().replace(/[\s,;.]+$/, '');
+  const t = s.trim().replace(/[\s,;.]+$/, "");
   return t ? t[0].toUpperCase() + t.slice(1) : t;
 };
 
@@ -465,7 +542,9 @@ function clauses(text: string) {
     );
     if (split > 0) {
       out.push({ text: s.slice(0, split), start });
-      const rest = s.slice(split).replace(/^[,;]?\s+(?:y luego|y despues|y|pero|luego|despues)\s+/i, '');
+      const rest = s
+        .slice(split)
+        .replace(/^[,;]?\s+(?:y luego|y despues|y|pero|luego|despues)\s+/i, "");
       out.push({ text: rest, start: start + s.length - rest.length });
     } else out.push({ text: s, start });
   }
@@ -488,14 +567,21 @@ export function proposeCapture(
   const source = text.trim();
   // La fecha de un cumpleaños o la de un enlace no dicen cuándo pasó lo que cuentas.
   const dateHit = findDate(
-    source.replace(BIRTHDAY_DATE, (s) => ' '.repeat(s.length)).replace(URL_RE, (s) => ' '.repeat(s.length)),
-    'past',
+    source
+      .replace(BIRTHDAY_DATE, (s) => " ".repeat(s.length))
+      .replace(URL_RE, (s) => " ".repeat(s.length)),
+    "past",
     today,
   );
   const date = dateHit?.date ?? today;
   const lastSeen = (id: string) =>
-    ws.entries.find((e) => e.person_ids.includes(id))?.created_at ?? '';
-  const rec = recognize(source, ws.people, ws.ties ?? [], (id) => Date.parse(lastSeen(id)) || 0);
+    ws.entries.find((e) => e.person_ids.includes(id))?.created_at ?? "";
+  const rec = recognize(
+    source,
+    ws.people,
+    ws.ties ?? [],
+    (id) => Date.parse(lastSeen(id)) || 0,
+  );
   const mentions: Mention[] = [...rec.mentions];
   const newPeople: NewPerson[] = [];
 
@@ -503,9 +589,15 @@ export function proposeCapture(
   // que eliges antes de guardar; «mi tío Carlos» sin ese vínculo propone guardarlo.
   const kinLinks: KinLink[] = [];
   for (const c of rec.cues) {
-    const base = { label: c.label, kind: c.kind, gender: c.gender, owner: c.owner, save: true };
-    if (c.status === 'unknown') {
-      const id = 'kin:' + uid();
+    const base = {
+      label: c.label,
+      kind: c.kind,
+      gender: c.gender,
+      owner: c.owner,
+      save: true,
+    };
+    if (c.status === "unknown") {
+      const id = "kin:" + uid();
       kinLinks.push({ ...base, id, personId: null });
       mentions.push({
         start: c.start,
@@ -515,10 +607,15 @@ export function proposeCapture(
         why: c.label,
         strength: 2,
       });
-    } else if (c.status === 'confirm' && c.newName) {
-      let fresh = newPeople.find((n) => normalizeText(n.name) === normalizeText(c.newName!));
-      if (!fresh) newPeople.push((fresh = { id: 'new:' + uid(), name: c.newName, on: true }));
-      kinLinks.push({ ...base, id: 'kl:' + uid(), personId: fresh.id });
+    } else if (c.status === "confirm" && c.newName) {
+      let fresh = newPeople.find(
+        (n) => normalizeText(n.name) === normalizeText(c.newName!),
+      );
+      if (!fresh)
+        newPeople.push(
+          (fresh = { id: "new:" + uid(), name: c.newName, on: true }),
+        );
+      kinLinks.push({ ...base, id: "kl:" + uid(), personId: fresh.id });
       mentions.push({
         start: c.start,
         end: c.end,
@@ -527,8 +624,8 @@ export function proposeCapture(
         why: c.label,
         strength: 2,
       });
-    } else if (c.status === 'confirm' && c.ids.length === 1) {
-      kinLinks.push({ ...base, id: 'kl:' + uid(), personId: c.ids[0] });
+    } else if (c.status === "confirm" && c.ids.length === 1) {
+      kinLinks.push({ ...base, id: "kl:" + uid(), personId: c.ids[0] });
     }
   }
   mentions.sort((a, b) => a.start - b.start);
@@ -537,7 +634,8 @@ export function proposeCapture(
   // más recientemente.
   const recent = (ids: string[]) =>
     [...ids].sort((a, b) => lastSeen(b).localeCompare(lastSeen(a)))[0];
-  const pickFor = (name: string, ids: string[]) => learnedPerson(name, ids, memory) ?? recent(ids);
+  const pickFor = (name: string, ids: string[]) =>
+    learnedPerson(name, ids, memory) ?? recent(ids);
   const seenAmbiguous = new Set<string>();
   const ambiguous = mentions
     .filter((m) => m.ids.length > 1 && !m.group)
@@ -547,13 +645,22 @@ export function proposeCapture(
     })
     .map((m) => {
       const learned = learnedPerson(m.text, m.ids, memory);
-      return { name: m.text, ids: m.ids, chosen: learned ?? recent(m.ids), learned: Boolean(learned) };
+      return {
+        name: m.text,
+        ids: m.ids,
+        chosen: learned ?? recent(m.ids),
+        learned: Boolean(learned),
+      };
     });
   /** Personas de un tramo: todas si es un grupo («los Gómez»), la más probable si es ambiguo. */
   const resolved = (m: Mention) =>
     m.group ? m.ids : m.ids.length > 1 ? [pickFor(m.text, m.ids)] : m.ids;
   const peopleIn = (start: number, end: number) => [
-    ...new Set(mentions.filter((m) => m.start >= start && m.end <= end).flatMap(resolved)),
+    ...new Set(
+      mentions
+        .filter((m) => m.start >= start && m.end <= end)
+        .flatMap(resolved),
+    ),
   ];
   const allPeople = [...new Set(mentions.flatMap(resolved))];
 
@@ -561,38 +668,50 @@ export function proposeCapture(
   const NAME = "[A-ZÁÉÍÓÚÑ][a-záéíóúñü'’]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñü'’]+)?";
   const nameRe = new RegExp(
     `\\b(?:con|junto a|conoc[ií] a|conocimos a|vi a|llam[ée] a|present[ée] a|me present[óo] a|acompañ[ée] a|recog[ií] a|contacto de|n[úu]mero de|tel[ée]fono de|correo de|donde)\\s+(?:(?:mi|su|tu)\\s+(?:amig[oa]|compañer[oa]|vecin[oa]|colega|jef[ea]|novi[oa]|socio|socia|profe|cliente)\\s+)?((?:don|doña|doctor|doctora|profe)\\s+)?(${NAME})((?:\\s*(?:,|\\by\\b|\\be\\b)\\s*${NAME})*)`,
-    'g',
+    "g",
   );
   const addNew = (raw: string, at: number) => {
-    const name = raw.replace(HONORIFIC, '').trim();
+    const name = raw.replace(HONORIFIC, "").trim();
     if (!name || mentions.some((x) => at >= x.start && at < x.end)) return;
-    if (NOT_NAMES.has(normalizeText(name.split(' ')[0]))) return;
-    if (ws.places.some((p) => normalizeText(p.name).startsWith(normalizeText(name)))) return;
+    if (NOT_NAMES.has(normalizeText(name.split(" ")[0]))) return;
+    if (
+      ws.places.some((p) =>
+        normalizeText(p.name).startsWith(normalizeText(name)),
+      )
+    )
+      return;
     if (!newPeople.some((n) => normalizeText(n.name) === normalizeText(name)))
-      newPeople.push({ id: 'new:' + uid(), name, on: true });
+      newPeople.push({ id: "new:" + uid(), name, on: true });
   };
   for (const m of source.matchAll(nameRe)) {
     const first = m[2];
-    const firstAt = (m.index ?? 0) + m[0].length - (m[3]?.length ?? 0) - first.length;
+    const firstAt =
+      (m.index ?? 0) + m[0].length - (m[3]?.length ?? 0) - first.length;
     addNew(first, firstAt);
     // Los que siguen en la lista («con Laura, Pedro y Ana»).
     if (m[3]) {
       const listAt = (m.index ?? 0) + m[0].length - m[3].length;
-      for (const x of m[3].matchAll(new RegExp(NAME, 'g')))
+      for (const x of m[3].matchAll(new RegExp(NAME, "g")))
         addNew(x[0], listAt + (x.index ?? 0));
     }
   }
   const newIdsIn = (s: string) =>
-    newPeople.filter((n) => normalizeText(s).includes(normalizeText(n.name))).map((n) => n.id);
+    newPeople
+      .filter((n) => normalizeText(s).includes(normalizeText(n.name)))
+      .map((n) => n.id);
 
   const norm = normalizeText(source);
   const pieces: Piece[] = [];
 
   // Lugar: uno conocido nombrado en el texto o «en <Nombre propio>».
   let placeId: string | null = null;
-  let placeName = '';
+  let placeName = "";
   const known = ws.places
-    .filter((p) => p.name.trim().length >= 3 && norm.includes(normalizeText(p.name.trim())))
+    .filter(
+      (p) =>
+        p.name.trim().length >= 3 &&
+        norm.includes(normalizeText(p.name.trim())),
+    )
     .sort((a, b) => b.name.length - a.name.length)[0];
   if (known) placeId = known.id;
   else {
@@ -603,7 +722,7 @@ export function proposeCapture(
     const v = m ?? source.match(VISIT_PLACE);
     if (
       v &&
-      !NOT_NAMES.has(normalizeText(v[1].split(' ')[0])) &&
+      !NOT_NAMES.has(normalizeText(v[1].split(" ")[0])) &&
       !mentions.some((x) => source.indexOf(v[1]) === x.start) &&
       !newPeople.some((x) => normalizeText(x.name) === normalizeText(v[1]))
     )
@@ -636,26 +755,28 @@ export function proposeCapture(
     const names = ids
       .map(
         (id) =>
-          ws.people.find((p) => p.id === id)?.name.split(' ')[0] ??
-          newPeople.find((n) => n.id === id)?.name.split(' ')[0] ??
+          ws.people.find((p) => p.id === id)?.name.split(" ")[0] ??
+          newPeople.find((n) => n.id === id)?.name.split(" ")[0] ??
           kinLinks.find((k) => k.id === id)?.label,
       )
       .filter(Boolean);
-    const place = placeId ? ws.places.find((p) => p.id === placeId)!.name : placeName;
-    const what = act?.[2] ?? 'Encuentro';
+    const place = placeId
+      ? ws.places.find((p) => p.id === placeId)!.name
+      : placeName;
+    const what = act?.[2] ?? "Encuentro";
     pieces.push({
       id: uid(),
-      kind: 'encuentro',
+      kind: "encuentro",
       on: true,
       evidence: firstClause.text.trim(),
       personIds: ids,
       placeId,
-      placeName: placeId ? '' : placeName,
+      placeName: placeId ? "" : placeName,
       placeKind: guessPlaceKind(placeName, act?.[1]),
       date,
-      activity: act?.[1] ?? '',
+      activity: act?.[1] ?? "",
       title:
-        `${what}${names.length ? ' con ' + names.join(', ') : ''}${place ? ' · ' + place : ''}`.slice(
+        `${what}${names.length ? " con " + names.join(", ") : ""}${place ? " · " + place : ""}`.slice(
           0,
           180,
         ),
@@ -665,34 +786,46 @@ export function proposeCapture(
   // Enlaces: van a Lecturas. Se quitan del texto que se analiza (sus puntos partirían frases).
   for (const m of source.matchAll(URL_RE)) {
     const url = cleanUrl(m[0]);
-    const around = clauses(source.replace(URL_RE, (u) => ' '.repeat(u.length))).find(
-      (c) => (m.index ?? 0) >= c.start && (m.index ?? 0) <= c.start + c.text.length + 1,
+    const around = clauses(
+      source.replace(URL_RE, (u) => " ".repeat(u.length)),
+    ).find(
+      (c) =>
+        (m.index ?? 0) >= c.start &&
+        (m.index ?? 0) <= c.start + c.text.length + 1,
     );
-    const who = around ? peopleIn(around.start, around.start + around.text.length) : [];
+    const who = around
+      ? peopleIn(around.start, around.start + around.text.length)
+      : [];
     let host = url;
     try {
-      host = new URL(url).hostname.replace(/^www\./, '');
+      host = new URL(url).hostname.replace(/^www\./, "");
     } catch {
       continue;
     }
-    if (pieces.some((p) => p.kind === 'enlace' && p.url === url)) continue;
+    if (pieces.some((p) => p.kind === "enlace" && p.url === url)) continue;
     pieces.push({
       id: uid(),
-      kind: 'enlace',
+      kind: "enlace",
       on: true,
       evidence: around?.text.trim() || url,
       url,
       title: host,
-      save: 'lecturas',
-      personId: around && sharedIn(around.text) ? (who[0] ?? mainPerson) : (who[0] ?? null),
+      save: "lecturas",
+      personId:
+        around && sharedIn(around.text)
+          ? (who[0] ?? mainPerson)
+          : (who[0] ?? null),
     });
   }
-  const scan = source.replace(URL_RE, (u) => ' '.repeat(u.length));
+  const scan = source.replace(URL_RE, (u) => " ".repeat(u.length));
 
   for (const c of clauses(scan)) {
     const n = normalizeText(c.text);
     const people = [
-      ...new Set([...peopleIn(c.start, c.start + c.text.length), ...newIdsIn(c.text)]),
+      ...new Set([
+        ...peopleIn(c.start, c.start + c.text.length),
+        ...newIdsIn(c.text),
+      ]),
     ];
     const subject = people[0] ?? mainPerson;
     // Lo específico (una obra, una idea, una pregunta) gana sobre lo genérico (un compromiso).
@@ -701,7 +834,9 @@ export function proposeCapture(
 
     // Dinero: cada monto con su dirección y su categoría según lo que se dice junto a él.
     const amounts = amountsIn(c.text);
-    const hasVerb = new RegExp(MONEY_OUT.source).test(n) || new RegExp(MONEY_IN.source).test(n);
+    const hasVerb =
+      new RegExp(MONEY_OUT.source).test(n) ||
+      new RegExp(MONEY_IN.source).test(n);
     if (amounts.length && (hasVerb || amounts.some((a) => a.unit))) {
       amounts.slice(0, 4).forEach((a, i) => {
         // Lo que se dice junto al monto: lo que sigue («12 mil del taxi») y lo que va antes
@@ -711,7 +846,7 @@ export function proposeCapture(
           .slice(a.end, amounts[i + 1]?.start ?? c.text.length)
           .split(/[,;]|\s(?:y|e|pero|luego|después|despues)\s/i)[0];
         const dir = directionAt(n, a.start);
-        const direction: Direction = dir ?? 'egreso';
+        const direction: Direction = dir ?? "egreso";
         const guess = guessCategory({
           near: after,
           local: before,
@@ -725,21 +860,21 @@ export function proposeCapture(
         });
         pieces.push({
           id: uid(),
-          kind: 'movimiento',
+          kind: "movimiento",
           on: true,
           evidence: c.text.trim(),
           amount: a.value,
           direction,
           category: guess.category,
           why: guess.why,
-          cue: contentWords(`${after} ${before}`, 6).join(' '),
+          cue: contentWords(`${after} ${before}`, 6).join(" "),
           guessed: !dir,
           date,
           title:
-            guess.category === 'Otro'
-              ? direction === 'ingreso'
-                ? 'Ingreso'
-                : 'Egreso'
+            guess.category === "Otro"
+              ? direction === "ingreso"
+                ? "Ingreso"
+                : "Egreso"
               : guess.category,
         });
       });
@@ -750,7 +885,7 @@ export function proposeCapture(
     if (ask && subject) {
       pieces.push({
         id: uid(),
-        kind: 'preguntar',
+        kind: "preguntar",
         on: true,
         evidence: c.text.trim(),
         personId: subject,
@@ -766,7 +901,7 @@ export function proposeCapture(
       const recommender = work.recommended ? (people[0] ?? mainPerson) : null;
       pieces.push({
         id: uid(),
-        kind: 'obra',
+        kind: "obra",
         on: true,
         evidence: c.text.trim(),
         media: work.media,
@@ -775,6 +910,7 @@ export function proposeCapture(
         author: work.author,
         platform: work.platform,
         status: work.status,
+        copy: work.copy,
         rating: work.rating,
         personIds: people.filter((id) => id !== recommender),
         recommendedBy: recommender,
@@ -787,11 +923,11 @@ export function proposeCapture(
     if (idea) {
       pieces.push({
         id: uid(),
-        kind: 'idea',
+        kind: "idea",
         on: true,
         evidence: c.text.trim(),
         title: idea.title,
-        as: idea.project ? 'trabajo' : 'nota',
+        as: idea.project ? "trabajo" : "nota",
       });
       claimed = true;
     }
@@ -804,36 +940,41 @@ export function proposeCapture(
     const hit = promise || wait || depends || want;
     if (hit && hit.index !== undefined) {
       const kind: CommitmentKind = promise
-        ? 'prometi'
+        ? "prometi"
         : wait
-          ? 'espero'
+          ? "espero"
           : depends
-            ? 'depende'
-            : 'quiero';
+            ? "depende"
+            : "quiero";
       const action = c.text.slice(hit.index + hit[0].length);
       const title = capital(stripDates(action, today));
       if (title.length >= 3) {
         // La fecha puede ir antes del verbo («El viernes tengo que…»), pero «hoy le prometí» no
         // dice para cuándo es.
-        const lead = findDate(c.text.slice(0, hit.index), 'future', today);
+        const lead = findDate(c.text.slice(0, hit.index), "future", today);
         const due =
           futureDate(action, today) ??
-          (lead && !/^(?:hoy|esta|ahorita|en la)/.test(normalizeText(lead.phrase.trim()))
+          (lead &&
+          !/^(?:hoy|esta|ahorita|en la)/.test(normalizeText(lead.phrase.trim()))
             ? lead.date
-            : '');
+            : "");
         const inAction = people.filter((id) =>
           normalizeText(action).includes(nameOfNorm(id, ws, newPeople)),
         );
         // A quién se lo prometiste: la persona del texto antes de la acción, o la del encuentro.
         const before = people.filter((id) => !inAction.includes(id));
         const counterpart =
-          kind === 'quiero'
+          kind === "quiero"
             ? (before[0] ?? null)
-            : (before[0] ?? (kind === 'prometi' ? mainPerson : inAction[0]) ?? mainPerson);
-        const peopleIds = [...new Set([...(counterpart ? [counterpart] : []), ...inAction])];
+            : (before[0] ??
+              (kind === "prometi" ? mainPerson : inAction[0]) ??
+              mainPerson);
+        const peopleIds = [
+          ...new Set([...(counterpart ? [counterpart] : []), ...inAction]),
+        ];
         pieces.push({
           id: uid(),
-          kind: 'compromiso',
+          kind: "compromiso",
           on: true,
           evidence: c.text.trim(),
           title: title.slice(0, 180),
@@ -847,12 +988,12 @@ export function proposeCapture(
         if (counterpart && other) {
           pieces.push({
             id: uid(),
-            kind: 'conexion',
+            kind: "conexion",
             on: true,
             evidence: c.text.trim(),
             a: counterpart,
             b: other,
-            text: '',
+            text: "",
           });
         }
       }
@@ -864,13 +1005,13 @@ export function proposeCapture(
     if (job) {
       pieces.push({
         id: uid(),
-        kind: 'trabajo',
+        kind: "trabajo",
         on: true,
         evidence: c.text.trim(),
         title: job.title,
         stage: job.stage,
         nextStep: job.nextStep,
-        due: job.nextStep ? (futureDate(job.nextStep, today) ?? '') : '',
+        due: job.nextStep ? (futureDate(job.nextStep, today) ?? "") : "",
         personIds: people,
       });
       claimed = true;
@@ -881,23 +1022,30 @@ export function proposeCapture(
     if (learn && learn.index !== undefined) {
       const title = capital(c.text.slice(learn.index + learn[0].length));
       if (title.length >= 3) {
-        const book = pieces.find((p): p is MediaPiece => p.kind === 'obra' && p.media === 'Libro');
+        const book = pieces.find(
+          (p): p is MediaPiece => p.kind === "obra" && p.media === "Libro",
+        );
         // «Terminé «Hábitos atómicos» y aprendí que…»: lo aprendiste del libro.
         const guess = learningSource(n, people.length > 0);
-        const from = guess === 'Práctica' && book ? 'Libro' : guess;
+        const from = guess === "Práctica" && book ? "Libro" : guess;
         pieces.push({
           id: uid(),
-          kind: 'aprendizaje',
+          kind: "aprendizaje",
           on: true,
           evidence: c.text.trim(),
           title: title.slice(0, 180),
           source: from,
           sourceName:
-            from === 'Libro' && book
+            from === "Libro" && book
               ? book.title
-              : from === 'Persona' && (people[0] ?? mainPerson)
-                ? displayName((people[0] ?? mainPerson)!, ws, newPeople, kinLinks)
-                : '',
+              : from === "Persona" && (people[0] ?? mainPerson)
+                ? displayName(
+                    (people[0] ?? mainPerson)!,
+                    ws,
+                    newPeople,
+                    kinLinks,
+                  )
+                : "",
         });
       }
       claimed = true;
@@ -908,7 +1056,7 @@ export function proposeCapture(
     if (swap && subject) {
       pieces.push({
         id: uid(),
-        kind: 'intercambio',
+        kind: "intercambio",
         on: true,
         evidence: c.text.trim(),
         personId: subject,
@@ -925,27 +1073,32 @@ export function proposeCapture(
     if (fact && subject) {
       pieces.push({
         id: uid(),
-        kind: 'dato',
+        kind: "dato",
         on: true,
         evidence: c.text.trim(),
         personId: subject,
         field: fact.field,
-        label: fact.field === 'fact' ? fact.label : '',
+        label: fact.field === "fact" ? fact.label : "",
         value: fact.value,
       });
       aboutPerson = true;
     }
 
     // Novedad de alguien
-    const rule = !claimed && !aboutPerson ? UPDATE_RULES.find(([re]) => re.test(n)) : undefined;
+    const rule =
+      !claimed && !aboutPerson
+        ? UPDATE_RULES.find(([re]) => re.test(n))
+        : undefined;
     if (rule && subject) {
       let t = c.text.trim();
       // «Laura está buscando trabajo» → «Está buscando trabajo» (ya va en su ficha).
-      const name = mentions.find((m) => m.start >= c.start && m.start <= c.start + 2);
-      if (name) t = t.slice(name.end - c.start).replace(/^[\s,]+/, '');
+      const name = mentions.find(
+        (m) => m.start >= c.start && m.start <= c.start + 2,
+      );
+      if (name) t = t.slice(name.end - c.start).replace(/^[\s,]+/, "");
       pieces.push({
         id: uid(),
-        kind: 'novedad',
+        kind: "novedad",
         on: true,
         evidence: c.text.trim(),
         personId: subject,
@@ -957,50 +1110,66 @@ export function proposeCapture(
   }
 
   // Un lugar donde estuviste sin encuentro con nadie: «fui al Parque Simón Bolívar».
-  const enc = pieces.find((p) => p.kind === 'encuentro') as EncounterPiece | undefined;
+  const enc = pieces.find((p) => p.kind === "encuentro") as
+    EncounterPiece | undefined;
   if (!enc && (placeId || placeName) && VISIT.test(norm)) {
-    const place = placeId ? ws.places.find((p) => p.id === placeId)!.name : placeName;
+    const place = placeId
+      ? ws.places.find((p) => p.id === placeId)!.name
+      : placeName;
     const visitClause =
-      clauses(scan).find((c) => normalizeText(c.text).includes(normalizeText(place))) ??
-      clauses(scan)[0];
+      clauses(scan).find((c) =>
+        normalizeText(c.text).includes(normalizeText(place)),
+      ) ?? clauses(scan)[0];
     pieces.unshift({
       id: uid(),
-      kind: 'visita',
+      kind: "visita",
       on: true,
       evidence: visitClause.text.trim(),
       placeId,
-      placeName: placeId ? '' : placeName,
+      placeName: placeId ? "" : placeName,
       placeKind: guessPlaceKind(placeName, act?.[1]),
-      activity: act?.[1] ?? '',
-      title: `${act?.[2] ?? 'Visita'} · ${place}`.slice(0, 180),
+      activity: act?.[1] ?? "",
+      title: `${act?.[2] ?? "Visita"} · ${place}`.slice(0, 180),
       date,
     });
   }
 
   // Texto de la conexión, con el motivo si hay una novedad de esa persona.
   for (const p of pieces) {
-    if (p.kind !== 'conexion') continue;
+    if (p.kind !== "conexion") continue;
     const nameA = displayName(p.a, ws, newPeople, kinLinks);
     const nameB = displayName(p.b, ws, newPeople, kinLinks);
-    const need = pieces.find((x) => x.kind === 'novedad' && x.personId === p.a) as
-      UpdatePiece | undefined;
-    p.text = `${nameB} podría ayudar a ${nameA}${need ? `: ${need.text.charAt(0).toLowerCase()}${need.text.slice(1)}` : ''}`;
+    const need = pieces.find(
+      (x) => x.kind === "novedad" && x.personId === p.a,
+    ) as UpdatePiece | undefined;
+    p.text = `${nameB} podría ayudar a ${nameA}${need ? `: ${need.text.charAt(0).toLowerCase()}${need.text.slice(1)}` : ""}`;
   }
 
   if (!pieces.length) {
-    pieces.push({ id: uid(), kind: 'nota', on: true, evidence: source, text: source });
+    pieces.push({
+      id: uid(),
+      kind: "nota",
+      on: true,
+      evidence: source,
+      text: source,
+    });
   }
 
   // Conexiones por contexto compartido (oficio, empresa, intereses): sugerencias apagadas.
   pieces.push(
-    ...suggestConnections(pieces, ws, [...allPeople, ...pieces.flatMap(peopleOfPiece)], uid),
+    ...suggestConnections(
+      pieces,
+      ws,
+      [...allPeople, ...pieces.flatMap(peopleOfPiece)],
+      uid,
+    ),
   );
 
   // Lo que sueles descartar empieza apagado (aprendido de tus capturas anteriores).
   for (const p of pieces) {
-    if (p.on && p.kind !== 'nota' && usuallyDropped(p.kind, memory)) {
+    if (p.on && p.kind !== "nota" && usuallyDropped(p.kind, memory)) {
       p.on = false;
-      p.hint = 'Sueles descartar este tipo de pieza: actívala si la quieres.';
+      p.hint = "Sueles descartar este tipo de pieza: actívala si la quieres.";
     }
   }
 
@@ -1020,11 +1189,15 @@ export function proposeCapture(
         // Solo si hay algo que las una: un encuentro, una visita o un viaje, una celebración…
         on:
           pieces.length >= 2 &&
-          (Boolean(enc) || first.kind === 'visita' || episodeKindFor(norm, false) !== 'otro'),
+          (Boolean(enc) ||
+            first.kind === "visita" ||
+            episodeKindFor(norm, false) !== "otro"),
         title: (
           enc?.title ??
-          (first.kind === 'visita' ? first.title : null) ??
-          capital(scan.replace(/\s{2,}/g, ' ').split(/[.!?\n]/)[0] ?? 'Experiencia')
+          (first.kind === "visita" ? first.title : null) ??
+          capital(
+            scan.replace(/\s{2,}/g, " ").split(/[.!?\n]/)[0] ?? "Experiencia",
+          )
         ).slice(0, 120),
         kind: episodeKindFor(norm, Boolean(enc)),
       },
@@ -1036,23 +1209,23 @@ export function proposeCapture(
 /** Personas que aparecen en una pieza. */
 export function peopleOfPiece(p: Piece): string[] {
   switch (p.kind) {
-    case 'encuentro':
-    case 'obra':
-    case 'trabajo':
+    case "encuentro":
+    case "obra":
+    case "trabajo":
       return [
         ...p.personIds,
-        ...(p.kind === 'obra' && p.recommendedBy ? [p.recommendedBy] : []),
+        ...(p.kind === "obra" && p.recommendedBy ? [p.recommendedBy] : []),
       ];
-    case 'novedad':
-    case 'intercambio':
-    case 'dato':
-    case 'preguntar':
+    case "novedad":
+    case "intercambio":
+    case "dato":
+    case "preguntar":
       return [p.personId];
-    case 'compromiso':
+    case "compromiso":
       return [...p.peopleIds, ...(p.personId ? [p.personId] : [])];
-    case 'conexion':
+    case "conexion":
       return [p.a, p.b];
-    case 'enlace':
+    case "enlace":
       return p.personId ? [p.personId] : [];
     default:
       return [];
@@ -1061,52 +1234,75 @@ export function peopleOfPiece(p: Piece): string[] {
 
 /** Qué clase de episodio parece: un viaje, una celebración, un evento, un proyecto… */
 function episodeKindFor(n: string, encounter: boolean): EpisodeKind {
-  if (/\b(viaje|viajamos|vuelo|hotel|aeropuerto|vacaciones|hostal|airbnb)\b/.test(n))
-    return 'viaje';
+  if (
+    /\b(viaje|viajamos|vuelo|hotel|aeropuerto|vacaciones|hostal|airbnb)\b/.test(
+      n,
+    )
+  )
+    return "viaje";
   if (
     /\b(boda|matrimonio|aniversario|grado|graduacion|bautizo|baby shower|despedida|celebramos|festejamos|fiesta)\b/.test(
       n,
     ) ||
     /\b(fue|es hoy|era|celebramos el) (el |su )?cumpleanos\b/.test(n)
   )
-    return 'celebracion';
+    return "celebracion";
   if (
     /\b(concierto|conferencia|festival|feria|congreso|charla|obra de teatro|partido|evento|torneo)\b/.test(
       n,
     )
   )
-    return 'evento';
-  if (/\b(mudanza|me mude|nos mudamos|trasteo|nuevo apartamento|nueva casa)\b/.test(n))
-    return 'mudanza';
-  if (/\b(proyecto|cliente|lanzamiento|startup|emprendimiento|propuesta|contrato)\b/.test(n))
-    return 'proyecto';
-  return encounter ? 'encuentro' : 'otro';
+    return "evento";
+  if (
+    /\b(mudanza|me mude|nos mudamos|trasteo|nuevo apartamento|nueva casa)\b/.test(
+      n,
+    )
+  )
+    return "mudanza";
+  if (
+    /\b(proyecto|cliente|lanzamiento|startup|emprendimiento|propuesta|contrato)\b/.test(
+      n,
+    )
+  )
+    return "proyecto";
+  return encounter ? "encuentro" : "otro";
 }
 
 function guessPlaceKind(name: string, activity?: string): PlaceKind {
   const n = normalizeText(name);
-  if (/\b(cafe|coffee|tienda de cafe)\b/.test(n) || activity === 'Café') return 'cafe';
-  if (/\b(restaurante|asadero|pizzeria|cocina|parrilla)\b/.test(n) || activity === 'Comida')
-    return 'comida';
-  if (/\b(bar|pub|cerveceria|discoteca)\b/.test(n)) return 'bar';
+  if (/\b(cafe|coffee|tienda de cafe)\b/.test(n) || activity === "Café")
+    return "cafe";
+  if (
+    /\b(restaurante|asadero|pizzeria|cocina|parrilla)\b/.test(n) ||
+    activity === "Comida"
+  )
+    return "comida";
+  if (/\b(bar|pub|cerveceria|discoteca)\b/.test(n)) return "bar";
   if (
     /\b(parque|playa|montana|rio|lago|reserva|jardin|botanico|sendero|cerro|bosque|cascada)\b/.test(
       n,
     )
   )
-    return 'naturaleza';
-  if (/\b(oficina|cowork|empresa)\b/.test(n) || activity === 'Trabajo') return 'trabajo';
-  if (/\b(teatro|museo|cine|galeria|biblioteca)\b/.test(n)) return 'cultura';
-  if (/\b(gimnasio|gym|cancha|estadio)\b/.test(n) || activity === 'Deporte') return 'deporte';
-  return 'otro';
+    return "naturaleza";
+  if (/\b(oficina|cowork|empresa)\b/.test(n) || activity === "Trabajo")
+    return "trabajo";
+  if (/\b(teatro|museo|cine|galeria|biblioteca)\b/.test(n)) return "cultura";
+  if (/\b(gimnasio|gym|cancha|estadio)\b/.test(n) || activity === "Deporte")
+    return "deporte";
+  return "otro";
 }
 
-function displayName(id: string, ws: Workspace, fresh: NewPerson[], kin: KinLink[] = []) {
+function displayName(
+  id: string,
+  ws: Workspace,
+  fresh: NewPerson[],
+  kin: KinLink[] = [],
+) {
   return (
-    ws.people.find((p) => p.id === id)?.name.split(' ')[0] ??
-    fresh.find((n) => n.id === id)?.name.split(' ')[0] ??
+    ws.people.find((p) => p.id === id)?.name.split(" ")[0] ??
+    fresh.find((n) => n.id === id)?.name.split(" ")[0] ??
     kin.find((k) => k.id === id)?.label ??
-    'alguien'
+    "alguien"
   );
 }
 function nameOfNorm(id: string, ws: Workspace, fresh: NewPerson[]) {
@@ -1134,91 +1330,110 @@ export function planFromAi(
     episode_title?: unknown;
   };
   const isDate = (v: unknown): v is string =>
-    typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
-  const str = (v: unknown, max = 500) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+    typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const str = (v: unknown, max = 500) =>
+    typeof v === "string" ? v.trim().slice(0, max) : "";
   const date = isDate(obj.date) ? obj.date : base.date;
   const newPeople: NewPerson[] = Array.isArray(obj.new_people)
     ? obj.new_people
         .map((n) => str(n, 120))
-        .filter((n) => n && !ws.people.some((p) => normalizeText(p.name) === normalizeText(n)))
-        .map((name) => ({ id: 'new:' + uid(), name, on: true }))
+        .filter(
+          (n) =>
+            n &&
+            !ws.people.some((p) => normalizeText(p.name) === normalizeText(n)),
+        )
+        .map((name) => ({ id: "new:" + uid(), name, on: true }))
     : base.newPeople;
   const personId = (v: unknown): string | null => {
     const s = str(v, 200);
     if (!s) return null;
     if (ws.people.some((p) => p.id === s)) return s;
-    const byName = ws.people.find((p) => normalizeText(p.name) === normalizeText(s));
+    const byName = ws.people.find(
+      (p) => normalizeText(p.name) === normalizeText(s),
+    );
     if (byName) return byName.id;
-    const fresh = newPeople.find((n) => normalizeText(n.name) === normalizeText(s));
+    const fresh = newPeople.find(
+      (n) => normalizeText(n.name) === normalizeText(s),
+    );
     return fresh?.id ?? null;
   };
   const ids = (v: unknown) =>
-    Array.isArray(v) ? [...new Set(v.map(personId).filter((x): x is string => Boolean(x)))] : [];
+    Array.isArray(v)
+      ? [...new Set(v.map(personId).filter((x): x is string => Boolean(x)))]
+      : [];
   const updateKinds: UpdateKind[] = [
-    'trabajo',
-    'estudios',
-    'salud',
-    'amor',
-    'familia',
-    'hogar',
-    'logro',
-    'viaje',
-    'animo',
-    'otro',
+    "trabajo",
+    "estudios",
+    "salud",
+    "amor",
+    "familia",
+    "hogar",
+    "logro",
+    "viaje",
+    "animo",
+    "otro",
   ];
-  const commitments: CommitmentKind[] = ['quiero', 'prometi', 'espero', 'depende'];
+  const commitments: CommitmentKind[] = [
+    "quiero",
+    "prometi",
+    "espero",
+    "depende",
+  ];
   const pieces: Piece[] = [];
   for (const p of (Array.isArray(obj.pieces) ? obj.pieces : []) as AiPiece[]) {
     const evidence = str(p.evidence, 400);
     switch (p.kind) {
-      case 'encuentro': {
+      case "encuentro": {
         const place = ws.places.find(
-          (x) => x.id === p.place_id || normalizeText(x.name) === normalizeText(str(p.place)),
+          (x) =>
+            x.id === p.place_id ||
+            normalizeText(x.name) === normalizeText(str(p.place)),
         );
         pieces.push({
           id: uid(),
-          kind: 'encuentro',
+          kind: "encuentro",
           on: true,
           evidence,
           personIds: ids(p.people),
           placeId: place?.id ?? null,
-          placeName: place ? '' : str(p.place, 120),
-          placeKind: 'otro',
+          placeName: place ? "" : str(p.place, 120),
+          placeKind: "otro",
           date: isDate(p.date) ? p.date : date,
           activity: str(p.activity, 40),
-          title: str(p.title, 180) || 'Encuentro',
+          title: str(p.title, 180) || "Encuentro",
         });
         break;
       }
-      case 'movimiento': {
+      case "movimiento": {
         const amount = Number(p.amount);
         if (!(amount > 0)) break;
-        const direction: Direction = p.direction === 'ingreso' ? 'ingreso' : 'egreso';
+        const direction: Direction =
+          p.direction === "ingreso" ? "ingreso" : "egreso";
         const d = isDate(p.date) ? p.date : date;
-        const category = str(p.category, 40) || 'Otro';
+        const category = str(p.category, 40) || "Otro";
         pieces.push({
           id: uid(),
-          kind: 'movimiento',
+          kind: "movimiento",
           on: true,
           evidence,
           amount,
           direction,
           category,
-          cue: contentWords(evidence, 6).join(' '),
+          cue: contentWords(evidence, 6).join(" "),
           date: d,
           title: str(p.title, 180) || category,
         });
         break;
       }
-      case 'novedad': {
+      case "novedad": {
         const who = personId(p.person);
         if (!who || !str(p.text)) break;
         const uk = updateKinds.includes(p.update_kind as UpdateKind)
           ? (p.update_kind as UpdateKind)
-          : 'otro';
+          : "otro";
         pieces.push({
           id: uid(),
-          kind: 'novedad',
+          kind: "novedad",
           on: true,
           evidence,
           personId: who,
@@ -1228,33 +1443,38 @@ export function planFromAi(
         });
         break;
       }
-      case 'compromiso': {
+      case "compromiso": {
         const title = str(p.title, 180);
         if (!title) break;
         const k = commitments.includes(p.commitment as CommitmentKind)
           ? (p.commitment as CommitmentKind)
-          : 'quiero';
+          : "quiero";
         const counterpart = personId(p.person);
         pieces.push({
           id: uid(),
-          kind: 'compromiso',
+          kind: "compromiso",
           on: true,
           evidence,
           title,
           commitment: k,
-          due: isDate(p.due) && p.due >= addDays(today, -30) ? p.due : '',
+          due: isDate(p.due) && p.due >= addDays(today, -30) ? p.due : "",
           personId: counterpart,
-          peopleIds: [...new Set([...(counterpart ? [counterpart] : []), ...ids(p.people)])],
+          peopleIds: [
+            ...new Set([
+              ...(counterpart ? [counterpart] : []),
+              ...ids(p.people),
+            ]),
+          ],
         });
         break;
       }
-      case 'conexion': {
+      case "conexion": {
         const a = personId(p.a);
         const b = personId(p.b);
         if (a && b && a !== b)
           pieces.push({
             id: uid(),
-            kind: 'conexion',
+            kind: "conexion",
             on: true,
             evidence,
             a,
@@ -1263,12 +1483,12 @@ export function planFromAi(
           });
         break;
       }
-      case 'aprendizaje': {
+      case "aprendizaje": {
         if (!str(p.title)) break;
         const from = str(p.source, 20);
         pieces.push({
           id: uid(),
-          kind: 'aprendizaje',
+          kind: "aprendizaje",
           on: true,
           evidence,
           title: str(p.title, 180),
@@ -1279,107 +1499,133 @@ export function planFromAi(
         });
         break;
       }
-      case 'nota':
+      case "nota":
         if (str(p.text))
-          pieces.push({ id: uid(), kind: 'nota', on: true, evidence, text: str(p.text, 4000) });
+          pieces.push({
+            id: uid(),
+            kind: "nota",
+            on: true,
+            evidence,
+            text: str(p.text, 4000),
+          });
         break;
-      case 'obra': {
+      case "obra": {
         const title = str(p.title, 120);
         if (!title) break;
         const kind = normalizeText(str(p.media, 20));
-        const media = kind === 'libro' ? 'Libro' : 'Película';
-        const status = (['quiero', 'curso', 'listo'] as const).find(
-          (s) => s === p.status || (s === 'listo' && p.status === 'terminado'),
+        const media = kind === "libro" ? "Libro" : "Película";
+        const status = (["estante", "quiero", "curso", "listo"] as const).find(
+          (s) =>
+            (s === "estante" ? media === "Libro" : true) &&
+            (s === p.status || (s === "listo" && p.status === "terminado")),
         );
         const rating = Math.round(Number(p.rating));
+        const copy =
+          media !== "Libro"
+            ? ""
+            : status === "estante" || p.copy === "mio"
+              ? "mio"
+              : p.copy === "prestado"
+                ? "prestado"
+                : "";
         pieces.push({
           id: uid(),
-          kind: 'obra',
+          kind: "obra",
           on: true,
           evidence,
           media,
-          series: kind === 'serie' || kind === 'documental' || kind === 'anime',
+          series: kind === "serie" || kind === "documental" || kind === "anime",
           title,
-          author: media === 'Libro' ? str(p.author, 120) : '',
-          platform: media === 'Película' ? str(p.platform, 40) : '',
-          status: status ?? (media === 'Libro' ? 'quiero' : 'listo'),
-          rating: rating >= 1 && rating <= 5 && status !== 'quiero' ? rating : 0,
+          author: media === "Libro" ? str(p.author, 120) : "",
+          platform: media === "Película" ? str(p.platform, 40) : "",
+          status: status ?? (media === "Libro" ? "quiero" : "listo"),
+          copy,
+          rating:
+            rating >= 1 &&
+            rating <= 5 &&
+            status !== "quiero" &&
+            status !== "estante"
+              ? rating
+              : 0,
           personIds: ids(p.people),
           recommendedBy: personId(p.recommended_by),
         });
         break;
       }
-      case 'idea':
+      case "idea":
         if (str(p.title))
           pieces.push({
             id: uid(),
-            kind: 'idea',
+            kind: "idea",
             on: true,
             evidence,
             title: str(p.title, 180),
-            as: p.project === true ? 'trabajo' : 'nota',
+            as: p.project === true ? "trabajo" : "nota",
           });
         break;
-      case 'trabajo': {
+      case "trabajo": {
         const title = str(p.title, 180);
         if (!title) break;
-        const stage = (['idea', 'curso', 'pausa', 'listo'] as const).find((s) => s === p.stage);
+        const stage = (["idea", "curso", "pausa", "listo"] as const).find(
+          (s) => s === p.stage,
+        );
         pieces.push({
           id: uid(),
-          kind: 'trabajo',
+          kind: "trabajo",
           on: true,
           evidence,
           title,
-          stage: stage ?? 'curso',
+          stage: stage ?? "curso",
           nextStep: str(p.next_step, 180),
-          due: isDate(p.due) && p.due >= addDays(today, -30) ? p.due : '',
+          due: isDate(p.due) && p.due >= addDays(today, -30) ? p.due : "",
           personIds: ids(p.people),
         });
         break;
       }
-      case 'intercambio': {
+      case "intercambio": {
         const who = personId(p.person);
         const kind = EXCHANGES.find((k) => k === p.exchange);
         if (!who || !kind) break;
         pieces.push({
           id: uid(),
-          kind: 'intercambio',
+          kind: "intercambio",
           on: true,
           evidence,
           personId: who,
-          dir: p.dir === 'dar' ? 'dar' : 'recibir',
+          dir: p.dir === "dar" ? "dar" : "recibir",
           exchange: kind,
           note: str(p.note, 120),
           date: isDate(p.date) ? p.date : date,
         });
         break;
       }
-      case 'dato': {
+      case "dato": {
         const who = personId(p.person);
-        const field = (['likes', 'dislikes', 'gifts', 'birthday', 'fact'] as const).find(
-          (f) => f === p.field,
-        );
+        const field = (
+          ["likes", "dislikes", "gifts", "birthday", "fact"] as const
+        ).find((f) => f === p.field);
         let value = str(p.value, 120);
-        if (field === 'birthday') value = /^\d{2}-\d{2}$/.test(value) ? value : '';
+        if (field === "birthday")
+          value = /^\d{2}-\d{2}$/.test(value) ? value : "";
         if (!who || !field || !value) break;
         pieces.push({
           id: uid(),
-          kind: 'dato',
+          kind: "dato",
           on: true,
           evidence,
           personId: who,
           field,
-          label: field === 'fact' ? str(p.label, 40) || 'Dato' : '',
+          label: field === "fact" ? str(p.label, 40) || "Dato" : "",
           value,
         });
         break;
       }
-      case 'preguntar': {
+      case "preguntar": {
         const who = personId(p.person);
         if (who && str(p.text))
           pieces.push({
             id: uid(),
-            kind: 'preguntar',
+            kind: "preguntar",
             on: true,
             evidence,
             personId: who,
@@ -1387,19 +1633,21 @@ export function planFromAi(
           });
         break;
       }
-      case 'visita': {
+      case "visita": {
         const place = ws.places.find(
-          (x) => x.id === p.place_id || normalizeText(x.name) === normalizeText(str(p.place)),
+          (x) =>
+            x.id === p.place_id ||
+            normalizeText(x.name) === normalizeText(str(p.place)),
         );
         const name = place?.name ?? str(p.place, 120);
         if (!name) break;
         pieces.push({
           id: uid(),
-          kind: 'visita',
+          kind: "visita",
           on: true,
           evidence,
           placeId: place?.id ?? null,
-          placeName: place ? '' : name,
+          placeName: place ? "" : name,
           placeKind: place?.kind ?? guessPlaceKind(name, str(p.activity, 40)),
           activity: str(p.activity, 40),
           title: str(p.title, 180) || `Visita · ${name}`,
@@ -1407,17 +1655,17 @@ export function planFromAi(
         });
         break;
       }
-      case 'enlace': {
+      case "enlace": {
         const url = cleanUrl(str(p.url, 2000));
         if (!/^https?:\/\//.test(url)) break;
         pieces.push({
           id: uid(),
-          kind: 'enlace',
+          kind: "enlace",
           on: true,
           evidence,
           url,
           title: str(p.title, 180) || url,
-          save: 'lecturas',
+          save: "lecturas",
           personId: personId(p.person),
         });
         break;
@@ -1427,10 +1675,14 @@ export function planFromAi(
   if (!pieces.length) return base;
   // Los enlaces del texto no se pierden aunque la IA los omita.
   for (const l of base.pieces)
-    if (l.kind === 'enlace' && !pieces.some((x) => x.kind === 'enlace' && x.url === l.url))
+    if (
+      l.kind === "enlace" &&
+      !pieces.some((x) => x.kind === "enlace" && x.url === l.url)
+    )
       pieces.push(l);
   const moodName = normalizeText(str((obj as { mood?: unknown }).mood, 20));
-  const mood = moods.find((m) => normalizeText(m.label) === moodName)?.value ?? base.mood;
+  const mood =
+    moods.find((m) => normalizeText(m.label) === moodName)?.value ?? base.mood;
   return markDuplicates(
     {
       ...base,
@@ -1442,7 +1694,8 @@ export function planFromAi(
         ...base.episode,
         on:
           pieces.length >= 2 &&
-          (base.episode.on || pieces.some((p) => p.kind === 'encuentro' || p.kind === 'visita')),
+          (base.episode.on ||
+            pieces.some((p) => p.kind === "encuentro" || p.kind === "visita")),
         title: str(obj.episode_title, 120) || base.episode.title,
       },
     },
@@ -1450,37 +1703,66 @@ export function planFromAi(
   );
 }
 
-const LEARN_SOURCES = ['Libro', 'Curso', 'Video', 'Artículo', 'Persona', 'Práctica'];
-const EXCHANGES: ExchangeKind[] = ['favor', 'regalo', 'apoyo', 'tiempo', 'dinero', 'iniciativa'];
+const LEARN_SOURCES = [
+  "Libro",
+  "Curso",
+  "Video",
+  "Artículo",
+  "Persona",
+  "Práctica",
+];
+const EXCHANGES: ExchangeKind[] = [
+  "favor",
+  "regalo",
+  "apoyo",
+  "tiempo",
+  "dinero",
+  "iniciativa",
+];
 
 // ───────────────────────── Personas en las piezas ─────────────────────────
 
 /** Cambia una persona por otra en todas las piezas (al aclarar un nombre ambiguo). */
-export function swapPerson(plan: CapturePlan, from: string, to: string, name: string): CapturePlan {
+export function swapPerson(
+  plan: CapturePlan,
+  from: string,
+  to: string,
+  name: string,
+): CapturePlan {
   const sw = (id: string | null) => (id === from ? to : id);
   const swList = (ids: string[]) => [...new Set(ids.map((id) => sw(id)!))];
   return {
     ...plan,
-    ambiguous: plan.ambiguous.map((a) => (a.name === name ? { ...a, chosen: to } : a)),
+    ambiguous: plan.ambiguous.map((a) =>
+      a.name === name ? { ...a, chosen: to } : a,
+    ),
     pieces: plan.pieces.map((p) => {
       switch (p.kind) {
-        case 'encuentro':
+        case "encuentro":
           return { ...p, personIds: swList(p.personIds) };
-        case 'novedad':
+        case "novedad":
           return { ...p, personId: sw(p.personId)! };
-        case 'compromiso':
-          return { ...p, personId: sw(p.personId), peopleIds: swList(p.peopleIds) };
-        case 'conexion':
+        case "compromiso":
+          return {
+            ...p,
+            personId: sw(p.personId),
+            peopleIds: swList(p.peopleIds),
+          };
+        case "conexion":
           return { ...p, a: sw(p.a)!, b: sw(p.b)! };
-        case 'obra':
-          return { ...p, personIds: swList(p.personIds), recommendedBy: sw(p.recommendedBy) };
-        case 'trabajo':
+        case "obra":
+          return {
+            ...p,
+            personIds: swList(p.personIds),
+            recommendedBy: sw(p.recommendedBy),
+          };
+        case "trabajo":
           return { ...p, personIds: swList(p.personIds) };
-        case 'intercambio':
-        case 'dato':
-        case 'preguntar':
+        case "intercambio":
+        case "dato":
+        case "preguntar":
           return { ...p, personId: sw(p.personId)! };
-        case 'enlace':
+        case "enlace":
           return { ...p, personId: sw(p.personId) };
         default:
           return p;
@@ -1490,12 +1772,18 @@ export function swapPerson(plan: CapturePlan, from: string, to: string, name: st
 }
 
 /** Usa una ficha que ya tienes en lugar de crear la persona nueva («Andrez» → Andrés Pérez). */
-export function adoptExisting(plan: CapturePlan, newId: string, personId: string): CapturePlan {
-  const next = swapPerson(plan, newId, personId, '');
+export function adoptExisting(
+  plan: CapturePlan,
+  newId: string,
+  personId: string,
+): CapturePlan {
+  const next = swapPerson(plan, newId, personId, "");
   return {
     ...next,
     newPeople: next.newPeople.filter((n) => n.id !== newId),
-    kinLinks: next.kinLinks.map((k) => (k.personId === newId ? { ...k, personId } : k)),
+    kinLinks: next.kinLinks.map((k) =>
+      k.personId === newId ? { ...k, personId } : k,
+    ),
   };
 }
 
@@ -1516,7 +1804,10 @@ export const paragraphs = (text: string) =>
  * párrafos que empiezan con su fecha («Ayer…», «El lunes…», «15/11: …»), una lista con viñetas o
  * una línea por día. Si no, es una sola.
  */
-export function splitExperiences(text: string, today = todayInputValue()): string[] {
+export function splitExperiences(
+  text: string,
+  today = todayInputValue(),
+): string[] {
   const t = text.trim();
   if (!t) return [];
   const cut = t
@@ -1527,16 +1818,18 @@ export function splitExperiences(text: string, today = todayInputValue()): strin
   const paras = paragraphs(t);
   if (
     paras.length > 1 &&
-    paras.filter((p) => startsWithDate(p, today)).length >= Math.max(2, paras.length - 1)
+    paras.filter((p) => startsWithDate(p, today)).length >=
+      Math.max(2, paras.length - 1)
   )
     return paras;
   const lines = t
-    .split('\n')
+    .split("\n")
     .map((s) => s.trim())
     .filter(Boolean);
   if (lines.length >= 2 && lines.every((l) => BULLET.test(l)))
-    return lines.map((l) => l.replace(BULLET, '')).filter((l) => l.length > 3);
-  if (lines.length >= 2 && lines.every((l) => startsWithDate(l, today))) return lines;
+    return lines.map((l) => l.replace(BULLET, "")).filter((l) => l.length > 3);
+  if (lines.length >= 2 && lines.every((l) => startsWithDate(l, today)))
+    return lines;
   return [t];
 }
 
@@ -1544,7 +1837,11 @@ export function splitExperiences(text: string, today = todayInputValue()): strin
  * Propone cada experiencia del lote. La misma persona nueva en varias («conocí a Mariana» y
  * luego «volví a ver a Mariana») queda como una sola: se crea una vez.
  */
-export function proposeBatch(texts: string[], ws: Workspace, today = todayInputValue()) {
+export function proposeBatch(
+  texts: string[],
+  ws: Workspace,
+  today = todayInputValue(),
+) {
   const seen = new Map<string, string>();
   return texts.map((t) => {
     let plan = proposeCapture(t, ws, today);
@@ -1555,11 +1852,15 @@ export function proposeBatch(texts: string[], ws: Workspace, today = todayInputV
         seen.set(key, n.id);
         continue;
       }
-      plan = swapPerson(plan, n.id, prev, '');
+      plan = swapPerson(plan, n.id, prev, "");
       plan = {
         ...plan,
-        newPeople: plan.newPeople.map((x) => (x.id === n.id ? { ...x, id: prev } : x)),
-        kinLinks: plan.kinLinks.map((k) => (k.personId === n.id ? { ...k, personId: prev } : k)),
+        newPeople: plan.newPeople.map((x) =>
+          x.id === n.id ? { ...x, id: prev } : x,
+        ),
+        kinLinks: plan.kinLinks.map((k) =>
+          k.personId === n.id ? { ...k, personId: prev } : k,
+        ),
       };
     }
     return plan;
@@ -1568,19 +1869,23 @@ export function proposeBatch(texts: string[], ws: Workspace, today = todayInputV
 
 // ───────────────────────── Avisos de la vista previa ─────────────────────────
 
-export type PlanNote = { tone: 'warn' | 'info' | 'dup'; text: string };
+export type PlanNote = { tone: "warn" | "info" | "dup"; text: string };
 
 /**
  * Lo que conviene saber antes de proponer: de dónde salió la fecha, nombres que pueden ser
  * varias personas, parentescos sin elegir, personas nuevas parecidas a otras, lo que ya existe,
  * gastos sin categoría o sin dirección clara y sugerencias de conexión.
  */
-export function planNotes(plan: CapturePlan, ws: Workspace, today = todayInputValue()) {
+export function planNotes(
+  plan: CapturePlan,
+  ws: Workspace,
+  today = todayInputValue(),
+) {
   const notes: PlanNote[] = [];
-  const name = (id: string) => ws.people.find((p) => p.id === id)?.name ?? '';
+  const name = (id: string) => ws.people.find((p) => p.id === id)?.name ?? "";
   if (plan.dateFrom && plan.date !== today)
     notes.push({
-      tone: 'info',
+      tone: "info",
       text: `Fecha: ${friendlyDate(plan.date, today).toLowerCase()} (por «${plan.dateFrom}»).`,
     });
   for (const a of plan.ambiguous) {
@@ -1588,44 +1893,68 @@ export function planNotes(plan: CapturePlan, ws: Workspace, today = todayInputVa
       .filter((id) => id !== a.chosen)
       .map(name)
       .filter(Boolean)
-      .join(', ');
+      .join(", ");
     notes.push({
-      tone: 'warn',
-      text: `«${a.name}» puede ser ${name(a.chosen)} o ${others}. Usaré a ${name(a.chosen).split(' ')[0]} (${a.learned ? 'la elegiste la última vez' : 'la viste más recientemente'}); puedes cambiarlo al revisar.`,
+      tone: "warn",
+      text: `«${a.name}» puede ser ${name(a.chosen)} o ${others}. Usaré a ${name(a.chosen).split(" ")[0]} (${a.learned ? "la elegiste la última vez" : "la viste más recientemente"}); puedes cambiarlo al revisar.`,
     });
   }
   for (const k of plan.kinLinks)
-    if (!k.personId) notes.push({ tone: 'warn', text: `¿Quién es ${k.label}? Lo eliges al revisar.` });
+    if (!k.personId)
+      notes.push({
+        tone: "warn",
+        text: `¿Quién es ${k.label}? Lo eliges al revisar.`,
+      });
   for (const n of plan.newPeople)
     notes.push(
       n.like
-        ? { tone: 'warn', text: `«${n.name}» se parece a ${name(n.like)}: ¿es la misma persona?` }
-        : { tone: 'info', text: `Persona nueva: ${n.name}.` },
+        ? {
+            tone: "warn",
+            text: `«${n.name}» se parece a ${name(n.like)}: ¿es la misma persona?`,
+          }
+        : { tone: "info", text: `Persona nueva: ${n.name}.` },
     );
   for (const p of plan.pieces) {
     if (p.dup) {
-      notes.push({ tone: 'dup', text: p.dup.text });
+      notes.push({ tone: "dup", text: p.dup.text });
       continue;
     }
-    if (p.kind === 'movimiento') {
+    if (p.kind === "movimiento") {
       const what = money(p.amount);
-      if (p.guessed && p.category === 'Otro')
+      if (p.guessed && p.category === "Otro")
         notes.push({
-          tone: 'warn',
+          tone: "warn",
           text: `${what}: no dice si lo pagaste o te lo pagaron ni de qué fue. Lo tomé como gasto sin categoría.`,
         });
       else if (p.guessed)
         notes.push({
-          tone: 'warn',
+          tone: "warn",
           text: `${what}: no dice si lo pagaste o te lo pagaron; lo tomé como gasto.`,
         });
-      else if (p.category === 'Otro')
-        notes.push({ tone: 'warn', text: `${what}: no sé de qué fue; elige la categoría al revisar.` });
-      else if (p.why) notes.push({ tone: 'info', text: `${what} → ${p.category}, ${p.why}.` });
-    } else if (p.kind === 'compromiso' && p.commitment === 'prometi' && !p.personId) {
-      notes.push({ tone: 'warn', text: `No sé a quién le prometiste «${p.title}».` });
-    } else if (p.kind === 'conexion' && p.hint && !p.on) {
-      notes.push({ tone: 'info', text: `Sugerencia: ${p.text} (${p.hint.toLowerCase()}).` });
+      else if (p.category === "Otro")
+        notes.push({
+          tone: "warn",
+          text: `${what}: no sé de qué fue; elige la categoría al revisar.`,
+        });
+      else if (p.why)
+        notes.push({
+          tone: "info",
+          text: `${what} → ${p.category}, ${p.why}.`,
+        });
+    } else if (
+      p.kind === "compromiso" &&
+      p.commitment === "prometi" &&
+      !p.personId
+    ) {
+      notes.push({
+        tone: "warn",
+        text: `No sé a quién le prometiste «${p.title}».`,
+      });
+    } else if (p.kind === "conexion" && p.hint && !p.on) {
+      notes.push({
+        tone: "info",
+        text: `Sugerencia: ${p.text} (${p.hint.toLowerCase()}).`,
+      });
     }
   }
   return notes;
@@ -1634,16 +1963,22 @@ export function planNotes(plan: CapturePlan, ws: Workspace, today = todayInputVa
 // ───────────────────────── Aprendizaje ─────────────────────────
 
 /** Lo que se aprende al guardar: comparando lo que Nexo propuso con lo que guardaste. */
-export function captureLessons(initial: CapturePlan | undefined, final: CapturePlan) {
+export function captureLessons(
+  initial: CapturePlan | undefined,
+  final: CapturePlan,
+) {
   const before = new Map((initial?.pieces ?? []).map((p) => [p.id, p]));
   return {
     names: final.ambiguous.map((a) => ({ name: a.name, chosen: a.chosen })),
     cats: final.pieces
-      .filter((p): p is MoneyPiece => p.kind === 'movimiento' && p.on && Boolean(p.cue))
+      .filter(
+        (p): p is MoneyPiece =>
+          p.kind === "movimiento" && p.on && Boolean(p.cue),
+      )
       .map((p) => {
         const b = before.get(p.id) as MoneyPiece | undefined;
         return {
-          words: p.cue!.split(' ').filter(Boolean),
+          words: p.cue!.split(" ").filter(Boolean),
           category: p.category,
           corrected: Boolean(b && b.category !== p.category),
         };

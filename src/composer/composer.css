@@ -100,7 +100,7 @@
 .cp-picker h2 {
   margin: 0 0 6px;
   font:
-    700 27px/1.2 'Manrope',
+    700 27px/1.2 "Manrope",
     sans-serif;
   letter-spacing: -0.7px;
   color: #27301f;
@@ -168,7 +168,7 @@
 }
 .cp-tile strong {
   font:
-    700 16px 'Manrope',
+    700 16px "Manrope",
     sans-serif;
   color: #27301f;
 }
@@ -186,7 +186,7 @@
   border-radius: 6px;
   background: #fff;
   font:
-    600 11px 'DM Sans',
+    600 11px "DM Sans",
     sans-serif;
   color: #a5ad9b;
 }
@@ -328,7 +328,7 @@
 }
 .cp-drop strong {
   font:
-    700 20px 'Manrope',
+    700 20px "Manrope",
     sans-serif;
 }
 .cp-drop span {
@@ -343,7 +343,7 @@
   gap: 8px;
   margin: 24px 0 10px;
   font:
-    700 11.5px 'Manrope',
+    700 11.5px "Manrope",
     sans-serif;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -351,7 +351,7 @@
 }
 .cp-label span {
   font:
-    400 12px 'DM Sans',
+    400 12px "DM Sans",
     sans-serif;
   letter-spacing: 0;
   text-transform: none;
@@ -371,7 +371,7 @@
   outline: 0;
   background: transparent;
   font:
-    700 28px/1.25 'Manrope',
+    700 28px/1.25 "Manrope",
     sans-serif;
   letter-spacing: -0.7px;
   color: #27301f;
@@ -406,7 +406,7 @@
   padding: 14px 16px;
   resize: none;
   font:
-    400 15px/1.65 'DM Sans',
+    400 15px/1.65 "DM Sans",
     sans-serif;
 }
 .cp-ghost-input:focus,
@@ -692,7 +692,7 @@
   border: 3px solid transparent;
   border-radius: 50%;
   font:
-    700 17px 'Manrope',
+    700 17px "Manrope",
     sans-serif;
   color: #4c5642;
   transition:
@@ -805,7 +805,7 @@
   height: 22px;
   border-radius: 50%;
   font:
-    700 10px 'Manrope',
+    700 10px "Manrope",
     sans-serif;
   color: #4c5642;
 }
@@ -940,7 +940,7 @@
   display: grid;
   place-items: center;
   font:
-    700 13px 'Manrope',
+    700 13px "Manrope",
     sans-serif;
   color: #fff;
 }
@@ -1139,7 +1139,7 @@
 }
 .cp-cover-drop strong {
   font:
-    700 14px 'Manrope',
+    700 14px "Manrope",
     sans-serif;
 }
 .cp-cover-drop strong + span {
@@ -1225,7 +1225,7 @@
   resize: none;
   background: transparent;
   font:
-    400 17px/1.75 'DM Sans',
+    400 17px/1.75 "DM Sans",
     sans-serif;
   color: #2f382b;
 }
@@ -1348,12 +1348,151 @@
   border: 0;
   background: transparent;
   font:
-    500 17px 'DM Sans',
+    500 17px "DM Sans",
     sans-serif;
   color: #7b8573;
 }
 .cp-author::placeholder {
   color: #c3c9ba;
+}
+/* Libro físico: tuyo o prestado (y de quién). */
+.cp-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--soft);
+  animation: cp-swap 0.22s ease-out;
+}
+.cp-copy .cp-ghost-input {
+  margin: 0;
+  background: #fff;
+}
+.cp-copy .cp-hint {
+  margin: 6px 2px 0;
+}
+/* Quién te lo prestó: tus personas mientras escribes. */
+.cp-lender {
+  position: relative;
+}
+.cp-lender .cp-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  box-shadow: 0 12px 30px rgba(40, 55, 30, 0.14);
+}
+.cp-tokens.cp-lender {
+  align-items: center;
+}
+.cp-copy .cp-token {
+  background: #fff;
+}
+.cp-lender-note {
+  font-size: 12.5px;
+  color: var(--ink);
+  opacity: 0.75;
+}
+/* Título del libro: los de tu estantería mientras escribes. */
+.cp-shelf-title {
+  position: relative;
+}
+.cp-shelf-hits {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 6;
+  margin-top: 0;
+  box-shadow: 0 14px 34px rgba(40, 55, 30, 0.16);
+  animation: cp-swap 0.18s ease-out;
+}
+.cp-shelf-hits-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0.7;
+}
+.cp-shelf-cover {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--soft);
+  color: var(--ink);
+}
+.cp-shelf-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cp-shelf-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-weight: 600;
+}
+.cp-results .cp-shelf-name small {
+  margin: 1px 0 0;
+  font-weight: 400;
+}
+.cp-shelf-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 10px;
+  padding: 8px 10px 8px 12px;
+  border-radius: 12px;
+  background: var(--soft);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink);
+  animation: cp-swap 0.22s ease-out;
+}
+.cp-shelf-note span {
+  flex: 1;
+}
+.cp-shelf-note button {
+  flex: none;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  opacity: 0.75;
+}
+.cp-shelf-note button:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.7);
+}
+/* Fotos de un libro: miniaturas más grandes, cómodas de ver. */
+.cp-mini.roomy .cp-mini-add {
+  height: 64px;
+  padding: 0 16px;
+  border-radius: 14px;
+}
+.cp-mini.roomy .cp-mini-item,
+.cp-mini.roomy .cp-mini-item img,
+.cp-mini.roomy .cp-mini-busy,
+.cp-mini.roomy .cp-mini-retry {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+}
+.cp-mini.roomy .cp-mini-item {
+  box-shadow: 0 2px 8px rgba(40, 55, 30, 0.12);
 }
 .cp-progress-card {
   margin-top: 14px;
@@ -1380,7 +1519,7 @@
   border-radius: 10px;
   background: #fff;
   font:
-    700 17px 'Manrope',
+    700 17px "Manrope",
     sans-serif;
   text-align: center;
 }
@@ -1395,7 +1534,7 @@
 .cp-pages strong {
   margin-left: auto;
   font:
-    800 24px 'Manrope',
+    800 24px "Manrope",
     sans-serif;
   color: var(--ink);
 }
@@ -1441,7 +1580,7 @@
   resize: none;
   background: transparent;
   font:
-    italic 400 15px/1.6 'DM Sans',
+    italic 400 15px/1.6 "DM Sans",
     sans-serif;
   color: var(--ink);
 }
@@ -1502,7 +1641,7 @@
   flex-direction: column;
   gap: 2px;
   font:
-    700 11.5px 'Manrope',
+    700 11.5px "Manrope",
     sans-serif;
   letter-spacing: 0.9px;
   text-transform: uppercase;
@@ -1513,7 +1652,7 @@
   border: 0;
   background: transparent;
   font:
-    500 17px 'DM Sans',
+    500 17px "DM Sans",
     sans-serif;
   letter-spacing: 0;
   text-transform: none;
@@ -1526,7 +1665,7 @@
 /* ───────── Aprendizaje ───────── */
 .cp-eyebrow {
   font:
-    700 12px 'Manrope',
+    700 12px "Manrope",
     sans-serif;
   letter-spacing: 2.2px;
   color: var(--accent);
@@ -1553,7 +1692,7 @@
 }
 .cp-idea span {
   font:
-    700 11.5px 'Manrope',
+    700 11.5px "Manrope",
     sans-serif;
   letter-spacing: 0.9px;
   text-transform: uppercase;
@@ -1566,7 +1705,7 @@
   resize: none;
   background: transparent;
   font:
-    400 16.5px/1.65 'DM Sans',
+    400 16.5px/1.65 "DM Sans",
     sans-serif;
   color: #27301f;
 }
@@ -1623,7 +1762,7 @@
   flex: none;
   white-space: nowrap;
   font:
-    700 36px 'Manrope',
+    700 36px "Manrope",
     sans-serif;
 }
 .cp-cop {
@@ -1638,7 +1777,7 @@
   background: transparent;
   text-align: center;
   font:
-    800 58px/1.1 'Manrope',
+    800 58px/1.1 "Manrope",
     sans-serif;
   letter-spacing: -2px;
   color: #27301f;
@@ -1648,7 +1787,7 @@
 }
 .cp-cop {
   font:
-    600 14px 'DM Sans',
+    600 14px "DM Sans",
     sans-serif;
   color: #a2aa98;
 }
@@ -1715,7 +1854,7 @@
   outline: 0;
   background: transparent;
   font:
-    700 26px/1.3 'Manrope',
+    700 26px/1.3 "Manrope",
     sans-serif;
   letter-spacing: -0.5px;
   color: #27301f;
@@ -1948,7 +2087,7 @@
   place-items: center;
   background: rgba(30, 38, 26, 0.55);
   font:
-    700 18px 'Manrope',
+    700 18px "Manrope",
     sans-serif;
   color: #fff;
 }
@@ -2243,7 +2382,7 @@
 .confirm h3 {
   margin: 0;
   font:
-    700 16.5px/1.35 'Manrope',
+    700 16.5px/1.35 "Manrope",
     sans-serif;
   letter-spacing: -0.2px;
   overflow-wrap: anywhere;
@@ -2578,7 +2717,7 @@
 }
 .pk-head h3 {
   font:
-    750 18px 'Manrope',
+    750 18px "Manrope",
     sans-serif;
   color: #27301f;
 }
@@ -2627,7 +2766,7 @@
   gap: 5px;
   padding: 10px 12px 4px;
   font:
-    700 10.5px 'Manrope',
+    700 10.5px "Manrope",
     sans-serif;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -2949,7 +3088,7 @@
   border: 0;
   background: transparent;
   font:
-    750 16px 'Manrope',
+    750 16px "Manrope",
     sans-serif;
   text-align: center;
   color: var(--ink);

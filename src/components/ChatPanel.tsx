@@ -209,7 +209,7 @@ export function ChatPanel({
     } else if (s.type === 'reading') {
       go('Lecturas', { id: s.id });
     } else if (s.type === 'note') {
-      go('Notas', { id: s.id });
+      go('Libroteca', { id: s.id });
     } else {
       const ep = workspace.episodes.find((x) => x.id === s.id);
       if (ep) go('Episodios', ep);

@@ -7,31 +7,50 @@ import {
   type DragEvent,
   type FormEvent,
   type KeyboardEvent,
-} from 'react';
-import { Check, ChevronLeft, ImagePlus, LoaderCircle, Tv, X } from 'lucide-react';
-import { useApp } from '../AppContext';
-import { Sheet } from '../components/Sheet';
-import { CollectionsPicker } from '../cuadernos/AddToNotebook';
-import { hasRef, type Notebook } from '../cuadernos/model';
-import { addToNotebook, updateNotebook, useCuadernos } from '../cuadernos/useCuadernos';
-import type { Entry, EntryDetails, EntryInput, Kind } from '../data';
-import { KindPicker } from './KindPicker';
-import { incomeColors, kindMeta, seriesColors } from './kinds';
-import { useComposer } from './useComposer';
-import { BookView } from './views/BookView';
-import { LearningView } from './views/LearningView';
-import { MeetingView } from './views/MeetingView';
-import { MoneyView } from './views/MoneyView';
-import { MovieView } from './views/MovieView';
-import { NoteView } from './views/NoteView';
-import { TaskView } from './views/TaskView';
-import type { ViewProps } from './views/shared';
-import { WorkView } from './views/WorkView';
-import { NoteEditor, fresh } from '../planner/NoteEditor';
-import { SaveLink } from '../readings/SaveLink';
-import { movieInfo, exactMovie, lookup, normal } from '../lib/moviePosters';
-import { isSeries } from '../lib/entries';
-import './composer.css';
+} from "react";
+import {
+  Check,
+  ChevronLeft,
+  ImagePlus,
+  LoaderCircle,
+  Tv,
+  X,
+} from "lucide-react";
+import { useApp } from "../AppContext";
+import { Sheet } from "../components/Sheet";
+import { CollectionsPicker } from "../cuadernos/AddToNotebook";
+import { hasRef, type Notebook } from "../cuadernos/model";
+import {
+  addToNotebook,
+  updateNotebook,
+  useCuadernos,
+} from "../cuadernos/useCuadernos";
+import type {
+  Entry,
+  EntryDetails,
+  EntryInput,
+  Kind,
+  Person,
+  PersonUpdate,
+} from "../data";
+import { todayInputValue } from "../lib/format";
+import { KindPicker } from "./KindPicker";
+import { incomeColors, kindMeta, seriesColors } from "./kinds";
+import { useComposer } from "./useComposer";
+import { BookView } from "./views/BookView";
+import { LearningView } from "./views/LearningView";
+import { MeetingView } from "./views/MeetingView";
+import { MoneyView } from "./views/MoneyView";
+import { MovieView } from "./views/MovieView";
+import { NoteView } from "./views/NoteView";
+import { TaskView } from "./views/TaskView";
+import type { ViewProps } from "./views/shared";
+import { WorkView } from "./views/WorkView";
+import { NoteEditor, fresh } from "../planner/NoteEditor";
+import { SaveLink } from "../readings/SaveLink";
+import { movieInfo, exactMovie, lookup, normal } from "../lib/moviePosters";
+import { isSeries } from "../lib/entries";
+import "./composer.css";
 
 const views: Record<Kind, (props: ViewProps) => React.JSX.Element> = {
   Nota: NoteView,
@@ -59,18 +78,22 @@ export type ComposeInit = {
 
 type ComposeModalProps = {
   init: ComposeInit;
-  /** Guarda y devuelve el id del recuerdo (null si falló). */
-  onSave: (input: EntryInput) => Promise<string | null>;
+  /**
+   * Guarda y devuelve el id del recuerdo (null si falló). `into`: un libro de tu estantería que
+   * se actualiza en lugar de crear otro.
+   */
+  onSave: (input: EntryInput, into?: Entry) => Promise<string | null>;
   onClose: () => void;
 };
 
 /** Ventana para crear o editar un recuerdo: primero eliges el tipo, luego escribes. */
 export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
-  const { workspace, confirm, openPerson, notify } = useApp();
+  const { workspace, confirm, openPerson, notify, createPerson, patchPerson } =
+    useApp();
   const c = useComposer(
     {
       entry: init.entry,
-      kind: init.kind ?? 'Nota',
+      kind: init.kind ?? "Nota",
       links: init.links,
       details: init.details,
       episodeId: init.episodeId,
@@ -82,17 +105,23 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
   const { list: notebooks } = useCuadernos();
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const entryId = init.entry?.id;
-  const savedIn = (nb: Notebook) => Boolean(entryId && hasRef(nb, 'entry', entryId));
-  const inNotebook = (nb: Notebook) => (picked ? picked.has(nb.id) : savedIn(nb));
+  const savedIn = (nb: Notebook) =>
+    Boolean(entryId && hasRef(nb, "entry", entryId));
+  const inNotebook = (nb: Notebook) =>
+    picked ? picked.has(nb.id) : savedIn(nb);
   const toggleNotebook = (nb: Notebook) =>
     setPicked((prev) => {
-      const next = new Set(prev ?? (notebooks ?? []).filter(savedIn).map((n) => n.id));
+      const next = new Set(
+        prev ?? (notebooks ?? []).filter(savedIn).map((n) => n.id),
+      );
       if (next.has(nb.id)) next.delete(nb.id);
       else next.add(nb.id);
       return next;
     });
-  const [stage, setStage] = useState<'pick' | 'write'>(init.kind || init.entry ? 'write' : 'pick');
-  const [shortcut, setShortcut] = useState<'idea' | 'link' | null>(null);
+  const [stage, setStage] = useState<"pick" | "write">(
+    init.kind || init.entry ? "write" : "pick",
+  );
+  const [shortcut, setShortcut] = useState<"idea" | "link" | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   // Al volver al selector desde un formulario, se marca el tipo que estabas usando.
@@ -102,7 +131,7 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
   const meta = kindMeta[c.kind];
   const series = isSeries({ kind: c.kind, tags: c.tags, details: c.details });
   const colors =
-    c.kind === 'Movimiento' && c.direction === 'ingreso'
+    c.kind === "Movimiento" && c.direction === "ingreso"
       ? incomeColors
       : series
         ? seriesColors
@@ -112,9 +141,11 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
 
   // Al pasar a escribir, el cursor va al campo principal.
   useEffect(() => {
-    if (stage !== 'write') return;
+    if (stage !== "write") return;
     const timer = window.setTimeout(() => {
-      form.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus({ preventScroll: true });
+      form.current
+        ?.querySelector<HTMLElement>("[data-autofocus]")
+        ?.focus({ preventScroll: true });
     }, 60);
     return () => window.clearTimeout(timer);
   }, [stage, c.kind]);
@@ -122,12 +153,12 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
   const requestClose = async () => {
     if (c.dirty || picked) {
       const discard = await confirm({
-        title: '¿Descartar lo que escribiste?',
-        message: 'Los cambios que no hayas guardado se perderán.',
-        confirmLabel: 'Descartar',
-        cancelLabel: 'Seguir editando',
+        title: "¿Descartar lo que escribiste?",
+        message: "Los cambios que no hayas guardado se perderán.",
+        confirmLabel: "Descartar",
+        cancelLabel: "Seguir editando",
         danger: true,
-        icon: 'warning',
+        icon: "warning",
       });
       if (!discard) return;
     }
@@ -139,19 +170,29 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
     if (c.problem || busy) return;
     setBusy(true);
     const input = c.toInput();
-    if (input.kind === 'Película') {
+    if (input.kind === "Película") {
       const poster = input.details.tmdbPoster,
-        year = input.details.year || '',
-        key = normal(input.title) + '|' + year;
+        year = input.details.year || "",
+        key = normal(input.title) + "|" + year;
       // Si elegiste película o serie, se busca solo en eso; si no, en las dos.
       const want =
-        input.details.series === undefined ? undefined : input.details.series ? 'tv' : 'movie';
-      const otherType = Boolean(want && poster?.id && (poster.type ?? 'movie') !== want);
+        input.details.series === undefined
+          ? undefined
+          : input.details.series
+            ? "tv"
+            : "movie";
+      const otherType = Boolean(
+        want && poster?.id && (poster.type ?? "movie") !== want,
+      );
       if (!poster?.manual && (poster?.key !== key || otherType)) {
         delete input.details.tmdbPoster;
         if (input.title.trim().length >= 2)
           try {
-            const movie = exactMovie(await lookup(input.title, year, want), input.title, year);
+            const movie = exactMovie(
+              await lookup(input.title, year, want),
+              input.title,
+              year,
+            );
             if (movie)
               input.details.tmdbPoster = {
                 id: movie.id,
@@ -167,35 +208,92 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
       const info = input.details.movieInfo;
       if (
         selected?.id &&
-        (info?.id !== selected.id || (info.type ?? 'movie') !== (selected.type ?? 'movie'))
+        (info?.id !== selected.id ||
+          (info.type ?? "movie") !== (selected.type ?? "movie"))
       )
         try {
           input.details.movieInfo = await movieInfo(selected.id, selected.type);
         } catch {
           delete input.details.movieInfo;
         }
-      if (input.details.movieInfo?.year) input.details.year = input.details.movieInfo.year;
+      if (input.details.movieInfo?.year)
+        input.details.year = input.details.movieInfo.year;
       if (selected && !selected.manual)
-        selected.key = normal(input.title) + '|' + (input.details.year || '');
+        selected.key = normal(input.title) + "|" + (input.details.year || "");
     }
-    const savedId = await onSave(input);
+    const into = c.shelfBook ?? undefined;
+    // Quién te prestó el libro: si no está en tus personas, se pregunta si crear su ficha.
+    let lender: Person | null = null;
+    const lentName = input.details.lentBy?.trim();
+    if (input.kind === "Libro" && lentName) {
+      lender = input.details.lentById
+        ? (workspace.people.find((p) => p.id === input.details.lentById) ??
+          null)
+        : null;
+      if (!lender) {
+        delete input.details.lentById;
+        const create = await confirm({
+          title: `¿Agregar a ${lentName} a tus personas?`,
+          message: `Se crea su ficha y queda como novedad que te prestó «${input.title}».`,
+          confirmLabel: "Crear persona",
+          cancelLabel: "Solo guardar el nombre",
+          icon: "question",
+        });
+        if (create) {
+          lender = await createPerson(lentName.slice(0, 120));
+          if (lender) {
+            input.details.lentById = lender.id;
+            input.details.lentBy = lender.name;
+          }
+        }
+      }
+    }
+    const savedId = await onSave(input, into);
     setBusy(false);
     if (!savedId) return;
+    // En su ficha queda la novedad del préstamo (solo si es nuevo: al editar no se repite).
+    const before = init.entry ?? into;
+    if (lender && before?.details.lentById !== lender.id)
+      void noteLoan(lender, input, savedId);
     if (picked) void fileInNotebooks(savedId, picked);
     onClose();
+  }
+
+  /** «Me prestó el libro «Dune»» en las novedades de quien te lo prestó. */
+  async function noteLoan(person: Person, input: EntryInput, entryId: string) {
+    const now = new Date().toISOString();
+    const author = input.details.author ? ` de ${input.details.author}` : "";
+    const update: PersonUpdate = {
+      id: crypto.randomUUID(),
+      date: input.date || todayInputValue(),
+      kind: "otro",
+      text: `Me prestó el libro «${input.title}»${author}.`,
+      created_at: now,
+      entryId,
+    };
+    await patchPerson(
+      person,
+      {
+        profile: {
+          ...person.profile,
+          updates: [update, ...(person.profile.updates ?? [])],
+        },
+      },
+      true,
+    );
   }
 
   /** Pone o quita el recuerdo de los cuadernos según lo que marcaste en el pie. */
   async function fileInNotebooks(id: string, want: Set<string>) {
     for (const nb of notebooks ?? []) {
-      const has = hasRef(nb, 'entry', id);
+      const has = hasRef(nb, "entry", id);
       if (want.has(nb.id) === has) continue;
       const result = has
         ? await updateNotebook(nb.id, {
-            items: nb.items.filter((i) => !(i.type === 'entry' && i.id === id)),
+            items: nb.items.filter((i) => !(i.type === "entry" && i.id === id)),
           })
-        : await addToNotebook(nb.id, [{ type: 'entry', id }]);
-      if (typeof result === 'string') {
+        : await addToNotebook(nb.id, [{ type: "entry", id }]);
+      if (typeof result === "string") {
         notify(result);
         return;
       }
@@ -203,7 +301,7 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
   }
 
   const addFiles = (files: File[]) => {
-    const images = files.filter((f) => f.type.startsWith('image/'));
+    const images = files.filter((f) => f.type.startsWith("image/"));
     if (!images.length) return false;
     if (meta.cover) c.uploads.add(images.slice(0, 1), true);
     else c.uploads.add(images);
@@ -211,7 +309,7 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== 'Enter') return;
+    if (e.key !== "Enter") return;
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       void submit();
@@ -220,26 +318,34 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
     // Enter en un campo de una línea no debe guardar a medias. Solo guarda en los campos
     // marcados (el pendiente y el monto); en nota y aprendizaje salta al texto.
     const target = e.target as HTMLElement;
-    if (!(target instanceof HTMLInputElement) || target.closest('[data-enter-saves]')) return;
+    if (
+      !(target instanceof HTMLInputElement) ||
+      target.closest("[data-enter-saves]")
+    )
+      return;
     e.preventDefault();
     if (
-      target.classList.contains('cp-title-input') &&
-      (c.kind === 'Nota' || c.kind === 'Aprendizaje')
+      target.classList.contains("cp-title-input") &&
+      (c.kind === "Nota" || c.kind === "Aprendizaje")
     ) {
-      form.current?.querySelector<HTMLElement>('textarea.cp-writing, .cp-idea textarea')?.focus();
+      form.current
+        ?.querySelector<HTMLElement>("textarea.cp-writing, .cp-idea textarea")
+        ?.focus();
     }
   };
   const onPaste = (e: ClipboardEvent) => {
     if (addFiles(Array.from(e.clipboardData.files))) e.preventDefault();
   };
-  const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer.types).includes('Files');
+  const hasFiles = (e: DragEvent) =>
+    Array.from(e.dataTransfer.types).includes("Files");
   const onDragOver = (e: DragEvent) => {
     if (!hasFiles(e)) return;
     e.preventDefault();
     setDragging(true);
   };
   const onDragLeave = (e: DragEvent) => {
-    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+      setDragging(false);
   };
   const onDrop = (e: DragEvent) => {
     if (!hasFiles(e)) return;
@@ -248,22 +354,34 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
     addFiles(Array.from(e.dataTransfer.files));
   };
 
-  function saved(type: 'idea' | 'link') {
-    window.dispatchEvent(new Event('nexo:' + type + '-saved'));
-    notify(type === 'idea' ? 'Idea guardada en Notas.' : 'Enlace disponible en Lecturas.');
+  function saved(type: "idea" | "link") {
+    window.dispatchEvent(new Event("nexo:" + type + "-saved"));
+    notify(
+      type === "idea"
+        ? "Idea guardada en tus notas."
+        : "Enlace disponible en Lecturas.",
+    );
     onClose();
   }
-  if (shortcut === 'idea')
-    return <NoteEditor initial={fresh(null)} close={onClose} saved={() => saved('idea')} />;
-  if (shortcut === 'link')
+  if (shortcut === "idea")
+    return (
+      <NoteEditor
+        initial={fresh(null)}
+        close={onClose}
+        saved={() => saved("idea")}
+      />
+    );
+  if (shortcut === "link")
     return (
       <SaveLink
         close={onClose}
-        saved={() => saved('link')}
+        saved={() => saved("link")}
         savedMany={(n) => {
-          window.dispatchEvent(new Event('nexo:link-saved'));
+          window.dispatchEvent(new Event("nexo:link-saved"));
           notify(
-            n === 1 ? 'Enlace disponible en Lecturas.' : `${n} enlaces disponibles en Lecturas.`,
+            n === 1
+              ? "Enlace disponible en Lecturas."
+              : `${n} enlaces disponibles en Lecturas.`,
           );
           onClose();
         }}
@@ -272,14 +390,14 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
   return (
     <Sheet
       yieldTo=".mp-picker[open],.reader-dialog[open],.sheet.cz-form-sheet"
-      label={c.editing ? 'Editar recuerdo' : 'Nuevo recuerdo'}
-      size={stage === 'pick' ? 'md' : 'lg'}
+      label={c.editing ? "Editar recuerdo" : "Nuevo recuerdo"}
+      size={stage === "pick" ? "md" : "lg"}
       onRequestClose={requestClose}
     >
-      {stage === 'pick' ? (
+      {stage === "pick" ? (
         <KindPicker
           onShortcut={(key) => {
-            if (key === 'person') openPerson();
+            if (key === "person") openPerson();
             else setShortcut(key);
           }}
           current={hasChosen ? c.kind : undefined}
@@ -287,7 +405,7 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
           onPick={(kind) => {
             c.setKind(kind);
             setHasChosen(true);
-            setStage('write');
+            setStage("write");
           }}
         />
       ) : (
@@ -297,9 +415,9 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
           data-kind={c.kind}
           style={
             {
-              '--accent': colors.accent,
-              '--soft': colors.soft,
-              '--ink': colors.ink,
+              "--accent": colors.accent,
+              "--soft": colors.soft,
+              "--ink": colors.ink,
             } as CSSProperties
           }
           onSubmit={submit}
@@ -314,14 +432,19 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
               type="button"
               className="cp-kind-chip"
               title="Cambiar el tipo"
-              onClick={() => setStage('pick')}
+              onClick={() => setStage("pick")}
             >
               <ChevronLeft size={16} />
               <Icon size={17} />
-              <strong>{series ? 'Serie' : c.kind}</strong>
+              <strong>{series ? "Serie" : c.kind}</strong>
             </button>
             {c.editing && <span className="cp-editing">Editando</span>}
-            <button type="button" className="cp-close" aria-label="Cerrar" onClick={requestClose}>
+            <button
+              type="button"
+              className="cp-close"
+              aria-label="Cerrar"
+              onClick={requestClose}
+            >
               <X size={20} />
             </button>
           </header>
@@ -338,15 +461,33 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
               episodeId={c.episodeId}
               onEpisode={c.setEpisodeId}
             />
-            <span className={'cp-status' + (c.problem ? ' problem' : '')} role="status">
-              {c.problem ?? 'Ctrl + Enter para guardar'}
+            <span
+              className={"cp-status" + (c.problem ? " problem" : "")}
+              role="status"
+            >
+              {c.problem ?? "Ctrl + Enter para guardar"}
             </span>
-            <button type="button" className="cp-btn ghost" onClick={requestClose}>
+            <button
+              type="button"
+              className="cp-btn ghost"
+              onClick={requestClose}
+            >
               Cancelar
             </button>
-            <button className="cp-btn cta" disabled={Boolean(c.problem) || busy}>
-              {busy ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}
-              {c.editing ? 'Guardar cambios' : series ? 'Guardar serie' : meta.saveLabel}
+            <button
+              className="cp-btn cta"
+              disabled={Boolean(c.problem) || busy}
+            >
+              {busy ? (
+                <LoaderCircle className="spin" size={17} />
+              ) : (
+                <Check size={17} />
+              )}
+              {c.editing
+                ? "Guardar cambios"
+                : series
+                  ? "Guardar serie"
+                  : meta.saveLabel}
             </button>
           </footer>
 

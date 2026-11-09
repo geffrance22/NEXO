@@ -27,6 +27,44 @@ function Brick({ children }: { children: ReactNode }) {
   );
 }
 
+type GridProps = {
+  /** Ancho mínimo de una columna y cuántas columnas como mucho. */
+  min?: number;
+  max?: number;
+  gap?: number;
+  className?: string;
+};
+
+/**
+ * Rejilla tipo Pinterest para cualquier lista. Las tarjetas nuevas se añaden al final sin mover
+ * las que ya están (a diferencia de `columns` de CSS), así que sirve para cargar por tandas.
+ */
+export function MasonryGrid<T>({
+  items,
+  itemKey,
+  render,
+  min = 230,
+  max = 4,
+  gap = 12,
+  className,
+}: GridProps & { items: T[]; itemKey: (item: T) => string; render: (item: T) => ReactNode }) {
+  return (
+    <div
+      className={'msn' + (className ? ' ' + className : '')}
+      style={
+        { '--msn-min': min + 'px', '--msn-max': max, '--msn-gap': gap + 'px' } as CSSProperties
+      }
+    >
+      {items.map((it) => (
+        <Brick key={itemKey(it)}>{render(it)}</Brick>
+      ))}
+    </div>
+  );
+}
+
+const entryKey = (e: Entry) => e.id;
+const noteTile = (e: Entry) => <NoteTile entry={e} />;
+
 /**
  * Tarjetas al estilo Pinterest: cada una mide lo que contiene (con reseña o sin ella, con foto o
  * sin ella) y se acomoda en la columna que quede más arriba, sin huecos. El orden se lee de
@@ -34,28 +72,8 @@ function Brick({ children }: { children: ReactNode }) {
  */
 export function Masonry({
   entries,
-  render = (e) => <NoteTile entry={e} />,
-  min = 230,
-  max = 4,
-  gap = 12,
-}: {
-  entries: Entry[];
-  render?: (e: Entry) => ReactNode;
-  /** Ancho mínimo de una columna y cuántas columnas como mucho. */
-  min?: number;
-  max?: number;
-  gap?: number;
-}) {
-  return (
-    <div
-      className="msn"
-      style={
-        { '--msn-min': min + 'px', '--msn-max': max, '--msn-gap': gap + 'px' } as CSSProperties
-      }
-    >
-      {entries.map((e) => (
-        <Brick key={e.id}>{render(e)}</Brick>
-      ))}
-    </div>
-  );
+  render = noteTile,
+  ...grid
+}: GridProps & { entries: Entry[]; render?: (e: Entry) => ReactNode }) {
+  return <MasonryGrid items={entries} itemKey={entryKey} render={render} {...grid} />;
 }

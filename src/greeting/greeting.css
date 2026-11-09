@@ -1,4 +1,8 @@
 /* ── Mi espacio: saludo ── */
+/* Como en Libroteca: menos aire entre la barra superior y el saludo. */
+main:has(.page-heading.greet) {
+  --main-pt: 18px;
+}
 .page-heading.greet {
   display: block;
   margin-bottom: 20px;

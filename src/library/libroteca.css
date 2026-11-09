@@ -12,6 +12,10 @@
 }
 
 /* ───────── Encabezado ───────── */
+/* Libroteca no lleva el encabezado de la app: menos aire entre la barra superior y el título. */
+main:has(.lt:not(.lt-agenda)) {
+  --main-pt: 18px;
+}
 .lt-head {
   display: flex;
   align-items: flex-end;
@@ -409,6 +413,152 @@
 @keyframes lt-shimmer {
   to {
     background-position: -200% 0;
+  }
+}
+/* Final de una lista por tandas: se carga sola al acercarse; queda discreta. */
+.lt-more.lt-more-auto {
+  border-color: transparent;
+  color: var(--lt-faint);
+}
+.lt-more.lt-more-auto:hover {
+  border-color: #d9e0cf;
+  color: #5f6f50;
+}
+
+/* ───────── Esqueletos (mientras cargan tus datos) ─────────
+   Ocupan lo mismo que el contenido real para que al llegar nada salte. */
+.lt-sk {
+  display: block;
+  border-radius: 14px;
+  background: linear-gradient(90deg, #f1f4ec, #f8faf5, #f1f4ec);
+  background-size: 200% 100%;
+  animation:
+    lt-shimmer 1.4s linear infinite,
+    lt-sk-in 0.4s ease both;
+}
+.lt-sk.line {
+  height: 12px;
+  border-radius: 6px;
+}
+.lt-sk-stats {
+  display: flex;
+  gap: 10px;
+  height: 18.75px;
+  margin-top: 6px;
+  align-items: center;
+}
+.lt-tabs i.lt-sk-count {
+  width: 22px;
+  height: 18px;
+  padding: 0;
+  background: rgba(40, 55, 30, 0.06);
+  animation: lt-sk-pulse 1.4s ease-in-out infinite;
+}
+.lt-sk-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lt-sk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.lt-sk-toolbar .lt-sk {
+  height: 30px;
+  border-radius: 999px;
+}
+.lt-sk-toolbar .lt-sk.line {
+  height: 12px;
+}
+.lt-sk-toolbar .end {
+  margin-left: auto;
+}
+.lt-sk-cover {
+  aspect-ratio: 2 / 3;
+}
+i.lt-sk-lead {
+  margin: -2px 0 16px;
+}
+i.lt-sk-h2 {
+  margin: 2px 0 13px;
+}
+.lt-row-main:has(> .lt-sk) {
+  gap: 6px;
+}
+.lt-sk-poster {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--lt-line);
+  border-radius: 16px;
+  background: #fff;
+}
+.lt-sk-poster > .lt-sk:first-child {
+  aspect-ratio: 2 / 3;
+  border-radius: 0;
+}
+.lt-sk-poster > div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 13px 14px;
+}
+.lt-sk-quote {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 18px;
+  border: 1px solid var(--lt-line);
+  border-radius: 16px;
+  background: #fff;
+}
+.lt-sk-quote footer {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid #f3f1ec;
+}
+@keyframes lt-sk-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes lt-sk-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+/* El contenido real entra con un fundido corto (sin desplazarse). */
+.lt-reveal {
+  animation: lt-reveal 0.28s ease both;
+}
+@keyframes lt-reveal {
+  from {
+    opacity: 0;
+  }
+}
+/* Pósters: aparecen con un fundido al terminar de cargar, sobre su color de fondo. */
+.lt-art > img.lt-fade {
+  opacity: 0;
+  transition:
+    opacity 0.3s ease,
+    transform 0.45s ease;
+}
+.lt-art > img.lt-fade.on {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lt-sk,
+  .lt-tabs i.lt-sk-count,
+  .lt-reveal {
+    animation: none;
+  }
+  .lt-art > img.lt-fade {
+    transition: none;
   }
 }
 
@@ -1121,20 +1271,16 @@
 .lt-spot-x:hover {
   background: rgba(255, 255, 255, 0.7);
 }
-.lt-quotes {
-  columns: 3 260px;
-  column-gap: 14px;
-}
+/* El muro usa la rejilla de Masonry (las tandas nuevas se añaden sin mover las de arriba). */
 .lt-quote {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin: 0 0 14px;
+  margin: 0;
   padding: 18px 18px 12px;
   border: 1px solid var(--lt-line);
   border-radius: 16px;
   background: #fff;
-  break-inside: avoid;
   transition:
     border-color 0.18s,
     box-shadow 0.18s;
@@ -1235,6 +1381,170 @@
 .lt-quote-tools button:hover {
   background: var(--lt-chip);
   color: var(--lt-ink);
+}
+.lt-spot-img {
+  right: 44px;
+}
+
+/* Filtro de citas por libro */
+.lt-qf-on {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 3px 0 0;
+  border-radius: 10px;
+  background: var(--k);
+  color: #fff;
+}
+.lt-qf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 220px;
+  height: 100%;
+  padding: 0 6px 0 5px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: inherit;
+}
+.lt-qf-chip img {
+  flex: none;
+  width: 18px;
+  height: 24px;
+  border-radius: 3px;
+  object-fit: cover;
+}
+.lt-qf-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lt-qf-x {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  color: inherit;
+  opacity: 0.8;
+}
+.lt-qf-x:hover {
+  background: rgba(255, 255, 255, 0.18);
+  opacity: 1;
+}
+.lt-qf {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lt-qf-find {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  margin: 2px 2px 0;
+  padding: 0 11px;
+  border: 1px solid #e7ebdf;
+  border-radius: 10px;
+  color: #9aa391;
+}
+.lt-qf-find:focus-within {
+  border-color: #cdb79c;
+  box-shadow: 0 0 0 3px #f4ece3;
+}
+.lt-qf-find input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+  color: #232b1e;
+}
+.lt-qf-find input:focus {
+  outline: none;
+}
+.lt-qf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 320px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.lt-qf-list button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 5px 8px;
+  border-radius: 9px;
+  text-align: left;
+  color: #232b1e;
+}
+.lt-qf-list button:hover,
+.lt-qf-list button.hot {
+  background: #f6f2ec;
+}
+.lt-qf-list button[aria-selected='true'] {
+  background: #f4ece3;
+}
+.lt-qf-list img,
+.lt-qf-ph {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: #f4ece3;
+  color: #8c6d4f;
+}
+.lt-qf-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.lt-qf-text strong,
+.lt-qf-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lt-qf-text strong {
+  font-size: 13px;
+  font-weight: 650;
+}
+.lt-qf-text small {
+  font-size: 11.5px;
+  color: #9aa391;
+}
+.lt-qf-list i {
+  flex: none;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #f1f4ec;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  text-align: center;
+  color: #7b8573;
+}
+.lt-qf-all {
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+.lt-qf-all svg {
+  color: #8c6d4f;
+}
+.lt-qf-none {
+  padding: 12px 10px;
+  font-size: 13px;
+  color: #7b8573;
 }
 
 /* Nueva cita */
@@ -1624,7 +1934,77 @@ html[data-theme='dark'] .lt-tabs {
   .lt-row-side time {
     display: none;
   }
-  .lt-quotes {
-    columns: 1;
-  }
+}
+
+/* ───────── Estantería (ventana desde Inicio) ───────── */
+.sheet.lt-shelf {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 94vw);
+  max-height: min(760px, 92dvh);
+  padding: 0;
+  overflow: hidden;
+}
+.lt-shelf .lt-qs-head h2 svg {
+  color: var(--lt-muted, #7b8573);
+}
+.lt-shelf-sum {
+  margin: 0;
+  padding: 0 20px 10px;
+  font-size: 12.5px;
+  color: var(--lt-muted, #7b8573);
+}
+.lt-shelf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 14px 12px;
+  min-height: 0;
+  padding: 6px 20px 22px;
+  overflow-y: auto;
+}
+/* Sin portada: el título centrado, como si fuera la tapa. */
+.lt-shelf-ph {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 10px;
+  background:
+    radial-gradient(120% 70% at 100% 0%, rgba(255, 255, 255, 0.16), transparent 60%),
+    linear-gradient(165deg, var(--c), var(--k));
+  color: #fff;
+  text-align: center;
+}
+.lt-shelf-ph b {
+  display: -webkit-box;
+  overflow: hidden;
+  font:
+    700 14px/1.25 Georgia,
+    'Times New Roman',
+    serif;
+  letter-spacing: -0.2px;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+}
+/* De quién es el libro prestado: abajo a la derecha, dentro de la portada. */
+.lt-shelf-owner {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 1;
+  max-width: calc(100% - 12px);
+  padding: 3px 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(18, 20, 16, 0.58);
+  backdrop-filter: blur(6px);
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fff;
 }

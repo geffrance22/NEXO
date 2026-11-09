@@ -1,5 +1,5 @@
-import { entryImages } from '../lib/moviePosters';
-import { useEffect, useRef, type CSSProperties } from 'react';
+import { entryImages } from "../lib/moviePosters";
+import { useEffect, useRef, type CSSProperties } from "react";
 import {
   BookMarked,
   Brain,
@@ -17,29 +17,41 @@ import {
   TrendingUp,
   Tv,
   X,
-} from 'lucide-react';
-import { useMediaEnrich } from '../library/enrich';
-import { isActive } from '../library/progress';
-import { isFinished } from '../ritual/learning';
-import '../ritual/ritual.css';
-import { useApp } from '../AppContext';
-import type { Entry } from '../data';
-import { incomeColors, kindMeta, seriesColors } from '../composer/kinds';
-import { entryFacts, isSeries, longDate, mediaSpecs, signedAmount } from '../lib/entries';
-import { friendlyDate, shortDate, todayInputValue } from '../lib/format';
-import { daysBetween } from '../lib/people';
-import { placeOf } from '../lib/places';
-import { Avatar } from '../people/Avatar';
-import { AddToNotebook } from '../cuadernos/AddToNotebook';
-import { RichText } from './RichText';
-import { Sheet } from './Sheet';
-import './entry-viewer.css';
+} from "lucide-react";
+import { useMediaEnrich } from "../library/enrich";
+import { isActive } from "../library/progress";
+import { isFinished } from "../ritual/learning";
+import "../ritual/ritual.css";
+import { useApp } from "../AppContext";
+import type { Entry } from "../data";
+import { incomeColors, kindMeta, seriesColors } from "../composer/kinds";
+import {
+  entryFacts,
+  isSeries,
+  longDate,
+  mediaSpecs,
+  signedAmount,
+} from "../lib/entries";
+import { friendlyDate, shortDate, todayInputValue } from "../lib/format";
+import { daysBetween } from "../lib/people";
+import { placeOf } from "../lib/places";
+import { Avatar } from "../people/Avatar";
+import { AddToNotebook } from "../cuadernos/AddToNotebook";
+import { RichText } from "./RichText";
+import { Sheet } from "./Sheet";
+import "./entry-viewer.css";
 
 /**
  * Ficha de un recuerdo: se lee cómodo, con sus fotos, personas, lugar y episodio. Desde aquí se
  * edita, se completa o se borra. Si navegas a otra sección (una persona, un lugar), se cierra.
  */
-export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => void }) {
+export function EntryViewer({
+  entry,
+  onClose,
+}: {
+  entry: Entry;
+  onClose: () => void;
+}) {
   const app = useApp();
   const { workspace } = app;
   // Películas y series sin póster o sin sinopsis: se completan con TMDB al abrir la ficha.
@@ -48,8 +60,8 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
   close.current = onClose;
   useEffect(() => {
     const onNavigate = () => close.current();
-    window.addEventListener('hashchange', onNavigate);
-    return () => window.removeEventListener('hashchange', onNavigate);
+    window.addEventListener("hashchange", onNavigate);
+    return () => window.removeEventListener("hashchange", onNavigate);
   }, []);
   /** Cierra la ficha y luego navega (también si ya estabas en esa sección). */
   const navigate = (to: () => void) => {
@@ -60,7 +72,7 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
   const meta = kindMeta[entry.kind];
   const series = isSeries(entry);
   const colors =
-    entry.kind === 'Movimiento' && entry.direction === 'ingreso'
+    entry.kind === "Movimiento" && entry.direction === "ingreso"
       ? incomeColors
       : series
         ? seriesColors
@@ -68,7 +80,9 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
   const Icon = series ? Tv : meta.icon;
   const d = entry.details;
   const specs = mediaSpecs(entry);
-  const people = workspace.people.filter((p) => entry.person_ids.includes(p.id));
+  const people = workspace.people.filter((p) =>
+    entry.person_ids.includes(p.id),
+  );
   const episode = entry.episode_id
     ? workspace.episodes.find((ep) => ep.id === entry.episode_id)
     : undefined;
@@ -77,13 +91,18 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
     (f) => f.text !== (place?.name ?? d.place) && f.text !== d.activity,
   );
 
-  const images = entryImages(entry);
-  const cover = (entry.kind === 'Película' || entry.kind === 'Libro') && images[0];
+  // La portada (o el póster) va aparte; las fotos de un libro se suman después y también se
+  // abren en grande, en el mismo visor.
+  const base = entryImages(entry);
+  const cover =
+    (entry.kind === "Película" || entry.kind === "Libro") && base[0];
+  const images =
+    entry.kind === "Libro" ? [...base, ...(d.bookPhotos ?? [])] : base;
   const photos = cover ? images.slice(1) : images;
   const firstPhoto = cover ? 1 : 0;
-  const quotes = entry.kind === 'Libro' ? (d.quotes ?? []).filter(Boolean) : [];
-  const names = people.flatMap((p) => [p.name, p.name.split(' ')[0]]);
-  const done = entry.status === 'completado';
+  const quotes = entry.kind === "Libro" ? (d.quotes ?? []).filter(Boolean) : [];
+  const names = people.flatMap((p) => [p.name, p.name.split(" ")[0]]);
+  const done = entry.status === "completado";
   // Ritual de cierre (libros y películas terminados) y el aprendizaje que dejó.
   const finished = isFinished(entry);
   const ritual = finished ? d.ritual : undefined;
@@ -95,13 +114,15 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
   );
   // Un aprendizaje que nació de un libro o una película.
   const origin =
-    entry.kind === 'Aprendizaje' && d.sourceId
+    entry.kind === "Aprendizaje" && d.sourceId
       ? workspace.entries.find((e) => e.id === d.sourceId)
       : undefined;
 
   // Si lo anotaste días después de que pasó, se indica.
   const happened = todayInputValue(new Date(entry.created_at));
-  const noted = entry.recorded_at ? todayInputValue(new Date(entry.recorded_at)) : null;
+  const noted = entry.recorded_at
+    ? todayInputValue(new Date(entry.recorded_at))
+    : null;
   const notedLater = noted && daysBetween(happened, noted) >= 2;
 
   const wide = photos.length >= 2 || Boolean(cover);
@@ -109,26 +130,37 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
   return (
     <Sheet
       label={entry.title || entry.kind}
-      className={'ev' + (wide ? ' wide' : '')}
+      className={"ev" + (wide ? " wide" : "")}
       yieldTo=".nx-peek, .sheet.pg, .sheet.cr, .sheet.cz-form-sheet"
       onRequestClose={onClose}
     >
       <div
         className="ev-wrap"
-        style={{ '--c': colors.accent, '--s': colors.soft, '--k': colors.ink } as CSSProperties}
+        style={
+          {
+            "--c": colors.accent,
+            "--s": colors.soft,
+            "--k": colors.ink,
+          } as CSSProperties
+        }
       >
         <header className="ev-head">
           <span className="ev-kind">
-            <Icon size={14} /> {series ? 'Serie' : entry.kind}
+            <Icon size={14} /> {series ? "Serie" : entry.kind}
           </span>
           <span className="ev-date">{longDate(entry.created_at)}</span>
-          <button type="button" className="ev-x" aria-label="Cerrar" onClick={onClose}>
+          <button
+            type="button"
+            className="ev-x"
+            aria-label="Cerrar"
+            onClick={onClose}
+          >
             <X size={18} />
           </button>
         </header>
 
         <div className="ev-scroll">
-          <div className={'ev-hero' + (cover ? ' with-cover' : '')}>
+          <div className={"ev-hero" + (cover ? " with-cover" : "")}>
             {cover && (
               <button
                 type="button"
@@ -140,11 +172,13 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
               </button>
             )}
             <div className="ev-title">
-              <h2 className={entry.kind === 'Pendiente' && done ? 'done' : ''}>
+              <h2 className={entry.kind === "Pendiente" && done ? "done" : ""}>
                 {entry.title || entry.kind}
               </h2>
-              {entry.kind === 'Movimiento' && (
-                <strong className={'ev-amount ' + entry.direction}>{signedAmount(entry)}</strong>
+              {entry.kind === "Movimiento" && (
+                <strong className={"ev-amount " + entry.direction}>
+                  {signedAmount(entry)}
+                </strong>
               )}
               {(d.activity || d.place) && (
                 <div className="ev-where">
@@ -153,7 +187,7 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
                     (place ? (
                       <button
                         type="button"
-                        onClick={() => navigate(() => app.go('Lugares', place))}
+                        onClick={() => navigate(() => app.go("Lugares", place))}
                       >
                         <MapPin size={13} /> {place.name}
                       </button>
@@ -176,10 +210,11 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
               {specs.progress !== null && (
                 <div className="ev-progress">
                   <b>
-                    <i style={{ width: specs.progress + '%' }} />
+                    <i style={{ width: specs.progress + "%" }} />
                   </b>
                   <span>
-                    Página {d.pagesRead ?? 0} de {d.pagesTotal} · {specs.progress}%
+                    Página {d.pagesRead ?? 0} de {d.pagesTotal} ·{" "}
+                    {specs.progress}%
                   </span>
                 </div>
               )}
@@ -206,21 +241,21 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
               <RichText text={entry.body} names={names} />
             </div>
           )}
-          {entry.kind === 'Trabajo' && d.nextStep && (
+          {entry.kind === "Trabajo" && d.nextStep && (
             <p className="ev-note">
               <b>Siguiente paso</b> {d.nextStep}
             </p>
           )}
-          {entry.kind === 'Aprendizaje' && d.apply && (
+          {entry.kind === "Aprendizaje" && d.apply && (
             <p className="ev-note">
               <b>Lo aplicaré</b> {d.apply}
             </p>
           )}
-          {entry.kind === 'Aprendizaje' && d.review && (
+          {entry.kind === "Aprendizaje" && d.review && (
             <p className="ev-note">
-              <b>Repaso espaciado</b>{' '}
+              <b>Repaso espaciado</b>{" "}
               {d.review.step < 0 || !d.review.due
-                ? 'Ya no se repasa.'
+                ? "Ya no se repasa."
                 : `Próximo repaso: ${friendlyDate(d.review.due).toLowerCase()}.`}
             </p>
           )}
@@ -255,7 +290,8 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
                 <div className="ev-ritual-foot">
                   {ritual.quiz && (
                     <span>
-                      <GraduationCap size={13} /> Test: {ritual.quiz.score} de {ritual.quiz.total}
+                      <GraduationCap size={13} /> Test: {ritual.quiz.score} de{" "}
+                      {ritual.quiz.total}
                     </span>
                   )}
                   {recommended.map((p) => (
@@ -265,11 +301,14 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
                       title={`Se lo recomendarías a ${p.name}`}
                       onClick={() => app.peekPerson(p)}
                     >
-                      <Avatar person={p} size={18} /> {p.name.split(' ')[0]}
+                      <Avatar person={p} size={18} /> {p.name.split(" ")[0]}
                     </button>
                   ))}
                   {ritualLearning && (
-                    <button type="button" onClick={() => app.viewEntry(ritualLearning)}>
+                    <button
+                      type="button"
+                      onClick={() => app.viewEntry(ritualLearning)}
+                    >
                       <Brain size={13} /> Ver aprendizaje
                     </button>
                   )}
@@ -279,7 +318,7 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
           )}
 
           {photos.length > 0 && (
-            <div className={'ev-photos n' + Math.min(photos.length, 3)}>
+            <div className={"ev-photos n" + Math.min(photos.length, 3)}>
               {photos.slice(0, 6).map((img, i) => (
                 <button
                   type="button"
@@ -288,13 +327,19 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
                   onClick={() => app.openImages(images, firstPhoto + i)}
                 >
                   <img src={img.medium ?? img.url} alt="" loading="lazy" />
-                  {i === 5 && photos.length > 6 && <span>+{photos.length - 6}</span>}
+                  {i === 5 && photos.length > 6 && (
+                    <span>+{photos.length - 6}</span>
+                  )}
                 </button>
               ))}
             </div>
           )}
 
-          {(people.length > 0 || episode || origin || entry.tags.length > 0 || entry.file_path) && (
+          {(people.length > 0 ||
+            episode ||
+            origin ||
+            entry.tags.length > 0 ||
+            entry.file_path) && (
             <div className="ev-links">
               {origin && (
                 <div className="ev-row">
@@ -304,11 +349,11 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
                     className="ev-episode"
                     onClick={() => app.viewEntry(origin)}
                   >
-                    {origin.kind === 'Libro' ? (
+                    {origin.kind === "Libro" ? (
                       <BookMarked size={13} />
                     ) : (
                       <Clapperboard size={13} />
-                    )}{' '}
+                    )}{" "}
                     {origin.title}
                   </button>
                 </div>
@@ -336,7 +381,7 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
                   <button
                     type="button"
                     className="ev-episode"
-                    onClick={() => navigate(() => app.go('Episodios', episode))}
+                    onClick={() => navigate(() => app.go("Episodios", episode))}
                   >
                     <Layers size={13} /> {episode.title}
                   </button>
@@ -381,33 +426,49 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
           <span className="ev-noted">
             {notedLater && `Anotado el ${shortDate(entry.recorded_at!)}`}
           </span>
-          {entry.kind === 'Encuentro' && people.length > 0 && (
+          {entry.kind === "Encuentro" && people.length > 0 && (
             <button
               type="button"
               className="ev-btn"
-              onClick={() => app.openBrief(people[0], 'despues', entry)}
+              onClick={() => app.openBrief(people[0], "despues", entry)}
             >
               <ClipboardCheck size={15} /> Cierre rápido
             </button>
           )}
           {isActive(entry) && (
-            <button type="button" className="ev-btn" onClick={() => app.openProgress(entry)}>
+            <button
+              type="button"
+              className="ev-btn"
+              onClick={() => app.openProgress(entry)}
+            >
               <TrendingUp size={15} /> Actualizar progreso
             </button>
           )}
           {finished && !ritual && (
-            <button type="button" className="ev-btn" onClick={() => app.openRitual(entry)}>
+            <button
+              type="button"
+              className="ev-btn"
+              onClick={() => app.openRitual(entry)}
+            >
               <Sparkles size={15} /> Ritual de cierre
             </button>
           )}
-          {entry.kind === 'Pendiente' && (
-            <button type="button" className="ev-btn" onClick={() => app.toggleEntry(entry)}>
+          {entry.kind === "Pendiente" && (
+            <button
+              type="button"
+              className="ev-btn"
+              onClick={() => app.toggleEntry(entry)}
+            >
               {done ? <RotateCcw size={15} /> : <Check size={15} />}
-              {done ? 'Reabrir' : 'Marcar como hecho'}
+              {done ? "Reabrir" : "Marcar como hecho"}
             </button>
           )}
           <AddToNotebook entry={entry} />
-          <button type="button" className="ev-btn main" onClick={() => app.editEntry(entry)}>
+          <button
+            type="button"
+            className="ev-btn main"
+            onClick={() => app.editEntry(entry)}
+          >
             <Pencil size={15} /> Editar
           </button>
         </footer>

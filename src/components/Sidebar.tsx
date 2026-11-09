@@ -1,5 +1,4 @@
 import {
-  StickyNote,
   Columns3,
   ArrowUpRight,
   BookOpen,
@@ -19,16 +18,15 @@ import { initials } from '../lib/format';
 
 const nav = [
   ['Mi espacio', BookOpen],
+  ['Agenda', CalendarDays],
   ['Episodios', Layers],
   ['Personas', Users],
-  ['Conexiones', Network],
-  ['Lugares', MapPin],
-  ['Agenda', CalendarDays],
   ['Libroteca', Library],
   ['Lecturas', BookOpen],
-  ['Notas', StickyNote],
   ['Tableros', Columns3],
   ['Finanzas', Wallet],
+  ['Conexiones', Network],
+  ['Lugares', MapPin],
 ] as const;
 
 export function Sidebar({ mobileOpen }: { mobileOpen: boolean }) {

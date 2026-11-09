@@ -36,6 +36,7 @@ import { Avatar } from '../people/Avatar';
 import { Masonry } from './Masonry';
 import { ReadingPick } from '../readings/ReadingPick';
 import { PinnedColumnCard } from '../planner/PinnedColumn';
+import { HomeNotes } from '../notes/HomeNotes';
 import './home.css';
 
 const RECENT_MAX = 12;
@@ -54,6 +55,7 @@ export function Overview() {
       <div className="home-main">
         <TodayAgenda />
         <Recent />
+        <HomeNotes />
       </div>
       <aside className="home-side" aria-label="Accesos rápidos">
         <CaptureCard />

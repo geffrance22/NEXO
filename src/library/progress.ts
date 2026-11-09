@@ -85,6 +85,7 @@ export function finishedDetails(e: Entry, rating?: number): EntryDetails {
     return cleanDetails('Libro', {
       ...d,
       read: 'terminado',
+      finishedAt: d.finishedAt ?? todayInputValue(),
       pageLog:
         d.pagesTotal && d.pageLog
           ? [...d.pageLog, { d: todayInputValue(), p: d.pagesTotal }].slice(-60)

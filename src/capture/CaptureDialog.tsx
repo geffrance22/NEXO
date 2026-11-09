@@ -7,7 +7,7 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
-} from 'react';
+} from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -23,11 +23,11 @@ import {
   Sparkles,
   UserPlus,
   X,
-} from 'lucide-react';
-import { useApp } from '../AppContext';
-import { captureWithAssistant } from '../assistant';
-import { Sheet } from '../components/Sheet';
-import type { CommitmentKind, Episode, EpisodeKind, UpdateKind } from '../data';
+} from "lucide-react";
+import { useApp } from "../AppContext";
+import { captureWithAssistant } from "../assistant";
+import { Sheet } from "../components/Sheet";
+import type { CommitmentKind, Episode, EpisodeKind, UpdateKind } from "../data";
 import {
   adoptExisting,
   captureLessons,
@@ -41,22 +41,22 @@ import {
   type CapturePlan,
   type KinLink,
   type Piece,
-} from '../lib/capture';
-import { learnFromCapture } from '../lib/captureMemory';
-import { exchangeKinds } from '../lib/people';
-import { MoodPicker, Stars, moods } from '../composer/controls';
-import type { ExchangeKind } from '../data';
-import { cueOptions } from '../lib/recognize';
-import { genderOf } from '../lib/gender';
-import { ME, kinCall, tiesOf } from '../lib/relations';
-import { commitmentKindList, commitmentKinds } from '../lib/commitments';
-import { episodeKindList, episodeKinds } from '../lib/episodes';
-import { errorMessage, thousands, todayInputValue } from '../lib/format';
-import { updateKindList, updateKinds } from '../lib/updates';
-import { expenseCategories, incomeCategories } from '../composer/logic';
-import { Avatar } from '../people/Avatar';
-import { CaptureHelp } from './CaptureHelp';
-import { metaOf } from './meta';
+} from "../lib/capture";
+import { learnFromCapture } from "../lib/captureMemory";
+import { exchangeKinds } from "../lib/people";
+import { MoodPicker, Stars, moods } from "../composer/controls";
+import type { ExchangeKind } from "../data";
+import { cueOptions } from "../lib/recognize";
+import { genderOf } from "../lib/gender";
+import { ME, kinCall, tiesOf } from "../lib/relations";
+import { commitmentKindList, commitmentKinds } from "../lib/commitments";
+import { episodeKindList, episodeKinds } from "../lib/episodes";
+import { errorMessage, thousands, todayInputValue } from "../lib/format";
+import { updateKindList, updateKinds } from "../lib/updates";
+import { expenseCategories, incomeCategories } from "../composer/logic";
+import { Avatar } from "../people/Avatar";
+import { CaptureHelp } from "./CaptureHelp";
+import { metaOf } from "./meta";
 import {
   CapturePeople,
   PeopleField,
@@ -66,30 +66,45 @@ import {
   personCounts,
   personItems,
   type PersonOpt,
-} from './Pickers';
-import { newShared, peopleOf, saveCapture } from './saveCapture';
-import './capture.css';
+} from "./Pickers";
+import { newShared, peopleOf, saveCapture } from "./saveCapture";
+import "./capture.css";
 
-const platforms = ['Cine', 'Netflix', 'Prime Video', 'Disney+', 'Max', 'Apple TV', 'YouTube'];
-const learnSources = ['Libro', 'Curso', 'Video', 'Artículo', 'Persona', 'Práctica'];
+const platforms = [
+  "Cine",
+  "Netflix",
+  "Prime Video",
+  "Disney+",
+  "Max",
+  "Apple TV",
+  "YouTube",
+];
+const learnSources = [
+  "Libro",
+  "Curso",
+  "Video",
+  "Artículo",
+  "Persona",
+  "Práctica",
+];
 const factFields = [
-  ['likes', 'Le gusta'],
-  ['dislikes', 'No le gusta'],
-  ['gifts', 'Idea de regalo'],
-  ['birthday', 'Cumpleaños'],
-  ['fact', 'Otro dato'],
+  ["likes", "Le gusta"],
+  ["dislikes", "No le gusta"],
+  ["gifts", "Idea de regalo"],
+  ["birthday", "Cumpleaños"],
+  ["fact", "Otro dato"],
 ] as const;
 const activities = [
-  'Café',
-  'Comida',
-  'Fiesta',
-  'Visita',
-  'Paseo',
-  'Viaje',
-  'Llamada',
-  'Videollamada',
-  'Trabajo',
-  'Deporte',
+  "Café",
+  "Comida",
+  "Fiesta",
+  "Visita",
+  "Paseo",
+  "Viaje",
+  "Llamada",
+  "Videollamada",
+  "Trabajo",
+  "Deporte",
 ];
 /** Avisos visibles antes de «Ver más». */
 const NOTES_SHOWN = 3;
@@ -102,7 +117,7 @@ const NOTES_SHOWN = 3;
  * guardan por separado.
  */
 export function CaptureDialog({
-  initialText = '',
+  initialText = "",
   people: preset = [],
   onClose,
 }: {
@@ -115,7 +130,7 @@ export function CaptureDialog({
   const [text, setText] = useState(initialText);
   const [plans, setPlans] = useState<CapturePlan[] | null>(null);
   const [at, setAt] = useState(0);
-  const [busy, setBusy] = useState<'ai' | 'save' | null>(null);
+  const [busy, setBusy] = useState<"ai" | "save" | null>(null);
   const [showSource, setShowSource] = useState(false);
   const [help, setHelp] = useState(false);
   /** Experiencias ya afinadas con IA (para no gastar otra consulta sin querer). */
@@ -143,10 +158,10 @@ export function CaptureDialog({
   useLayoutEffect(() => {
     const el = area.current;
     if (!el) return;
-    el.style.height = 'auto';
+    el.style.height = "auto";
     const max = 280;
     el.style.height = `${Math.min(el.scrollHeight + 2, max)}px`;
-    el.style.overflowY = el.scrollHeight + 2 > max ? 'auto' : 'hidden';
+    el.style.overflowY = el.scrollHeight + 2 > max ? "auto" : "hidden";
   }, [text, plans]);
 
   const partsOf = (t: string) => {
@@ -161,7 +176,10 @@ export function CaptureDialog({
   const autoParts = useMemo(() => splitExperiences(deferred), [deferred]);
   const canSplit = autoParts.length > 1 || paragraphs(deferred).length > 1;
   const drafts = useMemo(
-    () => (deferred.trim().length > 8 ? proposeBatch(partsOf(deferred), workspace) : []),
+    () =>
+      deferred.trim().length > 8
+        ? proposeBatch(partsOf(deferred), workspace)
+        : [],
     // partsOf solo depende de `split`.
     [deferred, workspace, split],
   );
@@ -182,7 +200,7 @@ export function CaptureDialog({
     // Las personas desde las que se abrió la captura van en el encuentro.
     if (preset.length)
       for (const p of next) {
-        const enc = p.pieces.find((x) => x.kind === 'encuentro');
+        const enc = p.pieces.find((x) => x.kind === "encuentro");
         if (enc) enc.personIds = [...new Set([...preset, ...enc.personIds])];
       }
     initial.current = next;
@@ -205,7 +223,10 @@ export function CaptureDialog({
     return new Map(
       tiesOf(ME, workspace.ties)
         .filter((v) => v.other !== ME && byId.has(v.other))
-        .map((v) => [v.other, `tu ${kinCall(v.kind, genderOf(byId.get(v.other)))}`]),
+        .map((v) => [
+          v.other,
+          `tu ${kinCall(v.kind, genderOf(byId.get(v.other)))}`,
+        ]),
     );
   }, [workspace.people, workspace.ties]);
 
@@ -221,7 +242,7 @@ export function CaptureDialog({
       setRefined(new Set());
     }
     const base = list[index];
-    setBusy('ai');
+    setBusy("ai");
     try {
       const raw = await captureWithAssistant(base.text, {
         today: todayInputValue(),
@@ -232,7 +253,9 @@ export function CaptureDialog({
           // Para que entienda «mi mamá», «mi tío»…: lo que es para ti.
           ...(myKin.get(p.id) && { kin: myKin.get(p.id) }),
         })),
-        places: workspace.places.slice(0, 200).map((p) => ({ id: p.id, name: p.name })),
+        places: workspace.places
+          .slice(0, 200)
+          .map((p) => ({ id: p.id, name: p.name })),
       });
       const next = planFromAi(raw, base, workspace);
       setPlans((ps) => (ps ?? list).map((p, i) => (i === index ? next : p)));
@@ -247,15 +270,25 @@ export function CaptureDialog({
   const setPiece = (id: string, patch: Partial<Piece>) =>
     setPlan((p) =>
       p
-        ? { ...p, pieces: p.pieces.map((x) => (x.id === id ? ({ ...x, ...patch } as Piece) : x)) }
+        ? {
+            ...p,
+            pieces: p.pieces.map((x) =>
+              x.id === id ? ({ ...x, ...patch } as Piece) : x,
+            ),
+          }
         : p,
     );
-  const toSave = (plans ?? []).filter((p) => !p.off && p.pieces.some((x) => x.on));
-  const totalOn = toSave.reduce((s, p) => s + p.pieces.filter((x) => x.on).length, 0);
+  const toSave = (plans ?? []).filter(
+    (p) => !p.off && p.pieces.some((x) => x.on),
+  );
+  const totalOn = toSave.reduce(
+    (s, p) => s + p.pieces.filter((x) => x.on).length,
+    0,
+  );
 
   const save = async () => {
     if (!plans || !toSave.length || busy) return;
-    setBusy('save');
+    setBusy("save");
     const shared = newShared();
     let count = 0;
     let people = 0;
@@ -279,18 +312,24 @@ export function CaptureDialog({
     }
     if (!count && !episodes.length && !people && !ties) return;
     const fresh = people
-      ? ` · ${people} ${people === 1 ? 'persona nueva' : 'personas nuevas'}`
-      : '';
-    const linked = ties ? ` · ${ties} ${ties === 1 ? 'vínculo' : 'vínculos'}` : '';
-    const pieces = `${count} ${count === 1 ? 'pieza' : 'piezas'}`;
+      ? ` · ${people} ${people === 1 ? "persona nueva" : "personas nuevas"}`
+      : "";
+    const linked = ties
+      ? ` · ${ties} ${ties === 1 ? "vínculo" : "vínculos"}`
+      : "";
+    const pieces = `${count} ${count === 1 ? "pieza" : "piezas"}`;
     notify(
       toSave.length > 1
-        ? `${toSave.length} experiencias guardadas: ${pieces}${episodes.length ? ` en ${episodes.length} ${episodes.length === 1 ? 'episodio' : 'episodios'}` : ''}${fresh}${linked}.`
-        : `Experiencia guardada: ${pieces}${episodes[0] ? ` en «${episodes[0].title}»` : ''}${fresh}${linked}.`,
+        ? `${toSave.length} experiencias guardadas: ${pieces}${episodes.length ? ` en ${episodes.length} ${episodes.length === 1 ? "episodio" : "episodios"}` : ""}${fresh}${linked}.`
+        : `Experiencia guardada: ${pieces}${episodes[0] ? ` en «${episodes[0].title}»` : ""}${fresh}${linked}.`,
       episodes.length === 1
-        ? { label: 'Ver episodio', icon: 'open', run: () => go('Episodios', episodes[0]) }
+        ? {
+            label: "Ver episodio",
+            icon: "open",
+            run: () => go("Episodios", episodes[0]),
+          }
         : episodes.length > 1
-          ? { label: 'Ver episodios', icon: 'open', run: () => go('Episodios') }
+          ? { label: "Ver episodios", icon: "open", run: () => go("Episodios") }
           : undefined,
     );
     onClose();
@@ -299,12 +338,12 @@ export function CaptureDialog({
   const requestClose = async () => {
     if (text.trim() && text !== initialText) {
       const ok = await confirm({
-        title: '¿Descartar lo que escribiste?',
-        message: 'Nada de esta experiencia se ha guardado todavía.',
-        confirmLabel: 'Descartar',
-        cancelLabel: 'Seguir',
+        title: "¿Descartar lo que escribiste?",
+        message: "Nada de esta experiencia se ha guardado todavía.",
+        confirmLabel: "Descartar",
+        cancelLabel: "Seguir",
         danger: true,
-        icon: 'warning',
+        icon: "warning",
       });
       if (!ok) return;
     }
@@ -320,14 +359,25 @@ export function CaptureDialog({
       ...workspace.people.map((p) => ({ id: p.id, name: p.name, person: p })),
       ...(newPeople ?? [])
         .filter((n) => n.on)
-        .map((n) => ({ id: n.id, name: n.name, note: 'Nueva · se crea al guardar' })),
+        .map((n) => ({
+          id: n.id,
+          name: n.name,
+          note: "Nueva · se crea al guardar",
+        })),
       ...(kinLinks ?? [])
         .filter((k) => !k.personId)
-        .map((k) => ({ id: k.id, name: k.label, note: 'Parentesco por elegir' })),
+        .map((k) => ({
+          id: k.id,
+          name: k.label,
+          note: "Parentesco por elegir",
+        })),
     ],
     [workspace.people, newPeople, kinLinks],
   );
-  const counts = useMemo(() => personCounts(workspace.entries), [workspace.entries]);
+  const counts = useMemo(
+    () => personCounts(workspace.entries),
+    [workspace.entries],
+  );
   const items = useMemo(() => personItems(options, counts), [options, counts]);
   const inText = useMemo(
     () =>
@@ -344,8 +394,10 @@ export function CaptureDialog({
     [plan, preset],
   );
   const addPerson = (name: string) => {
-    const id = 'new:' + crypto.randomUUID();
-    setPlan((p) => p && { ...p, newPeople: [...p.newPeople, { id, name, on: true }] });
+    const id = "new:" + crypto.randomUUID();
+    setPlan(
+      (p) => p && { ...p, newPeople: [...p.newPeople, { id, name, on: true }] },
+    );
     return id;
   };
   const peopleCtx = useMemo(
@@ -353,15 +405,20 @@ export function CaptureDialog({
     // addPerson solo depende de `at`.
     [options, items, inText, at],
   );
-  const nameOf = (id: string | null) => options.find((o) => o.id === id)?.name ?? '';
+  const nameOf = (id: string | null) =>
+    options.find((o) => o.id === id)?.name ?? "";
   const personOf = (id: string) => workspace.people.find((p) => p.id === id);
   const shownNotes = allNotes ? notes : notes.slice(0, NOTES_SHOWN);
   const showMood =
     plan?.pieces.some(
-      (p) => p.on && (p.kind === 'encuentro' || p.kind === 'visita' || p.kind === 'nota'),
+      (p) =>
+        p.on &&
+        (p.kind === "encuentro" || p.kind === "visita" || p.kind === "nota"),
     ) ?? false;
   const asks =
-    (plan?.ambiguous.length ?? 0) + (plan?.kinLinks.length ?? 0) + (plan?.newPeople.length ?? 0);
+    (plan?.ambiguous.length ?? 0) +
+    (plan?.kinLinks.length ?? 0) +
+    (plan?.newPeople.length ?? 0);
   const aiDone = plan ? refined.has(at) : false;
 
   return (
@@ -376,7 +433,7 @@ export function CaptureDialog({
         <div
           className="xp"
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
               e.preventDefault();
               if (plans) void save();
               else propose();
@@ -395,7 +452,7 @@ export function CaptureDialog({
                 <ArrowLeft size={18} />
               </button>
             ) : null}
-            <h2>{plans ? 'Revisa y guarda' : 'Nueva experiencia'}</h2>
+            <h2>{plans ? "Revisa y guarda" : "Nueva experiencia"}</h2>
             <button
               type="button"
               className="xp-icon"
@@ -405,7 +462,12 @@ export function CaptureDialog({
             >
               <CircleHelp size={18} />
             </button>
-            <button type="button" className="xp-icon" aria-label="Cerrar" onClick={requestClose}>
+            <button
+              type="button"
+              className="xp-icon"
+              aria-label="Cerrar"
+              onClick={requestClose}
+            >
               <X size={18} />
             </button>
           </header>
@@ -428,16 +490,20 @@ export function CaptureDialog({
                   return (
                     <i
                       key={p.id}
-                      className={p.on ? '' : 'off'}
+                      className={p.on ? "" : "off"}
                       title={p.dup?.text ?? p.hint ?? p.evidence}
-                      style={{ '--c': m.color, '--s': m.soft } as CSSProperties}
+                      style={{ "--c": m.color, "--s": m.soft } as CSSProperties}
                     >
                       <m.icon size={12} /> {pieceName(p)}
                     </i>
                   );
                 })}
                 {previewMood && (
-                  <i style={{ '--c': '#a8721d', '--s': '#fbf1dc' } as CSSProperties}>
+                  <i
+                    style={
+                      { "--c": "#a8721d", "--s": "#fbf1dc" } as CSSProperties
+                    }
+                  >
                     {previewMood.emoji} {previewMood.label}
                   </i>
                 )}
@@ -452,16 +518,16 @@ export function CaptureDialog({
                   <Layers size={14} />
                   {drafts.length > 1
                     ? `${drafts.length} experiencias, se guardan por separado`
-                    : 'Separar en varias experiencias'}
+                    : "Separar en varias experiencias"}
                 </label>
               )}
               {notes.length > 0 && (
                 <ul className="xp-feedback" aria-live="polite">
                   {shownNotes.map((n, i) => (
                     <li key={i} className={n.tone}>
-                      {n.tone === 'dup' ? (
+                      {n.tone === "dup" ? (
                         <Copy size={13} />
-                      ) : n.tone === 'warn' ? (
+                      ) : n.tone === "warn" ? (
                         <CircleHelp size={13} />
                       ) : (
                         <Info size={13} />
@@ -471,8 +537,13 @@ export function CaptureDialog({
                   ))}
                   {notes.length > NOTES_SHOWN && (
                     <li className="more">
-                      <button type="button" onClick={() => setAllNotes((v) => !v)}>
-                        {allNotes ? 'Ver menos' : `${notes.length - NOTES_SHOWN} más`}
+                      <button
+                        type="button"
+                        onClick={() => setAllNotes((v) => !v)}
+                      >
+                        {allNotes
+                          ? "Ver menos"
+                          : `${notes.length - NOTES_SHOWN} más`}
                       </button>
                     </li>
                   )}
@@ -487,33 +558,47 @@ export function CaptureDialog({
                     <button
                       type="button"
                       key={i}
-                      className={(i === at ? 'on' : '') + (p.off ? ' skip' : '')}
+                      className={
+                        (i === at ? "on" : "") + (p.off ? " skip" : "")
+                      }
                       onClick={() => setAt(i)}
                       title={p.text}
                     >
                       <b>{i + 1}</b>
                       <span>{p.episode.title || p.text.slice(0, 40)}</span>
-                      <small>{p.off ? 'Omitida' : p.pieces.filter((x) => x.on).length}</small>
+                      <small>
+                        {p.off
+                          ? "Omitida"
+                          : p.pieces.filter((x) => x.on).length}
+                      </small>
                     </button>
                   ))}
                   <label className="xp-check xp-batch-skip">
                     <input
                       type="checkbox"
                       checked={!plan.off}
-                      onChange={(e) => setPlan((p) => p && { ...p, off: !e.target.checked })}
+                      onChange={(e) =>
+                        setPlan((p) => p && { ...p, off: !e.target.checked })
+                      }
                     />
                     Guardar esta
                   </label>
                 </nav>
               )}
 
-              <EpisodeToggle plan={plan} setPlan={setPlan} disabled={app.experiencesMissing} />
+              <EpisodeToggle
+                plan={plan}
+                setPlan={setPlan}
+                disabled={app.experiencesMissing}
+              />
 
               {showMood && (
                 <div className="xp-mood">
                   <MoodPicker
                     value={plan.mood ?? undefined}
-                    onChange={(m) => setPlan((p) => p && { ...p, mood: m ?? null })}
+                    onChange={(m) =>
+                      setPlan((p) => p && { ...p, mood: m ?? null })
+                    }
                     label="Cómo te sentiste"
                   />
                 </div>
@@ -534,10 +619,15 @@ export function CaptureDialog({
                             <button
                               type="button"
                               key={id}
-                              className={'xp-opt' + (a.chosen === id ? ' on' : '')}
+                              className={
+                                "xp-opt" + (a.chosen === id ? " on" : "")
+                              }
                               onClick={() =>
                                 a.chosen !== id &&
-                                setPlan((pl) => pl && swapPerson(pl, a.chosen, id, a.name))
+                                setPlan(
+                                  (pl) =>
+                                    pl && swapPerson(pl, a.chosen, id, a.name),
+                                )
                               }
                             >
                               <Avatar person={p} size={20} /> {p.name}
@@ -549,12 +639,23 @@ export function CaptureDialog({
                   ))}
 
                   {plan.kinLinks.map((k) => (
-                    <KinLinkRow key={k.id} link={k} plan={plan} setPlan={setPlan} />
+                    <KinLinkRow
+                      key={k.id}
+                      link={k}
+                      plan={plan}
+                      setPlan={setPlan}
+                    />
                   ))}
 
                   {plan.newPeople.map((n) => (
-                    <div key={n.id} className={'xp-ask' + (n.on ? '' : ' muted')}>
-                      <label className="xp-check" title={n.on ? 'Se creará' : 'No se creará'}>
+                    <div
+                      key={n.id}
+                      className={"xp-ask" + (n.on ? "" : " muted")}
+                    >
+                      <label
+                        className="xp-check"
+                        title={n.on ? "Se creará" : "No se creará"}
+                      >
                         <input
                           type="checkbox"
                           checked={n.on}
@@ -564,7 +665,9 @@ export function CaptureDialog({
                                 p && {
                                   ...p,
                                   newPeople: p.newPeople.map((x) =>
-                                    x.id === n.id ? { ...x, on: e.target.checked } : x,
+                                    x.id === n.id
+                                      ? { ...x, on: e.target.checked }
+                                      : x,
                                   ),
                                 },
                             )
@@ -583,7 +686,9 @@ export function CaptureDialog({
                               p && {
                                 ...p,
                                 newPeople: p.newPeople.map((x) =>
-                                  x.id === n.id ? { ...x, name: e.target.value } : x,
+                                  x.id === n.id
+                                    ? { ...x, name: e.target.value }
+                                    : x,
                                 ),
                               },
                           )
@@ -595,9 +700,11 @@ export function CaptureDialog({
                           type="button"
                           className="xp-opt"
                           title="Usar la ficha que ya tienes"
-                          onClick={() => setPlan((p) => p && adoptExisting(p, n.id, n.like!))}
+                          onClick={() =>
+                            setPlan((p) => p && adoptExisting(p, n.id, n.like!))
+                          }
                         >
-                          <Avatar person={personOf(n.like)!} size={20} /> ¿Es{' '}
+                          <Avatar person={personOf(n.like)!} size={20} /> ¿Es{" "}
                           {personOf(n.like)!.name}?
                         </button>
                       )}
@@ -608,8 +715,16 @@ export function CaptureDialog({
 
               <div className="xp-pieces">
                 {plan.pieces.map((p) => (
-                  <PieceCard key={p.id} piece={p} onToggle={(on) => setPiece(p.id, { on })}>
-                    <PieceFields piece={p} set={(patch) => setPiece(p.id, patch)} nameOf={nameOf} />
+                  <PieceCard
+                    key={p.id}
+                    piece={p}
+                    onToggle={(on) => setPiece(p.id, { on })}
+                  >
+                    <PieceFields
+                      piece={p}
+                      set={(patch) => setPiece(p.id, patch)}
+                      nameOf={nameOf}
+                    />
                   </PieceCard>
                 ))}
               </div>
@@ -621,9 +736,11 @@ export function CaptureDialog({
                 onClick={() => setShowSource((v) => !v)}
               >
                 <Quote size={13} /> Texto original
-                <ChevronDown size={14} className={showSource ? 'open' : ''} />
+                <ChevronDown size={14} className={showSource ? "open" : ""} />
               </button>
-              {showSource && <blockquote className="xp-source">{plan.text}</blockquote>}
+              {showSource && (
+                <blockquote className="xp-source">{plan.text}</blockquote>
+              )}
             </div>
           )}
 
@@ -634,13 +751,21 @@ export function CaptureDialog({
             </span>
             <button
               type="button"
-              className={'xp-ai' + (busy === 'ai' ? ' busy' : '') + (aiDone ? ' done' : '')}
+              className={
+                "xp-ai" +
+                (busy === "ai" ? " busy" : "") +
+                (aiDone ? " done" : "")
+              }
               disabled={!text.trim() || Boolean(busy)}
               onClick={() => void refine()}
               aria-label="Afinar con IA"
-              data-tip={aiDone ? 'Afinado con IA · otra vez' : 'Afinar con IA'}
+              data-tip={aiDone ? "Afinado con IA · otra vez" : "Afinar con IA"}
             >
-              {busy === 'ai' ? <LoaderCircle className="spin" size={18} /> : <Sparkles size={18} />}
+              {busy === "ai" ? (
+                <LoaderCircle className="spin" size={18} />
+              ) : (
+                <Sparkles size={18} />
+              )}
             </button>
             {plans ? (
               <button
@@ -649,8 +774,13 @@ export function CaptureDialog({
                 disabled={!totalOn || Boolean(busy)}
                 onClick={() => void save()}
               >
-                {busy === 'save' ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}
-                Guardar {totalOn > 0 && <span className="xp-count">{totalOn}</span>}
+                {busy === "save" ? (
+                  <LoaderCircle className="spin" size={16} />
+                ) : (
+                  <Check size={16} />
+                )}
+                Guardar{" "}
+                {totalOn > 0 && <span className="xp-count">{totalOn}</span>}
               </button>
             ) : (
               <button
@@ -685,7 +815,10 @@ function KinLinkRow({
 }) {
   const { workspace } = useApp();
   const [open, setOpen] = useState(false);
-  const counts = useMemo(() => personCounts(workspace.entries), [workspace.entries]);
+  const counts = useMemo(
+    () => personCounts(workspace.entries),
+    [workspace.entries],
+  );
   const ranked = useMemo(() => {
     const cue = {
       key: link.id,
@@ -696,12 +829,20 @@ function KinLinkRow({
       gender: link.gender,
       owner: link.owner,
       plural: false,
-      status: 'unknown' as const,
+      status: "unknown" as const,
       ids: [],
     };
     return cueOptions(cue, workspace.people, workspace.ties);
     // Solo cambia si cambia la gente o el parentesco.
-  }, [workspace.people, workspace.ties, link.id, link.label, link.kind, link.gender, link.owner]);
+  }, [
+    workspace.people,
+    workspace.ties,
+    link.id,
+    link.label,
+    link.kind,
+    link.gender,
+    link.owner,
+  ]);
   const items = useMemo(() => {
     const byId = new Map(workspace.people.map((p) => [p.id, p]));
     const order = new Map(ranked.map((id, i) => [id, i]));
@@ -716,36 +857,45 @@ function KinLinkRow({
 
   const patch = (p: CapturePlan, changes: Partial<KinLink>): CapturePlan => ({
     ...p,
-    kinLinks: p.kinLinks.map((x) => (x.id === link.id ? { ...x, ...changes } : x)),
+    kinLinks: p.kinLinks.map((x) =>
+      x.id === link.id ? { ...x, ...changes } : x,
+    ),
   });
   /** Elegir a alguien: reemplaza el comodín en las piezas por esa persona. */
   const choose = (to: string) =>
     setPlan((p) => {
       if (!p) return p;
       const from = link.personId ?? link.id;
-      const next = from === to ? p : swapPerson(p, from, to, '');
+      const next = from === to ? p : swapPerson(p, from, to, "");
       return patch(next, { personId: to, save: true });
     });
   const createNew = (name: string) => {
     const n = name.trim();
     if (!n) return;
-    const id = 'new:' + crypto.randomUUID();
+    const id = "new:" + crypto.randomUUID();
     setPlan((p) => {
       if (!p) return p;
-      const withPerson = { ...p, newPeople: [...p.newPeople, { id, name: n, on: true }] };
-      return patch(swapPerson(withPerson, link.personId ?? link.id, id, ''), {
+      const withPerson = {
+        ...p,
+        newPeople: [...p.newPeople, { id, name: n, on: true }],
+      };
+      return patch(swapPerson(withPerson, link.personId ?? link.id, id, ""), {
         personId: id,
         save: true,
       });
     });
   };
 
-  const chosen = link.personId ? workspace.people.find((p) => p.id === link.personId) : undefined;
+  const chosen = link.personId
+    ? workspace.people.find((p) => p.id === link.personId)
+    : undefined;
   const chosenName =
-    chosen?.name ?? plan.newPeople.find((n) => n.id === link.personId)?.name ?? '';
+    chosen?.name ??
+    plan.newPeople.find((n) => n.id === link.personId)?.name ??
+    "";
 
   return (
-    <div className={'xp-ask' + (link.personId ? '' : ' pending')}>
+    <div className={"xp-ask" + (link.personId ? "" : " pending")}>
       <Network size={15} className="xp-ask-icon" />
       {link.personId ? (
         <>
@@ -753,13 +903,19 @@ function KinLinkRow({
             <input
               type="checkbox"
               checked={link.save}
-              onChange={(e) => setPlan((p) => p && patch(p, { save: e.target.checked }))}
+              onChange={(e) =>
+                setPlan((p) => p && patch(p, { save: e.target.checked }))
+              }
             />
             <span>
-              <b>{chosenName.split(' ')[0] || '¿?'}</b> es {link.label}
+              <b>{chosenName.split(" ")[0] || "¿?"}</b> es {link.label}
             </span>
           </label>
-          <button type="button" className="xp-link-btn" onClick={() => setOpen(true)}>
+          <button
+            type="button"
+            className="xp-link-btn"
+            onClick={() => setOpen(true)}
+          >
             Cambiar
           </button>
         </>
@@ -768,7 +924,11 @@ function KinLinkRow({
           <span className="xp-ask-text">
             ¿Quién es <b>{link.label}</b>?
           </span>
-          <button type="button" className="xp-opt primary" onClick={() => setOpen(true)}>
+          <button
+            type="button"
+            className="xp-opt primary"
+            onClick={() => setOpen(true)}
+          >
             Elegir
           </button>
         </>
@@ -803,22 +963,22 @@ function EpisodeToggle({
   const ep = plan.episode;
   const m = episodeKinds[ep.kind];
   const on = ep.on && !disabled;
-  const set = (patch: Partial<CapturePlan['episode']>) =>
+  const set = (patch: Partial<CapturePlan["episode"]>) =>
     setPlan((p) => p && { ...p, episode: { ...p.episode, ...patch } });
   return (
     <div
-      className={'xp-episode' + (on ? ' on' : '')}
-      style={{ '--c': m.color, '--s': m.soft } as CSSProperties}
+      className={"xp-episode" + (on ? " on" : "")}
+      style={{ "--c": m.color, "--s": m.soft } as CSSProperties}
     >
       <div className="xp-episode-head">
         <label
           className="xp-switch"
           title={
             disabled
-              ? 'Necesita la migración 008. Las piezas se guardan igual, sueltas.'
+              ? "Necesita la migración 008. Las piezas se guardan igual, sueltas."
               : on
-                ? 'No agrupar'
-                : 'Agrupar en un episodio'
+                ? "No agrupar"
+                : "Agrupar en un episodio"
           }
         >
           <input
@@ -840,7 +1000,9 @@ function EpisodeToggle({
             aria-label="Nombre del episodio"
           />
         ) : (
-          <span className="xp-episode-off">{disabled ? 'Piezas sueltas' : 'Sin episodio'}</span>
+          <span className="xp-episode-off">
+            {disabled ? "Piezas sueltas" : "Sin episodio"}
+          </span>
         )}
         <input
           type="date"
@@ -855,11 +1017,11 @@ function EpisodeToggle({
                   ...p,
                   date,
                   pieces: p.pieces.map((x) =>
-                    x.kind === 'encuentro' ||
-                    x.kind === 'movimiento' ||
-                    x.kind === 'novedad' ||
-                    x.kind === 'intercambio' ||
-                    x.kind === 'visita'
+                    x.kind === "encuentro" ||
+                    x.kind === "movimiento" ||
+                    x.kind === "novedad" ||
+                    x.kind === "intercambio" ||
+                    x.kind === "visita"
                       ? { ...x, date }
                       : x,
                   ),
@@ -871,7 +1033,11 @@ function EpisodeToggle({
         />
       </div>
       {on && (
-        <div className="xp-kinds" role="radiogroup" aria-label="Tipo de episodio">
+        <div
+          className="xp-kinds"
+          role="radiogroup"
+          aria-label="Tipo de episodio"
+        >
           {episodeKindList.map((k) => {
             const km = episodeKinds[k];
             return (
@@ -880,7 +1046,7 @@ function EpisodeToggle({
                 key={k}
                 role="radio"
                 aria-checked={ep.kind === k}
-                className={ep.kind === k ? 'on' : ''}
+                className={ep.kind === k ? "on" : ""}
                 onClick={() => set({ kind: k as EpisodeKind })}
               >
                 <km.icon size={13} /> {km.label}
@@ -905,8 +1071,8 @@ function PieceCard({
   const m = metaOf(piece);
   return (
     <section
-      className={'xp-piece' + (piece.on ? '' : ' off')}
-      style={{ '--c': m.color, '--s': m.soft } as CSSProperties}
+      className={"xp-piece" + (piece.on ? "" : " off")}
+      style={{ "--c": m.color, "--s": m.soft } as CSSProperties}
     >
       <header>
         <span className="xp-piece-icon">
@@ -914,9 +1080,14 @@ function PieceCard({
         </span>
         <span className="xp-piece-name">
           <strong>{pieceName(piece)}</strong>
-          {piece.evidence && <small title={piece.evidence}>«{piece.evidence}»</small>}
+          {piece.evidence && (
+            <small title={piece.evidence}>«{piece.evidence}»</small>
+          )}
         </span>
-        <label className="xp-switch" title={piece.on ? 'No guardar' : 'Guardar'}>
+        <label
+          className="xp-switch"
+          title={piece.on ? "No guardar" : "Guardar"}
+        >
           <input
             type="checkbox"
             checked={piece.on}
@@ -930,10 +1101,12 @@ function PieceCard({
       {piece.dup && (
         <p className="xp-dup">
           {piece.dup.text}
-          {!piece.on && (piece.dup.id ? ' Se enlazará al episodio.' : '')}
+          {!piece.on && (piece.dup.id ? " Se enlazará al episodio." : "")}
         </p>
       )}
-      {!piece.dup && piece.hint && <p className="xp-dup xp-hintline">{piece.hint}</p>}
+      {!piece.dup && piece.hint && (
+        <p className="xp-dup xp-hintline">{piece.hint}</p>
+      )}
     </section>
   );
 }
@@ -958,7 +1131,7 @@ function Seg<T extends string>({
           key={v}
           role="radio"
           aria-checked={value === v}
-          className={value === v ? 'on' : ''}
+          className={value === v ? "on" : ""}
           onClick={() => onChange(v)}
         >
           {text}
@@ -982,7 +1155,7 @@ function DateInput({
   return (
     <input
       type="date"
-      className={'xp-date' + (optional && !value ? ' empty' : '')}
+      className={"xp-date" + (optional && !value ? " empty" : "")}
       value={value}
       max="2100-12-31"
       onChange={(e) => onChange(e.target.value)}
@@ -1002,7 +1175,7 @@ function PieceFields({
   nameOf: (id: string | null) => string;
 }) {
   switch (p.kind) {
-    case 'encuentro':
+    case "encuentro":
       return (
         <div className="xp-grid">
           <input
@@ -1012,7 +1185,10 @@ function PieceFields({
             onChange={(e) => set({ title: e.target.value })}
             aria-label="Título"
           />
-          <PeopleField ids={p.personIds} onChange={(personIds) => set({ personIds })} />
+          <PeopleField
+            ids={p.personIds}
+            onChange={(personIds) => set({ personIds })}
+          />
           <div className="xp-row">
             <PlaceField
               placeId={p.placeId}
@@ -1027,7 +1203,12 @@ function PieceFields({
               aria-label="Qué hicieron"
             >
               <option value="">Actividad</option>
-              {[...new Set([...(p.activity ? [p.activity] : []), ...activities])].map((a) => (
+              {[
+                ...new Set([
+                  ...(p.activity ? [p.activity] : []),
+                  ...activities,
+                ]),
+              ].map((a) => (
                 <option key={a}>{a}</option>
               ))}
             </select>
@@ -1039,8 +1220,9 @@ function PieceFields({
           </div>
         </div>
       );
-    case 'movimiento': {
-      const cats = p.direction === 'ingreso' ? incomeCategories : expenseCategories;
+    case "movimiento": {
+      const cats =
+        p.direction === "ingreso" ? incomeCategories : expenseCategories;
       return (
         <div className="xp-grid">
           <div className="xp-row">
@@ -1048,8 +1230,8 @@ function PieceFields({
               value={p.direction}
               label="Tipo"
               options={[
-                ['egreso', 'Gasto'],
-                ['ingreso', 'Ingreso'],
+                ["egreso", "Gasto"],
+                ["ingreso", "Ingreso"],
               ]}
               onChange={(direction) => set({ direction })}
             />
@@ -1058,15 +1240,25 @@ function PieceFields({
               <input
                 inputMode="numeric"
                 value={thousands(p.amount)}
-                onChange={(e) => set({ amount: Number(e.target.value.replace(/\D/g, '')) || 0 })}
+                onChange={(e) =>
+                  set({
+                    amount: Number(e.target.value.replace(/\D/g, "")) || 0,
+                  })
+                }
                 aria-label="Monto"
               />
             </label>
             <select
               className="xp-select"
               value={p.category}
-              title={p.why && p.category !== 'Otro' ? `${p.category} ${p.why}` : undefined}
-              onChange={(e) => set({ category: e.target.value, title: e.target.value })}
+              title={
+                p.why && p.category !== "Otro"
+                  ? `${p.category} ${p.why}`
+                  : undefined
+              }
+              onChange={(e) =>
+                set({ category: e.target.value, title: e.target.value })
+              }
               aria-label="Categoría"
             >
               {[...new Set([p.category, ...cats])].map((c) => (
@@ -1079,11 +1271,15 @@ function PieceFields({
               label="Fecha"
             />
           </div>
-          {p.guessed && <small className="xp-warn">¿Lo pagaste o te lo pagaron? Revísalo.</small>}
+          {p.guessed && (
+            <small className="xp-warn">
+              ¿Lo pagaste o te lo pagaron? Revísalo.
+            </small>
+          )}
         </div>
       );
     }
-    case 'novedad':
+    case "novedad":
       return (
         <div className="xp-grid">
           <div className="xp-row">
@@ -1095,7 +1291,9 @@ function PieceFields({
             <select
               className="xp-select"
               value={p.updateKind}
-              onChange={(e) => set({ updateKind: e.target.value as UpdateKind })}
+              onChange={(e) =>
+                set({ updateKind: e.target.value as UpdateKind })
+              }
               aria-label="Tipo de novedad"
             >
               {updateKindList.map((k) => (
@@ -1114,14 +1312,16 @@ function PieceFields({
           />
         </div>
       );
-    case 'compromiso': {
+    case "compromiso": {
       const cm = commitmentKinds[p.commitment];
       return (
         <div className="xp-grid">
           <Seg
             value={p.commitment}
             label="Tipo de compromiso"
-            options={commitmentKindList.map((k) => [k, commitmentKinds[k].short] as const)}
+            options={commitmentKindList.map(
+              (k) => [k, commitmentKinds[k].short] as const,
+            )}
             onChange={(k) => set({ commitment: k as CommitmentKind })}
           />
           <input
@@ -1149,11 +1349,11 @@ function PieceFields({
         </div>
       );
     }
-    case 'conexion':
+    case "conexion":
       return (
         <div className="xp-grid">
           <small className="xp-hint">
-            {nameOf(p.a) || '¿?'} ↔ {nameOf(p.b) || '¿?'}
+            {nameOf(p.a) || "¿?"} ↔ {nameOf(p.b) || "¿?"}
           </small>
           <input
             className="xp-wide"
@@ -1164,7 +1364,7 @@ function PieceFields({
           />
         </div>
       );
-    case 'aprendizaje':
+    case "aprendizaje":
       return (
         <div className="xp-grid">
           <input
@@ -1181,7 +1381,9 @@ function PieceFields({
               onChange={(e) => set({ source: e.target.value })}
               aria-label="Fuente"
             >
-              {[...new Set([...(p.source ? [p.source] : []), ...learnSources])].map((s) => (
+              {[
+                ...new Set([...(p.source ? [p.source] : []), ...learnSources]),
+              ].map((s) => (
                 <option key={s}>{s}</option>
               ))}
             </select>
@@ -1196,7 +1398,7 @@ function PieceFields({
           </div>
         </div>
       );
-    case 'nota':
+    case "nota":
       return (
         <textarea
           className="xp-wide"
@@ -1207,18 +1409,20 @@ function PieceFields({
           aria-label="Nota"
         />
       );
-    case 'obra': {
-      const book = p.media === 'Libro';
+    case "obra": {
+      const book = p.media === "Libro";
+      const shelved = book && p.status === "estante";
       const states = book
         ? ([
-            ['quiero', 'Por leer'],
-            ['curso', 'Leyendo'],
-            ['listo', 'Terminado'],
+            ["estante", "Estantería"],
+            ["quiero", "Por leer"],
+            ["curso", "Leyendo"],
+            ["listo", "Terminado"],
           ] as const)
         : ([
-            ['quiero', 'Por ver'],
-            ['curso', 'Viendo'],
-            ['listo', 'Vista'],
+            ["quiero", "Por ver"],
+            ["curso", "Viendo"],
+            ["listo", "Vista"],
           ] as const);
       return (
         <div className="xp-grid">
@@ -1227,14 +1431,21 @@ function PieceFields({
               value={p.media}
               label="Tipo"
               options={[
-                ['Película', 'Película o serie'],
-                ['Libro', 'Libro'],
+                ["Película", "Película o serie"],
+                ["Libro", "Libro"],
               ]}
               onChange={(m) =>
                 set(
-                  m === 'Libro'
-                    ? { media: m, platform: '', series: false }
-                    : { media: m, author: '' },
+                  m === "Libro"
+                    ? { media: m, platform: "", series: false }
+                    : {
+                        media: m,
+                        author: "",
+                        copy: "",
+                        ...(p.status === "estante" && {
+                          status: "quiero" as const,
+                        }),
+                      },
                 )
               }
             />
@@ -1275,7 +1486,12 @@ function PieceFields({
                 aria-label="Dónde"
               >
                 <option value="">¿Dónde?</option>
-                {[...new Set([...(p.platform ? [p.platform] : []), ...platforms])].map((x) => (
+                {[
+                  ...new Set([
+                    ...(p.platform ? [p.platform] : []),
+                    ...platforms,
+                  ]),
+                ].map((x) => (
                   <option key={x}>{x}</option>
                 ))}
               </select>
@@ -1284,9 +1500,15 @@ function PieceFields({
               value={p.status}
               label="Estado"
               options={states}
-              onChange={(v) => set({ status: v, ...(v === 'quiero' && { rating: 0 }) })}
+              onChange={(v) =>
+                set({
+                  status: v,
+                  ...((v === "quiero" || v === "estante") && { rating: 0 }),
+                  ...(v === "estante" && { copy: "mio" as const }),
+                })
+              }
             />
-            {p.status !== 'quiero' && (
+            {p.status !== "quiero" && !shelved && (
               <Stars
                 value={p.rating}
                 size={18}
@@ -1294,12 +1516,34 @@ function PieceFields({
                 onChange={(rating) => set({ rating })}
               />
             )}
+            {book && !shelved && (
+              <select
+                className="xp-select"
+                value={p.copy}
+                onChange={(e) => set({ copy: e.target.value as typeof p.copy })}
+                aria-label="Ejemplar"
+              >
+                <option value="">¿Tu ejemplar?</option>
+                <option value="mio">Es mío · a la estantería</option>
+                <option value="prestado">Me lo prestaron</option>
+              </select>
+            )}
           </div>
           <div className="xp-row">
             <PersonField
               value={p.recommendedBy}
-              label={book ? '¿Quién te lo recomendó?' : '¿Quién te la recomendó?'}
-              placeholder="Recomendada por…"
+              label={
+                book && p.copy === "prestado"
+                  ? "¿Quién te lo prestó?"
+                  : book
+                    ? "¿Quién te lo recomendó?"
+                    : "¿Quién te la recomendó?"
+              }
+              placeholder={
+                book && p.copy === "prestado"
+                  ? "Prestado por…"
+                  : "Recomendada por…"
+              }
               optional
               onChange={(id) => set({ recommendedBy: id })}
             />
@@ -1312,7 +1556,7 @@ function PieceFields({
         </div>
       );
     }
-    case 'idea':
+    case "idea":
       return (
         <div className="xp-grid">
           <input
@@ -1326,14 +1570,14 @@ function PieceFields({
             value={p.as}
             label="Guardar como"
             options={[
-              ['nota', 'Idea suelta'],
-              ['trabajo', 'Proyecto'],
+              ["nota", "Idea suelta"],
+              ["trabajo", "Proyecto"],
             ]}
             onChange={(as) => set({ as })}
           />
         </div>
       );
-    case 'trabajo':
+    case "trabajo":
       return (
         <div className="xp-grid">
           <input
@@ -1348,10 +1592,10 @@ function PieceFields({
               value={p.stage}
               label="Etapa"
               options={[
-                ['idea', 'Idea'],
-                ['curso', 'En curso'],
-                ['pausa', 'En pausa'],
-                ['listo', 'Listo'],
+                ["idea", "Idea"],
+                ["curso", "En curso"],
+                ["pausa", "En pausa"],
+                ["listo", "Listo"],
               ]}
               onChange={(stage) => set({ stage })}
             />
@@ -1370,10 +1614,13 @@ function PieceFields({
             onChange={(e) => set({ nextStep: e.target.value })}
             aria-label="Siguiente paso"
           />
-          <PeopleField ids={p.personIds} onChange={(personIds) => set({ personIds })} />
+          <PeopleField
+            ids={p.personIds}
+            onChange={(personIds) => set({ personIds })}
+          />
         </div>
       );
-    case 'intercambio':
+    case "intercambio":
       return (
         <div className="xp-grid">
           <div className="xp-row">
@@ -1381,15 +1628,17 @@ function PieceFields({
               value={p.dir}
               label="Dirección"
               options={[
-                ['recibir', 'Recibiste'],
-                ['dar', 'Diste'],
+                ["recibir", "Recibiste"],
+                ["dar", "Diste"],
               ]}
               onChange={(dir) => set({ dir })}
             />
             <select
               className="xp-select"
               value={p.exchange}
-              onChange={(e) => set({ exchange: e.target.value as ExchangeKind })}
+              onChange={(e) =>
+                set({ exchange: e.target.value as ExchangeKind })
+              }
               aria-label="Qué"
             >
               {(Object.keys(exchangeKinds) as ExchangeKind[]).map((k) => (
@@ -1398,10 +1647,10 @@ function PieceFields({
                 </option>
               ))}
             </select>
-            <span className="xp-label">{p.dir === 'dar' ? 'a' : 'de'}</span>
+            <span className="xp-label">{p.dir === "dar" ? "a" : "de"}</span>
             <PersonField
               value={p.personId}
-              label={p.dir === 'dar' ? '¿A quién?' : '¿De quién?'}
+              label={p.dir === "dar" ? "¿A quién?" : "¿De quién?"}
               onChange={(id) => id && set({ personId: id })}
             />
           </div>
@@ -1415,7 +1664,7 @@ function PieceFields({
           />
         </div>
       );
-    case 'dato': {
+    case "dato": {
       const year = todayInputValue().slice(0, 4);
       return (
         <div className="xp-row">
@@ -1430,7 +1679,7 @@ function PieceFields({
             onChange={(e) =>
               set({
                 field: e.target.value as typeof p.field,
-                ...(e.target.value === 'birthday' && { value: '' }),
+                ...(e.target.value === "birthday" && { value: "" }),
               })
             }
             aria-label="Qué dato"
@@ -1441,7 +1690,7 @@ function PieceFields({
               </option>
             ))}
           </select>
-          {p.field === 'fact' && (
+          {p.field === "fact" && (
             <input
               className="xp-inline xp-short"
               value={p.label}
@@ -1451,9 +1700,9 @@ function PieceFields({
               aria-label="Nombre del dato"
             />
           )}
-          {p.field === 'birthday' ? (
+          {p.field === "birthday" ? (
             <DateInput
-              value={/^\d{2}-\d{2}$/.test(p.value) ? `${year}-${p.value}` : ''}
+              value={/^\d{2}-\d{2}$/.test(p.value) ? `${year}-${p.value}` : ""}
               onChange={(v) => set({ value: v.slice(5) })}
               label="Día del cumpleaños"
             />
@@ -1469,7 +1718,7 @@ function PieceFields({
         </div>
       );
     }
-    case 'preguntar':
+    case "preguntar":
       return (
         <div className="xp-grid">
           <PersonField
@@ -1486,7 +1735,7 @@ function PieceFields({
           />
         </div>
       );
-    case 'visita':
+    case "visita":
       return (
         <div className="xp-grid">
           <input
@@ -1511,7 +1760,7 @@ function PieceFields({
           </div>
         </div>
       );
-    case 'enlace':
+    case "enlace":
       return (
         <div className="xp-grid">
           <a className="xp-link" href={p.url} target="_blank" rel="noreferrer">
@@ -1522,8 +1771,8 @@ function PieceFields({
               value={p.save}
               label="Guardar en"
               options={[
-                ['lecturas', 'Lecturas'],
-                ['nota', 'Nota'],
+                ["lecturas", "Lecturas"],
+                ["nota", "Nota"],
               ]}
               onChange={(save) => set({ save })}
             />

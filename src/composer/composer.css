@@ -2775,35 +2775,6 @@
   outline: none;
 }
 
-/* Episodio al que pertenece el recuerdo */
-.cp-episode {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 18px 0 4px;
-  padding: 9px 12px;
-  border: 1px dashed #ddd6e8;
-  border-radius: 12px;
-  background: #faf8fc;
-  color: #6f5a8c;
-  font-size: 13px;
-}
-.cp-episode span {
-  flex: none;
-  font-weight: 600;
-}
-.cp-episode select {
-  flex: 1;
-  min-width: 0;
-  padding: 5px 8px;
-  border: 1px solid #e3dcef;
-  border-radius: 8px;
-  background: #fff;
-  color: #3d3550;
-  font: inherit;
-  font-size: 13px;
-}
-
 /* ───────── Personas reconocidas: por qué y preguntas («¿Quién es tu mamá?») ───────── */
 .lf-why,
 .cp-token-why {
@@ -2892,32 +2863,6 @@
 .lf-cue-x:hover {
   background: rgba(107, 98, 181, 0.12);
   color: #4b3da0;
-}
-
-.cp-scroll .cp-episode {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  flex-wrap: wrap;
-  margin: 16px 0 4px;
-  padding: 10px 12px;
-  background: #f4f6f1;
-  border: 1px solid #dce4d8;
-  border-radius: 12px;
-  color: #425943;
-}
-.cp-episode > span {
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-.cp-episode select {
-  flex: 1;
-  min-width: 120px;
-  padding: 6px;
-  background: white;
-  border: 1px solid #d2ddcf;
-  border-radius: 7px;
-  color: inherit;
 }
 .mp .mp-facts dt {
   font-weight: 800;

@@ -7,7 +7,7 @@ const FALLBACK =
 /** Una fuente que la respuesta cita como [r3]: se puede abrir desde el chat. */
 export type AssistantSource = {
   ref: string;
-  type: 'entry' | 'person' | 'place' | 'episode';
+  type: 'entry' | 'person' | 'place' | 'episode' | 'reading' | 'note';
   id: string;
   title: string;
   date?: string;
@@ -52,6 +52,21 @@ export type ChatTurn = { role: 'user' | 'assistant'; text: string };
 const HISTORY_TURNS = 6;
 const HISTORY_CHARS = 600;
 
+/** Hoy en la zona horaria del usuario (AAAA-MM-DD). */
+const localToday = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
+/** La conversación recortada (sin las citas [r3], que no significan nada en la consulta nueva). */
+const trimHistory = (history: ChatTurn[]) =>
+  history.slice(-HISTORY_TURNS).map((t) => ({
+    role: t.role,
+    text: (t.role === 'assistant'
+      ? t.text.replace(/\s*\[[a-z]\d+(?:\s*,\s*[a-z]\d+)*\]/g, '')
+      : t.text
+    ).slice(0, HISTORY_CHARS),
+  }));
+
 /**
  * Consulta la función `assistant`. `history` es la conversación hasta ahora (para entender
  * «¿y ella?»). Si el servidor responde con un error, lanza su mensaje real.
@@ -61,22 +76,39 @@ export async function askAssistant(
   history: ChatTurn[] = [],
 ): Promise<AssistantAnswer> {
   // «Hoy» del usuario (su zona horaria) para entender «este mes», «ayer»…
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const turns = history.slice(-HISTORY_TURNS).map((t) => ({
-    role: t.role,
-    // Las citas [r3] de antes no significan nada en la consulta nueva.
-    text: (t.role === 'assistant'
-      ? t.text.replace(/\s*\[[a-z]\d+(?:\s*,\s*[a-z]\d+)*\]/g, '')
-      : t.text
-    ).slice(0, HISTORY_CHARS),
-  }));
-  const data = await call({ question, today, history: turns });
+  const data = await call({
+    question,
+    today: localToday(),
+    history: trimHistory(history),
+  });
   return {
     answer: typeof data?.answer === 'string' ? data.answer : 'No hay respuesta disponible.',
     sources: Array.isArray(data?.sources) ? (data.sources as AssistantSource[]) : [],
     coverage: (data?.coverage as AssistantCoverage | undefined) ?? null,
   };
+}
+
+/**
+ * Pregunta sobre un cuaderno de Agenda: la IA solo ve lo que hay en él (`notebook` ya viene
+ * resumido, con una referencia `c3` por elemento para citarlo).
+ */
+export async function askNotebook(
+  notebook: Record<string, unknown>,
+  question: string,
+  history: ChatTurn[] = [],
+): Promise<string> {
+  const data = await callMode({
+    mode: 'agenda-notebook',
+    notebook,
+    question,
+    today: localToday(),
+    history: trimHistory(history),
+  });
+  // Una función anterior no conoce el modo y respondería con toda tu memoria: se avisa.
+  if (data?.mode !== 'agenda-notebook') throw new Error(OUTDATED);
+  if (typeof data?.answer !== 'string' || !data.answer.trim())
+    throw new Error('La IA no devolvió una respuesta. Inténtalo de nuevo.');
+  return data.answer.trim();
 }
 
 /**

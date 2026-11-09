@@ -20,9 +20,9 @@ export type Page =
   | 'Lecturas'
   | 'Notas'
   | 'Tableros'
+  | 'Agenda'
   | 'Libroteca'
   | 'Finanzas'
-  | 'Comparador'
   | 'Ajustes';
 
 export type PlaceKind =

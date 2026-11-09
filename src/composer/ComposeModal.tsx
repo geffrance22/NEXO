@@ -8,9 +8,12 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
-import { Check, ChevronLeft, ImagePlus, Layers, LoaderCircle, Tv, X } from 'lucide-react';
+import { Check, ChevronLeft, ImagePlus, LoaderCircle, Tv, X } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { Sheet } from '../components/Sheet';
+import { CollectionsPicker } from '../cuadernos/AddToNotebook';
+import { hasRef, type Notebook } from '../cuadernos/model';
+import { addToNotebook, updateNotebook, useCuadernos } from '../cuadernos/useCuadernos';
 import type { Entry, EntryDetails, EntryInput, Kind } from '../data';
 import { KindPicker } from './KindPicker';
 import { incomeColors, kindMeta, seriesColors } from './kinds';
@@ -56,13 +59,14 @@ export type ComposeInit = {
 
 type ComposeModalProps = {
   init: ComposeInit;
-  onSave: (input: EntryInput) => Promise<boolean>;
+  /** Guarda y devuelve el id del recuerdo (null si falló). */
+  onSave: (input: EntryInput) => Promise<string | null>;
   onClose: () => void;
 };
 
 /** Ventana para crear o editar un recuerdo: primero eliges el tipo, luego escribes. */
 export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
-  const { workspace, confirm, experiencesMissing, openPerson, notify } = useApp();
+  const { workspace, confirm, openPerson, notify } = useApp();
   const c = useComposer(
     {
       entry: init.entry,
@@ -74,14 +78,19 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
     workspace.people,
     workspace.ties,
   );
-  // Episodios activos primero y luego los más recientes; el actual siempre aparece.
-  const episodes = [...(workspace.episodes ?? [])]
-    .sort(
-      (a, b) =>
-        Number(b.status === 'activo') - Number(a.status === 'activo') ||
-        (b.starts_on ?? b.created_at).localeCompare(a.starts_on ?? a.created_at),
-    )
-    .filter((ep, i) => i < 30 || ep.id === c.episodeId);
+  // Cuadernos elegidos en el pie: se aplican al guardar (null = no los tocaste).
+  const { list: notebooks } = useCuadernos();
+  const [picked, setPicked] = useState<Set<string> | null>(null);
+  const entryId = init.entry?.id;
+  const savedIn = (nb: Notebook) => Boolean(entryId && hasRef(nb, 'entry', entryId));
+  const inNotebook = (nb: Notebook) => (picked ? picked.has(nb.id) : savedIn(nb));
+  const toggleNotebook = (nb: Notebook) =>
+    setPicked((prev) => {
+      const next = new Set(prev ?? (notebooks ?? []).filter(savedIn).map((n) => n.id));
+      if (next.has(nb.id)) next.delete(nb.id);
+      else next.add(nb.id);
+      return next;
+    });
   const [stage, setStage] = useState<'pick' | 'write'>(init.kind || init.entry ? 'write' : 'pick');
   const [shortcut, setShortcut] = useState<'idea' | 'link' | null>(null);
   const [busy, setBusy] = useState(false);
@@ -100,9 +109,6 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
         : meta;
   const Icon = series ? Tv : meta.icon;
   const View = views[c.kind];
-  // «Parte de» (episodio): en Película y Libro no se muestra.
-  const showEpisode =
-    !experiencesMissing && episodes.length > 0 && c.kind !== 'Película' && c.kind !== 'Libro';
 
   // Al pasar a escribir, el cursor va al campo principal.
   useEffect(() => {
@@ -114,7 +120,7 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
   }, [stage, c.kind]);
 
   const requestClose = async () => {
-    if (c.dirty) {
+    if (c.dirty || picked) {
       const discard = await confirm({
         title: '¿Descartar lo que escribiste?',
         message: 'Los cambios que no hayas guardado se perderán.',
@@ -172,9 +178,28 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
       if (selected && !selected.manual)
         selected.key = normal(input.title) + '|' + (input.details.year || '');
     }
-    const saved = await onSave(input);
+    const savedId = await onSave(input);
     setBusy(false);
-    if (saved) onClose();
+    if (!savedId) return;
+    if (picked) void fileInNotebooks(savedId, picked);
+    onClose();
+  }
+
+  /** Pone o quita el recuerdo de los cuadernos según lo que marcaste en el pie. */
+  async function fileInNotebooks(id: string, want: Set<string>) {
+    for (const nb of notebooks ?? []) {
+      const has = hasRef(nb, 'entry', id);
+      if (want.has(nb.id) === has) continue;
+      const result = has
+        ? await updateNotebook(nb.id, {
+            items: nb.items.filter((i) => !(i.type === 'entry' && i.id === id)),
+          })
+        : await addToNotebook(nb.id, [{ type: 'entry', id }]);
+      if (typeof result === 'string') {
+        notify(result);
+        return;
+      }
+    }
   }
 
   const addFiles = (files: File[]) => {
@@ -246,7 +271,7 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
     );
   return (
     <Sheet
-      yieldTo=".mp-picker[open],.reader-dialog[open]"
+      yieldTo=".mp-picker[open],.reader-dialog[open],.sheet.cz-form-sheet"
       label={c.editing ? 'Editar recuerdo' : 'Nuevo recuerdo'}
       size={stage === 'pick' ? 'md' : 'lg'}
       onRequestClose={requestClose}
@@ -303,27 +328,16 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
 
           <div className="cp-scroll">
             <View key={c.kind} c={c} />
-            {showEpisode && (
-              <label className="cp-episode">
-                <Layers size={15} aria-hidden="true" />
-                <span>Parte de</span>
-                <select
-                  value={c.episodeId ?? ''}
-                  onChange={(e) => c.setEpisodeId(e.target.value || null)}
-                >
-                  <option value="">Ningún episodio</option>
-                  {episodes.map((ep) => (
-                    <option key={ep.id} value={ep.id}>
-                      {ep.title}
-                      {ep.status === 'cerrado' ? ' (cerrado)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
           </div>
 
           <footer className="cp-foot">
+            <CollectionsPicker
+              className="cp-btn ghost cp-collect"
+              inNotebook={inNotebook}
+              onToggleNotebook={toggleNotebook}
+              episodeId={c.episodeId}
+              onEpisode={c.setEpisodeId}
+            />
             <span className={'cp-status' + (c.problem ? ' problem' : '')} role="status">
               {c.problem ?? 'Ctrl + Enter para guardar'}
             </span>

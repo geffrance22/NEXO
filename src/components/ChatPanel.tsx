@@ -6,10 +6,12 @@ import {
   FileText,
   Layers,
   MapPin,
+  Newspaper,
   RotateCcw,
   Search,
   Sparkles,
   SquarePen,
+  StickyNote,
   UserRound,
   X,
 } from 'lucide-react';
@@ -24,7 +26,14 @@ const suggestions = [
   '¿Quién me recomendó un libro?',
 ];
 
-const sourceIcon = { entry: FileText, person: UserRound, place: MapPin, episode: Layers };
+const sourceIcon = {
+  entry: FileText,
+  person: UserRound,
+  place: MapPin,
+  episode: Layers,
+  reading: Newspaper,
+  note: StickyNote,
+};
 /** Lo que no cabe en la burbuja: las fuentes que se ven a la vista. */
 const VISIBLE_SOURCES = 4;
 
@@ -118,7 +127,29 @@ function Answer({ m, open }: { m: ChatMessage; open: (s: AssistantSource) => voi
   );
 }
 
-export function ChatPanel({ assistant, onClose }: { assistant: Assistant; onClose: () => void }) {
+export function ChatPanel({
+  assistant,
+  onClose,
+  title = 'Nexo',
+  intro = {
+    heading: 'Conectemos los puntos.',
+    text: 'Personas, lugares, compromisos, gastos, recuerdos… y tú.',
+  },
+  prompts = suggestions,
+  placeholder = 'Pregúntale a tu memoria…',
+  className = '',
+}: {
+  assistant: Assistant;
+  onClose: () => void;
+  /** Nombre en la cabecera (p. ej. el del cuaderno). */
+  title?: string;
+  intro?: { heading: string; text: string };
+  /** Preguntas sugeridas para empezar. */
+  prompts?: string[];
+  placeholder?: string;
+  /** Clases extra (p. ej. para acoplarlo dentro de un lienzo). */
+  className?: string;
+}) {
   const { messages, input, setInput, busy, send, retry, reset } = assistant;
   const { workspace, go, viewEntry, peekPerson } = useApp();
   const scroller = useRef<HTMLDivElement>(null);
@@ -175,6 +206,10 @@ export function ChatPanel({ assistant, onClose }: { assistant: Assistant; onClos
     } else if (s.type === 'place') {
       const p = workspace.places.find((x) => x.id === s.id);
       if (p) go('Lugares', p);
+    } else if (s.type === 'reading') {
+      go('Lecturas', { id: s.id });
+    } else if (s.type === 'note') {
+      go('Notas', { id: s.id });
     } else {
       const ep = workspace.episodes.find((x) => x.id === s.id);
       if (ep) go('Episodios', ep);
@@ -185,10 +220,14 @@ export function ChatPanel({ assistant, onClose }: { assistant: Assistant; onClos
   const lastError = messages[messages.length - 1]?.error;
 
   return (
-    <div className="chat-panel" role="dialog" aria-label="Asistente Nexo">
+    <div
+      className={'chat-panel' + (className ? ' ' + className : '')}
+      role="dialog"
+      aria-label={title === 'Nexo' ? 'Asistente Nexo' : `Asistente: ${title}`}
+    >
       <header>
         <span>
-          <Sparkles size={18} /> Nexo
+          <Sparkles size={18} /> <b className="chat-title">{title}</b>
         </span>
         <div className="chat-tools">
           {messages.length > 0 && (
@@ -222,10 +261,10 @@ export function ChatPanel({ assistant, onClose }: { assistant: Assistant; onClos
             <span className="chat-emblem">
               <Sparkles size={26} />
             </span>
-            <h2>Conectemos los puntos.</h2>
-            <p>Personas, lugares, compromisos, gastos, recuerdos… y tú.</p>
+            <h2>{intro.heading}</h2>
+            <p>{intro.text}</p>
             <div className="suggestions">
-              {suggestions.map((s) => (
+              {prompts.map((s) => (
                 <button type="button" key={s} onClick={() => void send(s)}>
                   {s}
                   <ArrowUpRight size={14} />
@@ -279,7 +318,7 @@ export function ChatPanel({ assistant, onClose }: { assistant: Assistant; onClos
               void send(input);
             }
           }}
-          placeholder={messages.length ? 'Escribe…' : 'Pregúntale a tu memoria…'}
+          placeholder={messages.length ? 'Escribe…' : placeholder}
           aria-label="Mensaje para Nexo"
         />
         <button

@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from 'react';
 import { Maximize2, Minus, Plus, type LucideIcon } from 'lucide-react';
@@ -80,6 +81,8 @@ export function GraphCanvas({
     node: string | null;
   } | null>(null);
   const fitted = useRef(false);
+  // El tamaño real llega con la primera medida; antes de eso no se ajusta el zoom.
+  const measured = useRef(false);
 
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const neighbors = useMemo(() => {
@@ -96,9 +99,10 @@ export function GraphCanvas({
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(([entry]) =>
-      setSize({ w: entry.contentRect.width, h: entry.contentRect.height }),
-    );
+    const ro = new ResizeObserver(([entry]) => {
+      measured.current = true;
+      setSize({ w: entry.contentRect.width, h: entry.contentRect.height });
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -130,7 +134,7 @@ export function GraphCanvas({
     fitted.current = false;
   }, [nodes]);
   useEffect(() => {
-    if (fitted.current || size.w < 50) return;
+    if (fitted.current || !measured.current || size.w < 50) return;
     fitted.current = true;
     fit();
   }, [fit, size.w]);
@@ -166,7 +170,7 @@ export function GraphCanvas({
   const maxW = Math.max(1, ...edges.map((e) => e.w));
 
   return (
-    <div className="gc" ref={box} style={{ height }}>
+    <div className="gc" ref={box} style={{ '--gc-h': `${height}px` } as CSSProperties}>
       <svg
         ref={svg}
         width={size.w}

@@ -109,6 +109,51 @@ export function minutesLabel(n: number) {
   return h ? `${h} h${m ? ` ${m} min` : ''}` : `${m} min`;
 }
 
+/**
+ * Promedios para estimar cuando la ficha no trae el dato: duración de una película y de un
+ * episodio, episodios por temporada, páginas de un libro y minutos por página (≈ 250 palabras
+ * por página a un ritmo cómodo de unas 170 palabras por minuto).
+ */
+export const PACE = {
+  movieMinutes: 110,
+  episodeMinutes: 42,
+  episodesPerSeason: 10,
+  bookPages: 300,
+  minutesPerPage: 1.5,
+} as const;
+
+/**
+ * Episodios que ya viste de una serie: todos si la terminaste; si la estás viendo, las temporadas
+ * completas anteriores más el episodio en el que vas. Sin datos de TMDB se usa el promedio.
+ */
+export function episodesSeen(e: Pick<Entry, 'kind' | 'tags' | 'details'>) {
+  if (!isSeries(e)) return 0;
+  const d = e.details;
+  const watch = d.watch ?? 'vista';
+  if (watch === 'quiero') return 0;
+  const info = d.movieInfo?.type === 'tv' ? d.movieInfo : undefined;
+  const seasons = info?.seasons || 0;
+  const total = info?.episodes || 0;
+  const perSeason = total && seasons ? total / seasons : PACE.episodesPerSeason;
+  if (watch === 'vista') return total || Math.round((seasons || 1) * perSeason);
+  const seen = Math.round(Math.max(0, (d.seasonAt ?? 1) - 1) * perSeason) + (d.episodeAt ?? 0);
+  return total ? Math.min(seen, total) : seen;
+}
+
+/** Minutos frente a la pantalla: la película completa o los episodios vistos de la serie. */
+export function screenMinutes(e: Pick<Entry, 'kind' | 'tags' | 'details'>) {
+  if (e.kind !== 'Película' || e.details.watch === 'quiero') return 0;
+  const runtime = e.details.movieInfo?.runtime || 0;
+  if (isSeries(e)) return episodesSeen(e) * (runtime || PACE.episodeMinutes);
+  return runtime || PACE.movieMinutes;
+}
+
+/** «45 min», «12 h» o «1.240 h»: tiempo aproximado, sin minutos sueltos cuando ya son horas. */
+export function hoursLabel(minutes: number) {
+  if (minutes < 60) return `${Math.round(minutes)} min`;
+  return `${Math.round(minutes / 60).toLocaleString('es-CO')} h`;
+}
+
 export type BookPace = {
   /** 0–100 */
   percent: number;

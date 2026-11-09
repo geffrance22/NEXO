@@ -49,6 +49,7 @@ import { ArticleMarks, toneOf } from "./ArticleMarks";
 import { BookA, Heart, NotebookPen, Pin } from "lucide-react";
 import { ReadingRow, type RowActions } from "./ReadingRow";
 import { Dictionary } from "./Dictionary";
+import { TimePick } from "./TimePick";
 import { cleanTerm, isTerm, sentenceAround, useWords } from "./words";
 import { FinishPrompt, ReadEnd } from "./ReadEnd";
 import { ReaderSettings, useReaderPrefs } from "./ReaderSettings";
@@ -1228,16 +1229,20 @@ export function Readings({
       notify(`«${wordSaved.term.slice(0, 40)}» salió de tu diccionario.`);
       return;
     }
-    // Se guarda con la frase donde apareció, para recordar en qué sentido se usaba.
+    // Se guarda la definición (no la frase): la frase solo le dice a la IA en qué sentido se usaba.
     const around = sentenceAround(article.content, span.start, span.end);
     const added = dictionary.add({
       term,
-      context: readableSlice(article.content, around.start, around.end),
       reading_id: article.id,
       source: article.title,
     });
     if (added)
-      notify(`«${added.term.slice(0, 40)}» va a tu diccionario.`, {
+      void dictionary.define(
+        added,
+        readableSlice(article.content, around.start, around.end),
+      );
+    if (added)
+      notify(`«${added.term.slice(0, 40)}» va a tu diccionario. Generando su definición…`, {
         label: "Ver",
         icon: "open",
         run: () => {
@@ -1987,6 +1992,7 @@ export function Readings({
                 : "Guarda tu primer artículo para leerlo aquí."}
             </p>
             <button onClick={() => add(true)}>Guardar enlace</button>
+            {visible.length > 0 && <TimePick open={(id) => open({ id })} />}
           </div>
         )}
       </main>

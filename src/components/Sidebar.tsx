@@ -3,11 +3,10 @@ import {
   Columns3,
   ArrowUpRight,
   BookOpen,
-  GitCompareArrows,
+  CalendarDays,
   Layers,
   Library,
   LogOut,
-  Lock,
   MapPin,
   Network,
   Settings,
@@ -24,12 +23,12 @@ const nav = [
   ['Personas', Users],
   ['Conexiones', Network],
   ['Lugares', MapPin],
+  ['Agenda', CalendarDays],
   ['Libroteca', Library],
   ['Lecturas', BookOpen],
   ['Notas', StickyNote],
   ['Tableros', Columns3],
   ['Finanzas', Wallet],
-  ['Comparador', GitCompareArrows],
 ] as const;
 
 export function Sidebar({ mobileOpen }: { mobileOpen: boolean }) {
@@ -67,9 +66,6 @@ export function Sidebar({ mobileOpen }: { mobileOpen: boolean }) {
         <ArrowUpRight size={16} />
       </button>
       <div className="sidebar-bottom">
-        <div className="privacy">
-          <Lock size={13} /> Tu espacio, solo tuyo
-        </div>
         <button
           className={page === 'Ajustes' ? 'settings active' : 'settings'}
           onClick={() => go('Ajustes')}

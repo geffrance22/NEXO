@@ -46,9 +46,8 @@ import { useMyProfile } from '../hooks/useMyProfile';
 import { MyProfileSheet } from '../people/MyProfileSheet';
 import { MergeDialog } from '../people/MergeDialog';
 import { parseHash, toHash, type Route } from '../lib/route';
-import { ComparePage } from '../pages/ComparePage';
 import { ConnectionsPage } from '../pages/ConnectionsPage';
-import { Libroteca } from '../library/Libroteca';
+import { Agenda, Libroteca } from '../library/Libroteca';
 import { ProgressSheet } from '../library/ProgressSheet';
 import { ClosingRitual } from '../ritual/ClosingRitual';
 import { isFinished } from '../ritual/learning';
@@ -109,16 +108,16 @@ function renderPage(page: Page, route: Route, toggleMenu: () => void) {
       );
     case 'Libroteca':
       return <Libroteca />;
+    case 'Agenda':
+      return <Agenda notebookId={route.notebookId} />;
     case 'Personas':
       return <PeoplePage />;
     case 'Conexiones':
-      return <ConnectionsPage />;
+      return <ConnectionsPage initialTab={route.tab} />;
     case 'Lugares':
       return <PlacesPage />;
     case 'Finanzas':
       return <FinancePage />;
-    case 'Comparador':
-      return <ComparePage />;
     case 'Ajustes':
       return <SettingsPage />;
   }
@@ -221,24 +220,24 @@ export function AppShell({ user }: { user: AppUser }) {
       },
     );
   }
-  const savedThen = async (ok: Promise<boolean>, input: EntryInput, before?: Entry) => {
+  const savedThen = async <T,>(ok: Promise<T>, input: EntryInput, before?: Entry) => {
     const saved = await ok;
     if (saved) void learnTastes(input, before);
     return saved;
   };
   /**
-   * Recuerdo nuevo. Un libro o una película que ya terminaste no abre el ritual de cierre por su
-   * cuenta (quizá lo viste hace años): el aviso lo ofrece.
+   * Recuerdo nuevo (devuelve su id, o null si falló). Un libro o una película que ya terminaste
+   * no abre el ritual de cierre por su cuenta (quizá lo viste hace años): el aviso lo ofrece.
    */
   const saveNew = async (input: EntryInput) => {
-    if (!isFinished(input)) return data.saveEntry(input);
+    if (!isFinished(input)) return (await data.createEntry(input))?.id ?? null;
     const saved = await data.createEntry(input, true);
-    if (!saved) return false;
+    if (!saved) return null;
     notify(input.kind === 'Libro' ? 'Libro guardado.' : 'Guardado en tu Libroteca.', {
       label: 'Hacer el cierre',
       run: () => setRitual(saved.id),
     });
-    return true;
+    return saved.id;
   };
   const selected = route.personId
     ? (workspace.people.find((p) => p.id === route.personId) ?? null)
@@ -586,7 +585,7 @@ export function AppShell({ user }: { user: AppUser }) {
                 // Acabas de marcarlo como terminado: es el momento del ritual de cierre.
                 if (ok && isFinished(input) && !isFinished(before) && !before.details.ritual)
                   setRitual(before.id);
-                return ok;
+                return ok ? before.id : null;
               });
             }}
             onClose={closeModal}

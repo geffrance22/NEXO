@@ -4,19 +4,16 @@ import {
   ArrowRight,
   ArrowUpRight,
   BellPlus,
-  CalendarHeart,
   Feather,
-  HeartHandshake,
+  GitCompareArrows,
   Link2,
   MapPin,
   Network,
   Orbit,
-  PartyPopper,
   Share2,
   Sparkles,
   StickyNote,
   TreePine,
-  UserPlus,
   Users,
   X,
 } from 'lucide-react';
@@ -32,15 +29,18 @@ import {
   relations,
   relativeDay,
   statsFor,
-  wrappedFor,
   yearsWithData,
 } from '../lib/people';
 import { Avatar } from '../people/Avatar';
 import { BondRing } from '../people/PersonPanel';
 import { RelationsView } from '../relations/RelationsView';
+import { CompareView } from '../people/CompareView';
+import { YearInReview } from '../people/YearInReview';
 import '../people/people.css';
 
-type Tab = 'social' | 'conexiones' | 'relaciones' | 'arbol' | 'wrapped';
+export type ConnectionsTab =
+  'social' | 'conexiones' | 'relaciones' | 'arbol' | 'comparar' | 'wrapped';
+type Tab = ConnectionsTab;
 type Year = number | 'todo';
 
 /** Ficha flotante: no tapa el lienzo, se puede seguir navegando mientras está abierta. */
@@ -249,156 +249,9 @@ function Legend() {
   );
 }
 
-function Wrapped({ year }: { year: Year }) {
-  const { workspace, go } = useApp();
-  const w = useMemo(() => wrappedFor(workspace.people, workspace.entries, year), [workspace, year]);
-  const maxMonth = Math.max(1, ...w.months);
-  const title = year === 'todo' ? 'Toda tu historia' : `Tu ${year} en personas`;
-  if (!w.total) {
-    return (
-      <div className="wr-empty">
-        <Sparkles size={28} />
-        <h3>Sin interacciones con personas en este periodo.</h3>
-        <p>Vincula personas a tus recuerdos y aquí aparecerá tu resumen.</p>
-      </div>
-    );
-  }
-  const balance =
-    w.give + w.receive ? Math.round(((w.give - w.receive) / (w.give + w.receive)) * 100) : null;
-  return (
-    <div className="wr">
-      <section className="wr-card hero">
-        <span className="wr-eyebrow">{title}</span>
-        <h2>
-          {w.total} momentos
-          <br />
-          con {w.people} {w.people === 1 ? 'persona' : 'personas'}
-        </h2>
-        {w.busiest && <p>Tu mes más social fue {w.busiest}.</p>}
-        <div className="wr-months" aria-hidden="true">
-          {w.months.map((m, i) => (
-            <i
-              key={i}
-              style={{ height: `${10 + (m / maxMonth) * 90}%` }}
-              className={m === maxMonth ? 'top' : ''}
-            />
-          ))}
-        </div>
-      </section>
-
-      <section className="wr-card top">
-        <span className="wr-eyebrow">Tu gente</span>
-        <ol>
-          {w.top.map(({ person, n }, i) => (
-            <li key={person.id}>
-              <button type="button" onClick={() => go('Personas', person)}>
-                <b>{i + 1}</b>
-                <Avatar person={person} size={i === 0 ? 46 : 34} />
-                <span>
-                  <strong>{person.name}</strong>
-                  <i style={{ width: `${(n / w.top[0].n) * 100}%` }} />
-                </span>
-                <em>{n}</em>
-              </button>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      {w.duo?.a && w.duo.b && (
-        <section className="wr-card duo">
-          <span className="wr-eyebrow">
-            <HeartHandshake size={14} /> Dúo inseparable
-          </span>
-          <div className="wr-duo">
-            <Avatar person={w.duo.a} size={58} />
-            <Avatar person={w.duo.b} size={58} />
-          </div>
-          <h3>
-            {w.duo.a.name.split(' ')[0]} y {w.duo.b.name.split(' ')[0]}
-          </h3>
-          <p>
-            Aparecieron juntos en {w.duo.n} {w.duo.n === 1 ? 'recuerdo' : 'recuerdos'}.
-          </p>
-        </section>
-      )}
-
-      {w.biggest && (
-        <section className="wr-card big">
-          <span className="wr-eyebrow">
-            <PartyPopper size={14} /> El más concurrido
-          </span>
-          <h3>{w.biggest.title}</h3>
-          <p>{w.biggest.person_ids.length} personas en un mismo momento.</p>
-          <div className="wr-faces">
-            {w.biggest.person_ids.slice(0, 8).flatMap((id) => {
-              const p = workspace.people.find((x) => x.id === id);
-              return p ? [<Avatar key={id} person={p} size={30} />] : [];
-            })}
-          </div>
-        </section>
-      )}
-
-      {w.topKind && (
-        <section className="wr-card kind">
-          <span className="wr-eyebrow">Lo que más hicieron</span>
-          <h3>{w.topKind.kind}</h3>
-          <p>{w.topKind.n} veces.</p>
-        </section>
-      )}
-
-      {balance !== null && (
-        <section className="wr-card bal">
-          <span className="wr-eyebrow">Dar y recibir</span>
-          <h3>
-            {Math.abs(balance) <= 20 ? 'Equilibrado' : balance > 0 ? 'Diste más' : 'Recibiste más'}
-          </h3>
-          <p>
-            {w.give} puntos dados · {w.receive} recibidos
-          </p>
-        </section>
-      )}
-
-      {w.newPeople.length > 0 && (
-        <section className="wr-card new">
-          <span className="wr-eyebrow">
-            <UserPlus size={14} /> Llegaron a tu vida
-          </span>
-          <div className="wr-faces wrap">
-            {w.newPeople.slice(0, 12).map((p) => (
-              <button type="button" key={p.id} title={p.name} onClick={() => go('Personas', p)}>
-                <Avatar person={p} size={38} />
-              </button>
-            ))}
-          </div>
-          <p>
-            {w.newPeople.length} {w.newPeople.length === 1 ? 'persona nueva' : 'personas nuevas'}.
-          </p>
-        </section>
-      )}
-
-      {w.faded.length > 0 && (
-        <section className="wr-card faded">
-          <span className="wr-eyebrow">
-            <CalendarHeart size={14} /> Para retomar
-          </span>
-          <div className="wr-faces wrap">
-            {w.faded.slice(0, 12).map((p) => (
-              <button type="button" key={p.id} title={p.name} onClick={() => go('Personas', p)}>
-                <Avatar person={p} size={38} />
-              </button>
-            ))}
-          </div>
-          <p>Hablaste con ellas el año anterior, pero no en este.</p>
-        </section>
-      )}
-    </div>
-  );
-}
-
-export function ConnectionsPage() {
+export function ConnectionsPage({ initialTab = 'social' }: { initialTab?: Tab }) {
   const { workspace } = useApp();
-  const [tab, setTab] = useState<Tab>('social');
+  const [tab, setTab] = useState<Tab>(initialTab);
   const years = useMemo(() => yearsWithData(workspace.entries), [workspace.entries]);
   const [year, setYear] = useState<Year>('todo');
   const [selected, setSelected] = useState<string | null>(null);
@@ -452,11 +305,14 @@ export function ConnectionsPage() {
     },
     { id: 'relaciones', label: 'Relaciones', icon: Share2, hint: '' },
     { id: 'arbol', label: 'Árbol familiar', icon: TreePine, hint: '' },
-    { id: 'wrapped', label: 'Tu año', icon: Sparkles, hint: 'Un resumen de tu vida social' },
+    { id: 'comparar', label: 'Comparar', icon: GitCompareArrows, hint: '' },
+    { id: 'wrapped', label: 'Tu año', icon: Sparkles, hint: '' },
   ];
 
   return (
-    <div className="cx">
+    // Con mapa, el panel ocupa el alto disponible y la página no se desplaza; «Tu año» y
+    // «Comparar» sí son largas.
+    <div className={'cx' + (tab === 'wrapped' || tab === 'comparar' ? '' : ' fit')}>
       <div className="cx-top">
         <nav className="cx-tabs" role="tablist">
           {tabs.map((t) => (
@@ -499,35 +355,37 @@ export function ConnectionsPage() {
       </div>
       {structural ? (
         <RelationsView mode={tab as 'relaciones' | 'arbol'} />
+      ) : tab === 'comparar' ? (
+        <CompareView entries={scoped} />
+      ) : tab === 'wrapped' ? (
+        <div className="cx-year">
+          <YearInReview year={year} />
+        </div>
       ) : (
         <>
           <div className="cx-sub">
             <p className="cx-hint">{tabs.find((t) => t.id === tab)!.hint}</p>
-            {tab !== 'wrapped' && (
-              <div className="cx-toggles" role="group" aria-label="Mostrar en el mapa">
-                <button
-                  type="button"
-                  aria-pressed={filter.people}
-                  className={filter.people ? 'on' : ''}
-                  onClick={() => setShown('people')}
-                >
-                  <Users size={14} /> Personas
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={filter.places}
-                  className={filter.places ? 'on' : ''}
-                  onClick={() => setShown('places')}
-                >
-                  <MapPin size={14} /> Lugares
-                </button>
-              </div>
-            )}
+            <div className="cx-toggles" role="group" aria-label="Mostrar en el mapa">
+              <button
+                type="button"
+                aria-pressed={filter.people}
+                className={filter.people ? 'on' : ''}
+                onClick={() => setShown('people')}
+              >
+                <Users size={14} /> Personas
+              </button>
+              <button
+                type="button"
+                aria-pressed={filter.places}
+                className={filter.places ? 'on' : ''}
+                onClick={() => setShown('places')}
+              >
+                <MapPin size={14} /> Lugares
+              </button>
+            </div>
           </div>
 
-          {tab === 'wrapped' ? (
-            <Wrapped year={year} />
-          ) : peopleShown + placesShown > 0 ? (
+          {peopleShown + placesShown > 0 ? (
             <>
               <GraphCanvas
                 key={tab + String(year) + filter.people + filter.places}

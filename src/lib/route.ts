@@ -7,6 +7,10 @@ export type Route = {
   episodeId: string | null;
   noteId?: string | null;
   readingId: string | null;
+  /** Cuaderno de Agenda abierto en su lienzo (`#/agenda/<id>`). */
+  notebookId?: string | null;
+  /** Pestaña con la que abre la página (hoy solo «Comparar» en Conexiones). */
+  tab?: 'comparar';
 };
 
 const slugs: Record<Page, string> = {
@@ -18,18 +22,20 @@ const slugs: Record<Page, string> = {
   Notas: 'notas',
   Tableros: 'tableros',
   Lecturas: 'lecturas',
+  Agenda: 'agenda',
   Libroteca: 'libroteca',
   Finanzas: 'finanzas',
-  Comparador: 'comparador',
   Ajustes: 'ajustes',
 };
 const pageBySlug = new Map<string, Page>([
   ...(Object.keys(slugs) as Page[]).map((page) => [slugs[page], page] as const),
   // Antes se llamaba «Biblioteca»: los enlaces guardados siguen funcionando.
   ['biblioteca', 'Libroteca'],
+  // El comparador ahora es una pestaña de Conexiones.
+  ['comparador', 'Conexiones'],
 ]);
 /** Páginas que pueden abrir un elemento concreto: `#/personas/<id>`. */
-const withId: Page[] = ['Personas', 'Lugares', 'Episodios', 'Lecturas', 'Notas'];
+const withId: Page[] = ['Personas', 'Lugares', 'Episodios', 'Lecturas', 'Notas', 'Agenda'];
 
 /** Interpreta el hash de la URL (`#/personas/<id>`, `#/lugares/<id>`). Si no se reconoce, abre «Mi espacio». */
 export function parseHash(hash: string): Route {
@@ -50,6 +56,8 @@ export function parseHash(hash: string): Route {
     episodeId: page === 'Episodios' ? id : null,
     noteId: page === 'Notas' ? id : null,
     readingId: page === 'Lecturas' ? id : null,
+    notebookId: page === 'Agenda' ? id : null,
+    ...(slug === 'comparador' ? { tab: 'comparar' as const } : {}),
   };
 }
 

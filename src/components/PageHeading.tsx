@@ -22,13 +22,10 @@ const headings: Record<Exclude<Page, 'Mi espacio'>, { title: string; text: strin
   Tableros: { title: 'Tableros', text: '' },
   Lecturas: { title: 'Lecturas', text: 'Artículos guardados para leer y anotar.' },
   Libroteca: { title: 'Libroteca', text: '' },
+  Agenda: { title: 'Agenda', text: '' },
   Finanzas: {
     title: 'Tus números, con contexto.',
     text: 'Cada ingreso y cada gasto también cuentan una historia.',
-  },
-  Comparador: {
-    title: 'Dos historias, otra perspectiva.',
-    text: 'Compara evidencia disponible, sin convertir personas en puntuaciones.',
   },
   Ajustes: {
     title: 'Un espacio a tu medida.',
@@ -44,6 +41,7 @@ export function PageHeading() {
     page === 'Tableros' ||
     page === 'Notas' ||
     page === 'Libroteca' ||
+    page === 'Agenda' ||
     page === 'Conexiones'
   )
     return null;

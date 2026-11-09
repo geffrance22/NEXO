@@ -30,6 +30,7 @@ import { friendlyDate, shortDate, todayInputValue } from '../lib/format';
 import { daysBetween } from '../lib/people';
 import { placeOf } from '../lib/places';
 import { Avatar } from '../people/Avatar';
+import { AddToNotebook } from '../cuadernos/AddToNotebook';
 import { RichText } from './RichText';
 import { Sheet } from './Sheet';
 import './entry-viewer.css';
@@ -109,7 +110,7 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
     <Sheet
       label={entry.title || entry.kind}
       className={'ev' + (wide ? ' wide' : '')}
-      yieldTo=".nx-peek, .sheet.pg, .sheet.cr"
+      yieldTo=".nx-peek, .sheet.pg, .sheet.cr, .sheet.cz-form-sheet"
       onRequestClose={onClose}
     >
       <div
@@ -405,6 +406,7 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
               {done ? 'Reabrir' : 'Marcar como hecho'}
             </button>
           )}
+          <AddToNotebook entry={entry} />
           <button type="button" className="ev-btn main" onClick={() => app.editEntry(entry)}>
             <Pencil size={15} /> Editar
           </button>

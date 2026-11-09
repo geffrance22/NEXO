@@ -1,5 +1,14 @@
-import { type ReactNode } from 'react';
-import { ArrowRight, BookMarked, Newspaper, Plus, Tv, type LucideIcon } from 'lucide-react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  ArrowRight,
+  BookMarked,
+  ChevronDown,
+  ChevronUp,
+  Newspaper,
+  Plus,
+  Tv,
+  type LucideIcon,
+} from 'lucide-react';
 import { useApp } from '../AppContext';
 import type { Entry } from '../data';
 import { kindMeta } from '../composer/kinds';
@@ -11,8 +20,8 @@ import { isActive, progressOf, withEpisode } from './progress';
 import { useOpenReading, type ShelfReading } from './ReadingShelf';
 import {
   addedAt,
+  sectionTabs,
   tabById,
-  tabOrder,
   tabSummary,
   tones,
   toneOf,
@@ -20,10 +29,10 @@ import {
   type Tone,
 } from './shelf';
 
-const COLLECTION: TabId[] = ['peliculas', 'libros', 'aprendizajes'];
-const NOTEBOOK: TabId[] = ['notas', 'encuentros', 'pendientes', 'trabajo'];
-const MEDIA = new Set<TabId>(['peliculas', 'libros']);
-const NOW_MAX = 12;
+const COLLECTION: TabId[] = ['peliculas', 'series', 'libros'];
+const MEDIA = new Set<TabId>(['peliculas', 'series', 'libros']);
+/** Filas de «En curso» visibles al principio y cuántas suma cada «Ver más». */
+const NOW_ROWS = 2;
 const RECENT = 6;
 
 type NowItem = {
@@ -57,6 +66,11 @@ export function Inicio({
   const reading = useOpenReading();
   const today = todayInputValue();
 
+  // Columnas reales de la rejilla «En curso» (cambian con el ancho) y filas abiertas.
+  const nowRef = useRef<HTMLDivElement>(null);
+  const [cols, setCols] = useState(1);
+  const [rows, setRows] = useState(NOW_ROWS);
+
   const cover = (e: Entry) => {
     const img = entryImages(e)[0];
     return img ? (img.thumb ?? img.medium ?? img.url) : undefined;
@@ -69,7 +83,11 @@ export function Inicio({
   };
 
   // En curso: primero lo que actualizaste hace menos, luego lo demás.
-  const active = [...(lists.get('libros') ?? []), ...(lists.get('peliculas') ?? [])]
+  const active = [
+    ...(lists.get('libros') ?? []),
+    ...(lists.get('peliculas') ?? []),
+    ...(lists.get('series') ?? []),
+  ]
     .filter(isActive)
     .sort(
       (a, b) =>
@@ -109,12 +127,30 @@ export function Inicio({
     });
   }
 
-  const recent = [...workspace.entries]
+  const hasNow = now.length > 0;
+  useLayoutEffect(() => {
+    const el = nowRef.current;
+    if (!el) return;
+    const measure = () => {
+      const tracks = getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean);
+      setCols(Math.max(1, tracks.length));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hasNow]);
+  const shown = Math.min(now.length, cols * rows);
+  const hidden = now.length - shown;
+  const canCollapse = !hidden && rows > NOW_ROWS && now.length > cols * NOW_ROWS;
+
+  const recent = workspace.entries
+    .filter((e) => e.kind === 'Película' || e.kind === 'Libro')
     .sort((a, b) => addedAt(b).localeCompare(addedAt(a)))
     .slice(0, RECENT);
 
   const card = (id: TabId) => {
-    const meta = tabOrder.find((t) => t.id === id)!;
+    const meta = sectionTabs.Libroteca.find((t) => t.id === id)!;
     const tab = tabById.get(id);
     const list = lists.get(id) ?? [];
     if (!tab || !list.length) return null;
@@ -170,17 +206,16 @@ export function Inicio({
   };
 
   const collection = COLLECTION.map(card).filter(Boolean);
-  const notebook = NOTEBOOK.map(card).filter(Boolean);
 
   return (
     <div className="lt-home">
-      {now.length > 0 && (
+      {hasNow && (
         <section aria-labelledby="lt-now">
           <h2 className="lt-h2" id="lt-now">
             En curso <i>{now.length}</i>
           </h2>
-          <div className="lt-now">
-            {now.slice(0, NOW_MAX).map((it) => (
+          <div className="lt-now" ref={nowRef}>
+            {now.slice(0, shown).map((it) => (
               <div key={it.key} className="lt-now-card" style={toneVars(it.tone)}>
                 <button
                   type="button"
@@ -224,6 +259,20 @@ export function Inicio({
               </div>
             ))}
           </div>
+          {hidden > 0 && (
+            <button
+              type="button"
+              className="lt-more lt-now-more"
+              onClick={() => setRows((r) => r + NOW_ROWS)}
+            >
+              Ver más <span>{hidden}</span> <ChevronDown size={14} />
+            </button>
+          )}
+          {canCollapse && (
+            <button type="button" className="lt-more lt-now-more" onClick={() => setRows(NOW_ROWS)}>
+              Ver menos <ChevronUp size={14} />
+            </button>
+          )}
         </section>
       )}
 
@@ -268,14 +317,6 @@ export function Inicio({
             Colección
           </h2>
           <div className="lt-secs">{collection}</div>
-        </section>
-      )}
-      {notebook.length > 0 && (
-        <section aria-labelledby="lt-nb">
-          <h2 className="lt-h2" id="lt-nb">
-            Libreta
-          </h2>
-          <div className="lt-secs small">{notebook}</div>
         </section>
       )}
       {reading.sheet}

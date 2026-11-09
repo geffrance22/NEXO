@@ -1,0 +1,86 @@
+import { useState } from 'react';
+import { Eye, Lightbulb, Quote, Shuffle, Sprout, TriangleAlert } from 'lucide-react';
+import type { Definition } from './define';
+
+function Chips({ label, items, tone }: { label: string; items: string[]; tone?: string }) {
+  if (!items.length) return null;
+  return (
+    <div className={'df-chips' + (tone ? ' ' + tone : '')}>
+      <span className="df-label">{label}</span>
+      <ul>
+        {items.map((x) => (
+          <li key={x}>{x}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** La ficha completa de una palabra: significado, raíz, truco, ejemplo, relaciones y ejercicio. */
+export function DefinitionView({ d }: { d: Definition }) {
+  const [shown, show] = useState(false);
+  return (
+    <div className="df">
+      {d.kind && <span className="df-kind">{d.kind}</span>}
+      <p className="df-meaning">{d.meaning}</p>
+
+      {(d.root || d.history) && (
+        <section className="df-block">
+          <span className="df-label">
+            <Sprout size={13} /> Raíz e historia
+          </span>
+          {d.root && <p>{d.root}</p>}
+          {d.history && <p className="df-soft">{d.history}</p>}
+        </section>
+      )}
+
+      {d.hook && (
+        <section className="df-block df-hook">
+          <span className="df-label">
+            <Lightbulb size={13} /> Para no olvidarla
+          </span>
+          <p>{d.hook}</p>
+        </section>
+      )}
+
+      {d.example && (
+        <section className="df-block">
+          <span className="df-label">
+            <Quote size={13} /> Ejemplo
+          </span>
+          <q className="df-example">{d.example}</q>
+        </section>
+      )}
+
+      <Chips label="Sinónimos" items={d.synonyms} />
+      <Chips label="Antónimos" items={d.antonyms} tone="anti" />
+      <Chips label="Familia de palabras" items={d.family} tone="family" />
+
+      {d.confusions && (
+        <section className="df-block df-warn">
+          <span className="df-label">
+            <TriangleAlert size={13} /> No confundir
+          </span>
+          <p>{d.confusions}</p>
+        </section>
+      )}
+
+      {d.practice.q && (
+        <section className="df-block df-practice">
+          <span className="df-label">
+            <Shuffle size={13} /> Ponte a prueba
+          </span>
+          <p>{d.practice.q}</p>
+          {d.practice.a &&
+            (shown ? (
+              <p className="df-answer">{d.practice.a}</p>
+            ) : (
+              <button type="button" className="df-reveal" onClick={() => show(true)}>
+                <Eye size={13} /> Ver respuesta
+              </button>
+            ))}
+        </section>
+      )}
+    </div>
+  );
+}

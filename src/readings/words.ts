@@ -2,13 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../backend';
 import type { Notify } from '../hooks/useToast';
 import { normalizeText } from '../lib/format';
+import { asDefinition, defineWord, DEFINITIONS_SQL, type Definition } from './define';
 
 /** Una palabra o un concepto por aprender (tabla `reading_words`, migración 013). */
 export type Word = {
   id: string;
   term: string;
-  /** La frase del artículo donde apareció. */
+  /** La frase del artículo donde apareció (solo en las guardadas antes de las definiciones). */
   context: string;
+  /** Ficha generada con IA (migración 202611090005). */
+  definition?: Definition | null;
   /** Lo que significa, con tus palabras. */
   note: string;
   reading_id: string | null;
@@ -78,7 +81,9 @@ export function useWords(notify: Notify) {
         if (!alive) return;
         if (error) setState(isMissing(error) ? 'missing' : 'error');
         else {
-          setWords((data ?? []) as Word[]);
+          setWords(
+            ((data ?? []) as Word[]).map((w) => ({ ...w, definition: asDefinition(w.definition) })),
+          );
           setState('ready');
         }
       });
@@ -219,6 +224,56 @@ export function useWords(notify: Notify) {
     [fail, notify],
   );
 
-  return { words, state, find, add, update, toggleLearned, remove };
+  // Términos (por clave) cuya definición se está generando.
+  const [defining, setDefining] = useState<ReadonlySet<string>>(new Set());
+  const busy = useRef(new Set<string>());
+  const isDefining = useCallback((w: Word) => defining.has(wordKey(w.term)), [defining]);
+
+  /**
+   * Genera con IA la definición de una palabra y la guarda. `context` (la frase del artículo)
+   * solo ayuda a elegir el sentido. Si falta la columna, la definición se ve igual en esta visita.
+   */
+  const define = useCallback(
+    async (word: Word, context = word.context) => {
+      const k = wordKey(word.term);
+      if (busy.current.has(k)) return;
+      busy.current.add(k);
+      setDefining(new Set(busy.current));
+      try {
+        const definition = await defineWord(word.term, context);
+        setWords((v) => v.map((w) => (same(w, word.id) ? { ...w, definition } : w)));
+        const id = await realId(word.id);
+        if (!id) return;
+        const { error } = await supabase
+          .from('reading_words')
+          .update({ definition })
+          .eq('id', id);
+        if (!error) return;
+        notify(
+          error.code === 'PGRST204' || error.code === '42703' || /definition/.test(error.message)
+            ? `Para guardar las definiciones ejecuta ${DEFINITIONS_SQL} en el SQL Editor de Supabase.`
+            : `No se pudo guardar la definición: ${error.message}`,
+        );
+      } catch (e) {
+        notify(`«${word.term.slice(0, 40)}»: ${(e as Error).message}`);
+      } finally {
+        busy.current.delete(k);
+        setDefining(new Set(busy.current));
+      }
+    },
+    [notify],
+  );
+
+  return {
+    words,
+    state,
+    find,
+    add,
+    update,
+    toggleLearned,
+    remove,
+    define,
+    isDefining,
+  };
 }
 export type WordsApi = ReturnType<typeof useWords>;

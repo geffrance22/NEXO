@@ -5,7 +5,10 @@ import {
   LayoutGrid,
   Lightbulb,
   ListChecks,
+  NotebookTabs,
   PenLine,
+  Quote,
+  Tv,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -13,18 +16,26 @@ import { plainText } from '../components/RichText';
 import type { Entry, EntryDetails, Kind, Person } from '../data';
 import { kindMeta, seriesColors } from '../composer/kinds';
 import { isOpenTask } from '../lib/commitments';
-import { bookPace, isSeries } from '../lib/entries';
+import { bookPace, hoursLabel, isSeries, screenMinutes } from '../lib/entries';
 import { normalizeText, todayInputValue } from '../lib/format';
 
 export type TabId =
+  // Libroteca
   | 'inicio'
   | 'peliculas'
+  | 'series'
   | 'libros'
-  | 'aprendizajes'
-  | 'notas'
-  | 'encuentros'
+  | 'citas'
+  // Agenda
+  | 'cuadernos'
   | 'pendientes'
-  | 'trabajo';
+  | 'trabajo'
+  | 'encuentros'
+  | 'notas'
+  | 'aprendizajes';
+
+/** Las dos páginas que comparten pestañas, estantes y vistas. */
+export type ShelfSection = 'Libroteca' | 'Agenda';
 
 export type ViewMode = 'portadas' | 'tarjetas' | 'lista';
 export type SortId =
@@ -80,13 +91,13 @@ const tone = (k: Kind): Tone => kindMeta[k];
 
 export const entryTabs: EntryTab[] = [
   {
-    // Películas y series juntas; la pastilla «Series» deja solo las series.
+    // Solo películas: las series tienen su propia pestaña.
     id: 'peliculas',
     label: 'Películas',
     icon: Clapperboard,
     kind: 'Película',
     tone: tone('Película'),
-    match: (e) => e.kind === 'Película',
+    match: (e) => e.kind === 'Película' && !isSeries(e),
     views: ['tarjetas', 'portadas', 'lista'],
     shelves: [
       { id: 'quiero', label: 'Por ver', test: (e) => watch(e) === 'quiero' },
@@ -96,7 +107,28 @@ export const entryTabs: EntryTab[] = [
     sorts: ['reciente', 'calificacion', 'anio', 'titulo', 'antiguo'],
     noun: 'película',
     addDetails: (s) => (s === 'quiero' || s === 'viendo' ? { watch: s } : undefined),
-    empty: 'Aún no hay películas ni series.',
+    empty: 'Aún no hay películas.',
+  },
+  {
+    id: 'series',
+    label: 'Series',
+    icon: Tv,
+    kind: 'Película',
+    tone: tones.series,
+    match: isSeries,
+    views: ['tarjetas', 'portadas', 'lista'],
+    shelves: [
+      { id: 'quiero', label: 'Por ver', test: (e) => watch(e) === 'quiero' },
+      { id: 'viendo', label: 'Viendo', test: (e) => watch(e) === 'viendo' },
+      { id: 'vista', label: 'Vistas', test: (e) => watch(e) === 'vista' },
+    ],
+    sorts: ['reciente', 'calificacion', 'anio', 'titulo', 'antiguo'],
+    noun: 'serie',
+    addDetails: (s) => ({
+      series: true,
+      ...(s === 'quiero' || s === 'viendo' ? { watch: s } : {}),
+    }),
+    empty: 'Aún no hay series.',
   },
   {
     id: 'libros',
@@ -211,27 +243,37 @@ export const entryTabs: EntryTab[] = [
 
 export const tabById = new Map(entryTabs.map((t) => [t.id, t]));
 
-/**
- * Pestañas en orden. «Inicio» va solo con su ícono (sin nombre ni cifra) y una raya lo separa de
- * las secciones. Los movimientos no tienen pestaña: viven en Finanzas.
- */
-export const tabOrder: {
+export type TabMeta = {
   id: TabId;
   label: string;
   icon: LucideIcon;
   divider?: boolean;
   iconOnly?: boolean;
-}[] = [
-  { id: 'inicio', label: 'Inicio', icon: LayoutGrid, iconOnly: true },
-  { id: 'peliculas', label: 'Películas', icon: Clapperboard, divider: true },
-  { id: 'libros', label: 'Libros', icon: BookMarked },
-  { id: 'pendientes', label: 'Pendientes', icon: ListChecks },
-  { id: 'trabajo', label: 'Trabajo', icon: Briefcase },
-  { id: 'notas', label: 'Notas', icon: PenLine },
-  { id: 'encuentros', label: 'Encuentros', icon: Users },
-  { id: 'aprendizajes', label: 'Aprendizajes', icon: Lightbulb },
-];
-export const isTab = (s: string | null): s is TabId => tabOrder.some((t) => t.id === s);
+};
+
+/**
+ * Pestañas de cada página, en orden. Libroteca guarda lo que ves y lees (con «Inicio» solo con su
+ * ícono); Agenda, tu día a día y los cuadernos que lo reúnen. Los movimientos viven en Finanzas.
+ */
+export const sectionTabs: Record<ShelfSection, TabMeta[]> = {
+  Libroteca: [
+    { id: 'inicio', label: 'Inicio', icon: LayoutGrid, iconOnly: true },
+    { id: 'peliculas', label: 'Películas', icon: Clapperboard, divider: true },
+    { id: 'series', label: 'Series', icon: Tv },
+    { id: 'libros', label: 'Libros', icon: BookMarked },
+    { id: 'citas', label: 'Citas', icon: Quote },
+  ],
+  Agenda: [
+    { id: 'cuadernos', label: 'Cuadernos', icon: NotebookTabs },
+    { id: 'pendientes', label: 'Pendientes', icon: ListChecks, divider: true },
+    { id: 'trabajo', label: 'Trabajo', icon: Briefcase },
+    { id: 'encuentros', label: 'Encuentros', icon: Users },
+    { id: 'notas', label: 'Notas', icon: PenLine },
+    { id: 'aprendizajes', label: 'Aprendizajes', icon: Lightbulb },
+  ],
+};
+export const isTabOf = (section: ShelfSection, s: string | null): s is TabId =>
+  sectionTabs[section].some((t) => t.id === s);
 
 /** Cuándo lo registraste (o, si no se sabe, cuándo pasó). */
 export const addedAt = (e: Entry) => e.recorded_at ?? e.created_at;
@@ -315,7 +357,8 @@ export function tabSummary(tab: EntryTab, list: Entry[], today = todayInputValue
   const bits: string[] = [];
   const rated = list.map((e) => e.details.rating ?? 0).filter(Boolean);
   switch (tab.id) {
-    case 'peliculas': {
+    case 'peliculas':
+    case 'series': {
       const series = list.filter(isSeries).length;
       const movies = list.length - series;
       if (movies) bits.push(plural(movies, 'película', 'películas'));
@@ -324,11 +367,9 @@ export function tabSummary(tab: EntryTab, list: Entry[], today = todayInputValue
       if (now) bits.push(`${now} viendo`);
       const want = list.filter((e) => watch(e) === 'quiero').length;
       if (want) bits.push(`${want} por ver`);
-      // Horas de cine: solo películas vistas (de las series no se sabe cuántos episodios).
-      const minutes = list
-        .filter((e) => watch(e) === 'vista' && !isSeries(e))
-        .reduce((s, e) => s + (e.details.movieInfo?.runtime ?? 0), 0);
-      if (minutes >= 60) bits.push(`${Math.round(minutes / 60)} h de cine`);
+      // Horas de cine: películas vistas y los episodios que llevas (o todos) de cada serie.
+      const minutes = list.reduce((s, e) => s + screenMinutes(e), 0);
+      if (minutes >= 60) bits.push(`${hoursLabel(minutes)} de cine`);
       break;
     }
     case 'libros': {
@@ -444,15 +485,19 @@ export function captionOf(e: Entry) {
 /** Colores de una película (o serie) o de cualquier otro recuerdo. */
 export const toneOf = (e: Entry): Tone => (isSeries(e) ? tones.series : kindMeta[e.kind]);
 
-const TAB_KEY = 'nexo-lib-tab';
-/** Abre Libroteca directamente en una pestaña (p. ej. «Ver los pendientes» desde el inicio). */
-export function goLibroteca(go: (page: 'Libroteca') => void, tab: TabId) {
-  sessionStorage.setItem(TAB_KEY, tab);
-  go('Libroteca');
+const tabKey = (section: ShelfSection) =>
+  section === 'Libroteca' ? 'nexo-lib-tab' : 'nexo-agenda-tab';
+/** Abre Libroteca o Agenda en una pestaña (p. ej. «Ver los pendientes» desde el inicio). */
+export function goSection(go: (page: ShelfSection) => void, section: ShelfSection, tab: TabId) {
+  sessionStorage.setItem(tabKey(section), tab);
+  go(section);
 }
-/** La pestaña que pidieron al abrir Libroteca. Se borra con `forgetLibTab` al montar. */
-export function requestedLibTab(): TabId | null {
-  const tab = sessionStorage.getItem(TAB_KEY);
-  return isTab(tab) ? tab : null;
+/** Atajo de siempre: Libroteca en una pestaña. */
+export const goLibroteca = (go: (page: ShelfSection) => void, tab: TabId) =>
+  goSection(go, 'Libroteca', tab);
+/** La pestaña que pidieron al abrir la página. Se borra con `forgetTab` al montar. */
+export function requestedTab(section: ShelfSection): TabId | null {
+  const tab = sessionStorage.getItem(tabKey(section));
+  return isTabOf(section, tab) ? tab : null;
 }
-export const forgetLibTab = () => sessionStorage.removeItem(TAB_KEY);
+export const forgetTab = (section: ShelfSection) => sessionStorage.removeItem(tabKey(section));

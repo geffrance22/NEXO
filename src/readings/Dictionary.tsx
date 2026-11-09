@@ -8,14 +8,17 @@ import {
   ChevronRight,
   Globe,
   Layers,
+  LoaderCircle,
   Plus,
   RotateCcw,
   Search,
+  Sparkles,
   Trash2,
   X,
 } from 'lucide-react';
 import { normalizeText, shortDate } from '../lib/format';
 import { cleanTerm, wordKey, WORDS_SQL, type Word, type WordsApi } from './words';
+import { DefinitionView } from './DefinitionView';
 import './dictionary.css';
 
 type Filter = 'pending' | 'learned' | 'all';
@@ -60,7 +63,7 @@ export function Dictionary({
   open: (readingId: string) => void;
   back: () => void;
 }) {
-  const { words, state, add, toggleLearned, remove } = api;
+  const { words, state, add, toggleLearned, remove, define, isDefining } = api;
   const [filter, setFilter] = useState<Filter>('pending');
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState('');
@@ -78,7 +81,9 @@ export function Dictionary({
         (w) =>
           (filter === 'all' || (filter === 'learned' ? w.learned_at : !w.learned_at)) &&
           (!needle ||
-            normalizeText(`${w.term} ${w.note} ${w.context} ${w.source}`).includes(needle)),
+            normalizeText(
+              `${w.term} ${w.note} ${w.context} ${w.source} ${w.definition?.meaning ?? ''} ${w.definition?.synonyms.join(' ') ?? ''}`,
+            ).includes(needle)),
       ),
     [words, filter, needle],
   );
@@ -103,7 +108,10 @@ export function Dictionary({
     if (exists) {
       setQuery(exists.term);
       setFilter(exists.learned_at ? 'learned' : 'pending');
-    } else add({ term });
+    } else {
+      const added = add({ term });
+      if (added) void define(added, '');
+    }
     setDraft('');
   };
 
@@ -254,7 +262,8 @@ export function Dictionary({
                 <span className="dc-chip">
                   <BookA size={13} /> Diccionario
                 </span>{' '}
-                en la barra. Se guarda con la frase donde apareció.
+                en la barra. Se guarda con una definición hecha con IA: raíz, un truco para
+                recordarla, ejemplo, sinónimos y más.
               </p>
             </div>
           ) : !shown.length ? (
@@ -286,7 +295,18 @@ export function Dictionary({
                     onClick={() => study(shown, shown.indexOf(w))}
                   >
                     <span className="dc-term">{w.term}</span>
-                    <Context text={w.context} term={w.term} />
+                    {w.definition ? (
+                      <span className="dc-def">
+                        {w.definition.kind && <i>{w.definition.kind}</i>}
+                        {w.definition.meaning}
+                      </span>
+                    ) : isDefining(w) ? (
+                      <span className="dc-defining">
+                        <LoaderCircle size={13} className="spin" /> Generando la definición…
+                      </span>
+                    ) : (
+                      <Context text={w.context} term={w.term} />
+                    )}
                     {w.note && <span className="dc-note">{w.note}</span>}
                     <small className="dc-meta">
                       {w.source && <span>{w.source}</span>}
@@ -294,6 +314,24 @@ export function Dictionary({
                     </small>
                   </button>
                   <div className="dc-acts">
+                    <button
+                      type="button"
+                      className={'dc-icon sm' + (w.definition ? '' : ' ai')}
+                      title={
+                        w.definition ? 'Volver a generar la definición' : 'Generar definición con IA'
+                      }
+                      aria-label={
+                        w.definition ? 'Volver a generar la definición' : 'Generar definición con IA'
+                      }
+                      disabled={isDefining(w)}
+                      onClick={() => void define(w)}
+                    >
+                      {isDefining(w) ? (
+                        <LoaderCircle size={15} className="spin" />
+                      ) : (
+                        <Sparkles size={15} />
+                      )}
+                    </button>
                     {w.reading_id && (
                       <button
                         type="button"
@@ -414,7 +452,11 @@ function Study({
           </span>
         )}
         <h3 className="dc-big">{w.term}</h3>
-        <Context text={w.context} term={w.term} />
+        {w.definition ? (
+          <DefinitionView d={w.definition} />
+        ) : (
+          <Context text={w.context} term={w.term} />
+        )}
         {(w.source || w.reading_id) && (
           <p className="dc-from">
             De{' '}
@@ -447,6 +489,20 @@ function Study({
           />
         </label>
         <div className="dc-card-links">
+          <button
+            type="button"
+            className={w.definition ? '' : 'ai'}
+            title={w.definition ? 'Volver a generar la definición' : 'Generar la definición con IA'}
+            disabled={api.isDefining(w)}
+            onClick={() => void api.define(w)}
+          >
+            {api.isDefining(w) ? (
+              <LoaderCircle size={13} className="spin" />
+            ) : (
+              <Sparkles size={13} />
+            )}{' '}
+            {w.definition ? 'Regenerar' : 'Definición'}
+          </button>
           <a href={lookUp(w.term)} target="_blank" rel="noreferrer">
             <Globe size={13} /> Buscar en la web
           </a>

@@ -1,5 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
 
 /**
  * Menú flotante de Tableros: se abre junto al botón que lo abrió, nunca se sale de la pantalla y
@@ -9,14 +15,14 @@ export function Popover({
   anchor,
   onClose,
   width = 252,
-  align = 'end',
+  align = "end",
   label,
   children,
 }: {
   anchor: DOMRect;
   onClose: () => void;
   width?: number;
-  align?: 'start' | 'end';
+  align?: "start" | "end";
   label: string;
   children: ReactNode;
 }) {
@@ -28,16 +34,23 @@ export function Popover({
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const h = el.offsetHeight;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const x = Math.min(
-      Math.max(8, align === 'end' ? anchor.right - width : anchor.left),
-      vw - width - 8,
-    );
-    const below = anchor.bottom + 6;
-    const y = below + h > vh - 8 ? Math.max(8, anchor.top - h - 6) : below;
-    setPos({ x, y });
+    const place = () => {
+      const h = el.offsetHeight;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const x = Math.min(
+        Math.max(8, align === "end" ? anchor.right - width : anchor.left),
+        vw - width - 8,
+      );
+      const below = anchor.bottom + 6;
+      const y = below + h > vh - 8 ? Math.max(8, anchor.top - h - 6) : below;
+      setPos((p) => (p && p.x === x && p.y === y ? p : { x, y }));
+    };
+    place();
+    // Si el contenido cambia de alto (p. ej. al filtrar), se recoloca sin despegarse del botón.
+    const ro = new ResizeObserver(place);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [anchor, width, align]);
 
   useEffect(() => {
@@ -45,7 +58,7 @@ export function Popover({
       if (!ref.current?.contains(e.target as Node)) close.current();
     };
     const key = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== "Escape") return;
       e.preventDefault();
       e.stopPropagation();
       close.current();
@@ -54,16 +67,18 @@ export function Popover({
       if (!ref.current?.contains(e.target as Node)) close.current();
     };
     const resize = () => close.current();
-    const t = window.setTimeout(() => document.addEventListener('pointerdown', down, true));
-    document.addEventListener('keydown', key, true);
-    window.addEventListener('resize', resize);
-    document.addEventListener('scroll', scroll, true);
+    const t = window.setTimeout(() =>
+      document.addEventListener("pointerdown", down, true),
+    );
+    document.addEventListener("keydown", key, true);
+    window.addEventListener("resize", resize);
+    document.addEventListener("scroll", scroll, true);
     return () => {
       window.clearTimeout(t);
-      document.removeEventListener('pointerdown', down, true);
-      document.removeEventListener('keydown', key, true);
-      window.removeEventListener('resize', resize);
-      document.removeEventListener('scroll', scroll, true);
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("keydown", key, true);
+      window.removeEventListener("resize", resize);
+      document.removeEventListener("scroll", scroll, true);
     };
   }, []);
 
@@ -77,7 +92,7 @@ export function Popover({
         width,
         left: pos?.x ?? -9999,
         top: pos?.y ?? -9999,
-        visibility: pos ? 'visible' : 'hidden',
+        visibility: pos ? "visible" : "hidden",
       }}
     >
       {children}
@@ -106,7 +121,7 @@ export function MenuItem({
     <button
       type="button"
       role="menuitem"
-      className={'bd-pop-item' + (danger ? ' danger' : '')}
+      className={"bd-pop-item" + (danger ? " danger" : "")}
       disabled={disabled}
       onClick={onClick}
     >

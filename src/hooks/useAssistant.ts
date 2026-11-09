@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   askAssistant,
+  type AssistantAnswer,
   type AssistantCoverage,
   type AssistantSource,
   type ChatTurn,
@@ -22,9 +23,9 @@ const STORE = 'nexo-chat';
 const MAX_MESSAGES = 40;
 
 /** La conversación sobrevive a cerrar el panel y a recargar la pestaña (no a cerrarla). */
-function restore(): ChatMessage[] {
+function restore(store: string): ChatMessage[] {
   try {
-    const list = JSON.parse(sessionStorage.getItem(STORE) ?? '[]');
+    const list = JSON.parse(sessionStorage.getItem(store) ?? '[]');
     return Array.isArray(list)
       ? list
           .filter(
@@ -41,9 +42,17 @@ function restore(): ChatMessage[] {
   }
 }
 
-/** Chat con Nexo: cada pregunta va con lo último de la conversación para no perder el hilo. */
-export function useAssistant() {
-  const [messages, setMessages] = useState<ChatMessage[]>(restore);
+type Ask = (question: string, history: ChatTurn[]) => Promise<AssistantAnswer>;
+
+/**
+ * Chat con Nexo: cada pregunta va con lo último de la conversación para no perder el hilo.
+ * `store` y `ask` permiten otra conversación con su propio alcance (p. ej. un cuaderno).
+ */
+export function useAssistant(opts: { store?: string; ask?: Ask } = {}) {
+  const store = opts.store ?? STORE;
+  const askRef = useRef<Ask>(opts.ask ?? askAssistant);
+  askRef.current = opts.ask ?? askAssistant;
+  const [messages, setMessages] = useState<ChatMessage[]>(() => restore(store));
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const live = useRef(messages);
@@ -54,11 +63,11 @@ export function useAssistant() {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(STORE, JSON.stringify(messages.slice(-MAX_MESSAGES)));
+      sessionStorage.setItem(store, JSON.stringify(messages.slice(-MAX_MESSAGES)));
     } catch {
       /* sin espacio: la conversación sigue en memoria */
     }
-  }, [messages]);
+  }, [messages, store]);
 
   const send = useCallback(async (text?: string) => {
     const question = (text ?? '').trim();
@@ -73,7 +82,7 @@ export function useAssistant() {
     setBusy(true);
     const n = ++seq.current;
     try {
-      const a = await askAssistant(question, history);
+      const a = await askRef.current(question, history);
       if (n !== seq.current) return;
       setMessages((m) => [
         ...m,

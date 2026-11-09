@@ -1,13 +1,18 @@
 import { entryImages } from '../lib/moviePosters';
 import { useEffect, useRef, type CSSProperties } from 'react';
 import {
+  BookMarked,
+  Brain,
   Check,
+  Clapperboard,
   ClipboardCheck,
+  GraduationCap,
   Layers,
   MapPin,
   Paperclip,
   Pencil,
   RotateCcw,
+  Sparkles,
   Trash2,
   TrendingUp,
   Tv,
@@ -15,11 +20,13 @@ import {
 } from 'lucide-react';
 import { useMediaEnrich } from '../library/enrich';
 import { isActive } from '../library/progress';
+import { isFinished } from '../ritual/learning';
+import '../ritual/ritual.css';
 import { useApp } from '../AppContext';
 import type { Entry } from '../data';
 import { incomeColors, kindMeta, seriesColors } from '../composer/kinds';
 import { entryFacts, isSeries, longDate, mediaSpecs, signedAmount } from '../lib/entries';
-import { shortDate, todayInputValue } from '../lib/format';
+import { friendlyDate, shortDate, todayInputValue } from '../lib/format';
 import { daysBetween } from '../lib/people';
 import { placeOf } from '../lib/places';
 import { Avatar } from '../people/Avatar';
@@ -76,6 +83,20 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
   const quotes = entry.kind === 'Libro' ? (d.quotes ?? []).filter(Boolean) : [];
   const names = people.flatMap((p) => [p.name, p.name.split(' ')[0]]);
   const done = entry.status === 'completado';
+  // Ritual de cierre (libros y películas terminados) y el aprendizaje que dejó.
+  const finished = isFinished(entry);
+  const ritual = finished ? d.ritual : undefined;
+  const ritualLearning = ritual?.learningId
+    ? workspace.entries.find((e) => e.id === ritual.learningId)
+    : undefined;
+  const recommended = (ritual?.recommendTo ?? []).flatMap(
+    (id) => workspace.people.find((p) => p.id === id) ?? [],
+  );
+  // Un aprendizaje que nació de un libro o una película.
+  const origin =
+    entry.kind === 'Aprendizaje' && d.sourceId
+      ? workspace.entries.find((e) => e.id === d.sourceId)
+      : undefined;
 
   // Si lo anotaste días después de que pasó, se indica.
   const happened = todayInputValue(new Date(entry.created_at));
@@ -88,7 +109,7 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
     <Sheet
       label={entry.title || entry.kind}
       className={'ev' + (wide ? ' wide' : '')}
-      yieldTo=".nx-peek, .sheet.pg"
+      yieldTo=".nx-peek, .sheet.pg, .sheet.cr"
       onRequestClose={onClose}
     >
       <div
@@ -194,11 +215,67 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
               <b>Lo aplicaré</b> {d.apply}
             </p>
           )}
+          {entry.kind === 'Aprendizaje' && d.review && (
+            <p className="ev-note">
+              <b>Repaso espaciado</b>{' '}
+              {d.review.step < 0 || !d.review.due
+                ? 'Ya no se repasa.'
+                : `Próximo repaso: ${friendlyDate(d.review.due).toLowerCase()}.`}
+            </p>
+          )}
           {quotes.map((q, i) => (
             <blockquote className="ev-quote" key={i}>
               “{q}”
             </blockquote>
           ))}
+
+          {ritual && (
+            <section className="ev-ritual" aria-label="Ritual de cierre">
+              <div className="ev-ritual-head">
+                <strong>
+                  <Sparkles size={13} /> Tu cierre
+                </strong>
+                <span>{friendlyDate(ritual.at)}</span>
+                <button type="button" onClick={() => app.openRitual(entry)}>
+                  Rehacer
+                </button>
+              </div>
+              {ritual.answers.length > 0 && (
+                <dl>
+                  {ritual.answers.map((a) => (
+                    <div key={a.id}>
+                      <dt>{a.q}</dt>
+                      <dd>{a.a}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+              {(ritual.quiz || recommended.length > 0 || ritualLearning) && (
+                <div className="ev-ritual-foot">
+                  {ritual.quiz && (
+                    <span>
+                      <GraduationCap size={13} /> Test: {ritual.quiz.score} de {ritual.quiz.total}
+                    </span>
+                  )}
+                  {recommended.map((p) => (
+                    <button
+                      type="button"
+                      key={p.id}
+                      title={`Se lo recomendarías a ${p.name}`}
+                      onClick={() => app.peekPerson(p)}
+                    >
+                      <Avatar person={p} size={18} /> {p.name.split(' ')[0]}
+                    </button>
+                  ))}
+                  {ritualLearning && (
+                    <button type="button" onClick={() => app.viewEntry(ritualLearning)}>
+                      <Brain size={13} /> Ver aprendizaje
+                    </button>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
 
           {photos.length > 0 && (
             <div className={'ev-photos n' + Math.min(photos.length, 3)}>
@@ -216,8 +293,25 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
             </div>
           )}
 
-          {(people.length > 0 || episode || entry.tags.length > 0 || entry.file_path) && (
+          {(people.length > 0 || episode || origin || entry.tags.length > 0 || entry.file_path) && (
             <div className="ev-links">
+              {origin && (
+                <div className="ev-row">
+                  <span className="ev-label">Viene de</span>
+                  <button
+                    type="button"
+                    className="ev-episode"
+                    onClick={() => app.viewEntry(origin)}
+                  >
+                    {origin.kind === 'Libro' ? (
+                      <BookMarked size={13} />
+                    ) : (
+                      <Clapperboard size={13} />
+                    )}{' '}
+                    {origin.title}
+                  </button>
+                </div>
+              )}
               {people.length > 0 && (
                 <div className="ev-row">
                   <span className="ev-label">Con</span>
@@ -298,6 +392,11 @@ export function EntryViewer({ entry, onClose }: { entry: Entry; onClose: () => v
           {isActive(entry) && (
             <button type="button" className="ev-btn" onClick={() => app.openProgress(entry)}>
               <TrendingUp size={15} /> Actualizar progreso
+            </button>
+          )}
+          {finished && !ritual && (
+            <button type="button" className="ev-btn" onClick={() => app.openRitual(entry)}>
+              <Sparkles size={15} /> Ritual de cierre
             </button>
           )}
           {entry.kind === 'Pendiente' && (

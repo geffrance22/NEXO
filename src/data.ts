@@ -204,6 +204,34 @@ export type MyRecord = {
 /** Foto alojada en ImgBB: original, versión media y miniatura. */
 export type StoredImage = { url: string; medium?: string; thumb?: string };
 
+/** Para qué sirve una pregunta del ritual de cierre (decide qué parte del aprendizaje alimenta). */
+export type RitualTopic =
+  'llevar' | 'cambio' | 'recomendar' | 'momento' | 'emocion' | 'critica' | 'conexion';
+
+/** Una pregunta del ritual de cierre con lo que respondiste (el texto se guarda tal como se vio). */
+export type RitualAnswer = { id: string; topic: RitualTopic; q: string; a: string };
+
+/** Una pregunta del test de la IA: opciones, la correcta, la que elegiste y por qué. */
+export type RitualQuizItem = {
+  q: string;
+  options: string[];
+  answer: number;
+  chosen: number;
+  why: string;
+};
+
+/** Lo que dejaste al terminar un libro o una película. */
+export type Ritual = {
+  /** AAAA-MM-DD */
+  at: string;
+  answers: RitualAnswer[];
+  /** Personas a las que se lo recomendarías. */
+  recommendTo?: string[];
+  quiz?: { score: number; total: number; items: RitualQuizItem[] };
+  /** El aprendizaje que nació del cierre. */
+  learningId?: string;
+};
+
 /** Detalles propios de cada tipo de recuerdo (se guardan en la columna `details`). */
 export type EntryDetails = {
   /** Ánimo del 1 (mal) al 5 (genial): notas y encuentros. */
@@ -283,8 +311,18 @@ export type EntryDetails = {
   beneficiary?: string;
   /** AAAA-MM-DD: pospuesto hasta esa fecha en tu agenda. */
   snoozed?: string;
-  /** Recuerdo del que salió (p. ej. el encuentro donde lo prometiste). */
+  /**
+   * Recuerdo del que salió: el encuentro donde prometiste algo (pendientes) o el libro o la
+   * película de la que nació un aprendizaje.
+   */
   sourceId?: string;
+  /** Ritual de cierre de un libro, una película o una serie terminados. */
+  ritual?: Ritual;
+  /**
+   * Repaso espaciado de un aprendizaje: cuántas veces seguidas lo recordaste y cuándo toca volver
+   * a verlo (AAAA-MM-DD). `step` -1 o `due` null: ya no se repasa.
+   */
+  review?: { step: number; due: string | null };
   source?: string;
   sourceName?: string;
   /** Qué tan bien lo entendiste, de 1 a 5. */

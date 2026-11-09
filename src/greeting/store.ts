@@ -9,7 +9,7 @@ import {
   type Weather,
 } from './greeting';
 
-const KEY = 'nexo-greeting';
+export const KEY = 'nexo-greeting';
 const HISTORY = 'nexo-greeting-history';
 const PAUSE = 'nexo-greeting-pause';
 const MINUTE = 60_000;
@@ -66,8 +66,8 @@ export function writeStored(value: Stored) {
   }
 }
 
-/** Entre 10 y 15 minutos: así los cambios no caen siempre a la misma hora en punto. */
-export const lifetime = () => (10 + Math.random() * 5) * MINUTE;
+/** Cada saludo de la IA vale 15 minutos. */
+export const LIFETIME = 15 * MINUTE;
 
 /** Vigente: del mismo día y momento del día, y dentro de su tiempo. */
 export const isFresh = (s: Stored, day: string, part: Part, now = Date.now()) =>
@@ -109,10 +109,13 @@ export function pushHistory(g: Greeting) {
 
 // ───────────────────────── Pausa tras un fallo ─────────────────────────
 
-/** Hasta cuándo no insistir con la función (no desplegada, sin conexión, límite…). */
+/**
+ * Hasta cuándo no insistir con la función (no desplegada, sin conexión, límite…). Se comparte entre
+ * pestañas: si una falla, las demás tampoco insisten.
+ */
 export const pausedUntil = () => {
   try {
-    return Number(sessionStorage.getItem(PAUSE)) || 0;
+    return Number(localStorage.getItem(PAUSE)) || 0;
   } catch {
     return 0;
   }
@@ -120,7 +123,7 @@ export const pausedUntil = () => {
 
 export function pause(ms: number) {
   try {
-    sessionStorage.setItem(PAUSE, String(Date.now() + ms));
+    localStorage.setItem(PAUSE, String(Date.now() + ms));
   } catch {
     // Sin almacenamiento solo se reintenta en la próxima visita.
   }

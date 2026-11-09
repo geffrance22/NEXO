@@ -1,5 +1,7 @@
 import type { AppContextValue } from '../AppContext';
 import type { Page } from '../data';
+import { feedCard } from '../planner/boardFeed';
+import { aimBoard } from '../planner/boardView';
 
 /** Secciones a las que un saludo puede llevar. */
 const PAGES: readonly Page[] = [
@@ -22,7 +24,8 @@ export type ActionIcon =
   | 'book'
   | 'show'
   | 'person'
-  | 'entry';
+  | 'entry'
+  | 'card';
 type Deps = Pick<
   AppContextValue,
   | 'workspace'
@@ -59,6 +62,18 @@ export function resolveAction(
   if (kind === 'person') {
     const person = app.workspace.people.find((p) => p.id === ref);
     return person ? { icon: 'person', run: () => app.peekPerson(person) } : null;
+  }
+  if (kind === 'card') {
+    const card = feedCard(ref);
+    return card
+      ? {
+          icon: 'card',
+          run: () => {
+            aimBoard(card.board_id, card.list_id, card.id);
+            app.go('Tableros');
+          },
+        }
+      : null;
   }
   const entry = app.workspace.entries.find((e) => e.id === ref);
   if (!entry) return null;

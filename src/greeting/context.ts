@@ -4,6 +4,8 @@ import { isOpenTask } from '../lib/commitments';
 import { addDays, todayInputValue } from '../lib/format';
 import { ageOf, closenessOf, daysBetween, daysToBirthday, relativeDay } from '../lib/people';
 import { isActive, progressOf } from '../library/progress';
+import type { FeedCard } from '../planner/boardFeed';
+import { plainMarks } from '../planner/cardMarks';
 import type { LocalFacts } from './greeting';
 
 const clip = (s: string | undefined, n: number) => {
@@ -64,13 +66,68 @@ export function buildGreetingInput(
   me: MyRecord,
   skip: ReadonlySet<string>,
   now = new Date(),
+  /** Tarjetas de los tableros que activaron «En el saludo de Mi espacio» (no de todos). */
+  cards: readonly FeedCard[] = [],
 ): GreetingInput {
   const today = todayInputValue(now);
   const p = me.profile;
   const name = nameOf(me);
   const weekly = now.getDay() === 0 || now.getDay() === 1;
 
-  const agenda = agendaFor(ws, { ...defaultAgendaPrefs, max: 4 }, skip, today);
+  const agenda = agendaFor(ws, { ...defaultAgendaPrefs, max: 4 }, skip, today, cards);
+
+  // Tableros elegidos: lo vencido, lo de hoy, lo prioritario y lo resaltado (lo demás no importa aquí).
+  const open = cards.filter((c) => !c.done && !(c.snoozed_until && c.snoozed_until > today));
+  const dueOf = (c: FeedCard) => (c.due ? daysBetween(today, c.due) : null);
+  const weight = (c: FeedCard) => {
+    const d = dueOf(c);
+    return (
+      (d === null ? 0 : d < 0 ? 60 : d === 0 ? 55 : d === 1 ? 40 : d <= 3 ? 25 : 0) +
+      (c.priority === 'alta' ? 30 : c.priority === 'media' ? 10 : 0) +
+      (c.highlight ? 20 : 0)
+    );
+  };
+  const boardIds = [...new Set(cards.map((c) => c.board_id))];
+  const tableros = boardIds.slice(0, 4).map((id) => {
+    const mine = open.filter((c) => c.board_id === id);
+    const top = mine
+      .map((c) => ({ c, w: weight(c) }))
+      .filter((x) => x.w > 0)
+      .sort((a, b) => b.w - a.w)
+      .slice(0, 3);
+    return {
+      tablero: clip(cards.find((c) => c.board_id === id)?.board_name, 60),
+      abiertas: mine.length,
+      vencidas: mine.filter((c) => (dueOf(c) ?? 1) < 0).length,
+      para_hoy: mine.filter((c) => dueOf(c) === 0).length,
+      prioridad_alta: mine.filter((c) => c.priority === 'alta').length,
+      destacadas: top.map(({ c }) => {
+        const d = dueOf(c);
+        return {
+          titulo: clip(plainMarks(c.title), 90),
+          columna: clip(c.list_name, 40),
+          vence:
+            d === null
+              ? undefined
+              : d < 0
+                ? `hace ${-d} ${d === -1 ? 'día' : 'días'}`
+                : d === 0
+                  ? 'hoy'
+                  : d === 1
+                    ? 'mañana'
+                    : `en ${d} días`,
+          prioridad: c.priority || undefined,
+          resaltada: c.highlight || undefined,
+        };
+      }),
+    };
+  });
+  const topCards = open
+    .map((c) => ({ c, w: weight(c) }))
+    .filter((x) => x.w >= 40)
+    .sort((a, b) => b.w - a.w)
+    .slice(0, 3)
+    .map((x) => x.c);
 
   // Libro y series en curso.
   const lastMove = (e: Entry) => e.details.pageLog?.at(-1)?.d ?? dayOf(e.created_at);
@@ -106,7 +163,7 @@ export function buildGreetingInput(
     .filter((e) => dayOf(e.created_at) >= addDays(today, -14))
     .map((e) => e.details.mood)
     .filter((m): m is number => typeof m === 'number');
-  const open = ws.entries.filter(isOpenTask);
+  const openTasks = ws.entries.filter(isOpenTask);
   const dueIn = (e: Entry) => (e.details.due ? daysBetween(today, e.details.due) : null);
 
   // Accesos directos que la IA puede elegir (la app solo acepta estos).
@@ -118,6 +175,10 @@ export function buildGreetingInput(
     { id: 'go:Personas', que: 'Ir a su gente' },
     { id: 'go:Lecturas', que: 'Ir a sus lecturas guardadas' },
     { id: 'go:Tableros', que: 'Ir a sus tableros' },
+    ...topCards.map((c) => ({
+      id: 'card:' + c.id,
+      que: `Abrir la tarjeta «${clip(plainMarks(c.title), 40)}» en ${clip(c.board_name, 30)}`,
+    })),
     ...[...books, ...shows].map((e) => ({
       id: 'progress:' + e.id,
       que: `Contar cómo va con «${clip(e.title, 40)}»`,
@@ -212,10 +273,11 @@ export function buildGreetingInput(
       animo_reciente: moods.length
         ? Math.round((10 * moods.reduce((s, m) => s + Math.min(5, m), 0)) / moods.length) / 10
         : undefined,
-      pendientes_abiertos: open.length,
-      vencen_hoy: open.filter((e) => dueIn(e) === 0).length,
-      vencidos: open.filter((e) => (dueIn(e) ?? 0) < 0).length,
+      pendientes_abiertos: openTasks.length,
+      vencen_hoy: openTasks.filter((e) => dueIn(e) === 0).length,
+      vencidos: openTasks.filter((e) => (dueIn(e) ?? 0) < 0).length,
     },
+    tableros: tableros.length ? tableros : undefined,
     episodios_activos: ws.episodes
       .filter((ep) => ep.status === 'activo')
       .slice(0, 3)

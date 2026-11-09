@@ -1,4 +1,6 @@
 import type { Entry, Episode, Person, PersonUpdate, Workspace } from '../data';
+import type { FeedCard } from '../planner/boardFeed';
+import { plainMarks } from '../planner/cardMarks';
 import { ageInDays, commitmentKinds, commitmentOf, counterpartOf, isOpenTask } from './commitments';
 import { addDays, todayInputValue } from './format';
 import { genderOf } from './gender';
@@ -8,6 +10,7 @@ import { ME, kinCall, tieKinds, tiesOf } from './relations';
 /** Qué tipo de cosa merece tu atención. */
 export type AgendaKind =
   | 'compromiso'
+  | 'tarjeta'
   | 'espera'
   | 'seguimiento'
   | 'encuentro'
@@ -19,6 +22,7 @@ export type AgendaKind =
 
 export const agendaKindLabels: Record<AgendaKind, string> = {
   compromiso: 'Compromisos con fecha',
+  tarjeta: 'Tarjetas de tus tableros con fecha',
   espera: 'Lo que estás esperando',
   seguimiento: 'Seguimientos de novedades',
   encuentro: 'Encuentros próximos',
@@ -46,12 +50,15 @@ export type AgendaItem = {
   entry?: Entry;
   update?: PersonUpdate;
   episode?: Episode;
+  /** Tarjeta de un tablero. */
+  card?: FeedCard;
 };
 
 export type AgendaPrefs = { kinds: Record<AgendaKind, boolean>; max: number };
 export const defaultAgendaPrefs: AgendaPrefs = {
   kinds: {
     compromiso: true,
+    tarjeta: true,
     espera: true,
     seguimiento: true,
     encuentro: true,
@@ -105,11 +112,46 @@ export function agendaFor(
   prefs: AgendaPrefs = defaultAgendaPrefs,
   skip: ReadonlySet<string> = new Set(),
   today = todayInputValue(),
+  /** Tarjetas de tableros (las que tienen fecha entran como compromisos). */
+  cards: readonly FeedCard[] = [],
 ): AgendaItem[] {
   const out: AgendaItem[] = [];
   const byId = new Map(ws.people.map((p) => [p.id, p]));
   const closeBonus = (p?: Person | null) =>
     !p ? 0 : (closenessOf(p) >= 4 ? 8 : 0) + (p.profile.favorite ? 5 : 0);
+
+  // ── Tarjetas de tableros con fecha ──
+  const entryIds = new Set(ws.entries.map((e) => e.id));
+  for (const c of cards) {
+    // Con un pendiente vinculado ya aparece como compromiso (no se repite).
+    if (!c.due || c.done || (c.entry_id && entryIds.has(c.entry_id))) continue;
+    if (c.snoozed_until && c.snoozed_until > today) continue;
+    const d = daysBetween(today, c.due);
+    if (d > 3) continue;
+    const prio = c.priority === 'alta' ? 20 : c.priority === 'media' ? 5 : c.priority === 'baja' ? -10 : 0;
+    out.push({
+      id: 't|' + c.id,
+      kind: 'tarjeta',
+      title:
+        d < 0
+          ? `Se pasó la fecha en «${c.board_name}»`
+          : d === 0
+            ? `Para hoy en «${c.board_name}»`
+            : d === 1
+              ? `Para mañana en «${c.board_name}»`
+              : `En ${d} días en «${c.board_name}»`,
+      detail: plainMarks(c.title),
+      why: [
+        whenWord(d),
+        c.list_name,
+        ...(c.priority === 'alta' ? ['Prioridad alta'] : []),
+        ...(c.highlight ? ['Resaltada'] : []),
+      ].filter(Boolean),
+      score: urgency(d) + prio + (c.highlight ? 8 : 0) - 3,
+      action: 'completar',
+      card: c,
+    });
+  }
 
   // ── Compromisos y esperas ──
   for (const e of ws.entries) {

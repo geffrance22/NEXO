@@ -16,6 +16,7 @@ export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
     'seasonAt',
     'episodeAt',
     'follow',
+    'ritual',
   ],
   Libro: [
     'bookEdition',
@@ -28,9 +29,10 @@ export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
     'quoteReview',
     'pageLog',
     'follow',
+    'ritual',
   ],
   Trabajo: ['stage', 'priority', 'nextStep', 'due'],
-  Aprendizaje: ['source', 'sourceName', 'confidence', 'apply'],
+  Aprendizaje: ['source', 'sourceName', 'confidence', 'apply', 'sourceId', 'review'],
   Movimiento: ['method'],
   Pendiente: ['priority', 'due', 'commitment', 'owner', 'beneficiary', 'snoozed', 'sourceId'],
 };

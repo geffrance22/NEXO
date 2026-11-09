@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   Clock,
   Coffee,
+  Columns3,
   Hourglass,
   Layers,
   ListChecks,
@@ -28,7 +29,9 @@ import {
   type AgendaKind,
   type AgendaPrefs,
 } from '../lib/agenda';
-import { addDays, nextMonday, todayInputValue } from '../lib/format';
+import { addDays, friendlyDate, nextMonday, todayInputValue } from '../lib/format';
+import { completeFeedCard, useBoardFeed } from '../planner/boardFeed';
+import { aimBoard } from '../planner/boardView';
 import { dismiss, undismiss, useDismissed } from '../relations/dismissed';
 import { WeeklyAgendaCard } from '../weekly/WeeklyDigest';
 import { ReviewAgendaCard } from './Review';
@@ -36,6 +39,7 @@ import './agenda.css';
 
 const looks: Record<AgendaKind, { icon: LucideIcon; color: string; soft: string }> = {
   compromiso: { icon: ListChecks, color: '#c0674a', soft: '#f9e9e2' },
+  tarjeta: { icon: Columns3, color: '#2f6b55', soft: '#e3f0ea' },
   espera: { icon: Hourglass, color: '#c48a2a', soft: '#fbf1dc' },
   seguimiento: { icon: MessageCircleQuestion, color: '#6b62b5', soft: '#eeebfa' },
   encuentro: { icon: Coffee, color: '#8a6fa8', soft: '#f0e9f6' },
@@ -74,7 +78,11 @@ export function TodayAgenda() {
   const skip = useDismissed();
   const [prefs, setPrefs] = useState(loadPrefs);
   const [settings, setSettings] = useState(false);
-  const items = useMemo(() => agendaFor(workspace, prefs, skip), [workspace, prefs, skip]);
+  const feed = useBoardFeed();
+  const items = useMemo(
+    () => agendaFor(workspace, prefs, skip, todayInputValue(), feed.cards),
+    [workspace, prefs, skip, feed.cards],
+  );
   useEffect(() => localStorage.setItem(STORAGE, JSON.stringify(prefs)), [prefs]);
 
   const today = todayInputValue();
@@ -197,7 +205,7 @@ function AgendaCard({
   onDiscard: () => void;
   today: string;
 }) {
-  const { toggleEntry, patchPerson, openBrief, go, editEntry, peekPerson } = useApp();
+  const { toggleEntry, patchPerson, openBrief, go, editEntry, peekPerson, notify } = useApp();
   const [menu, setMenu] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -211,6 +219,22 @@ function AgendaCard({
     item.person && !item.person.profile.status ? whatsapp(item.person.profile.phone) : null;
 
   const primary = (): { label: string; run: () => void } | null => {
+    if (item.card) {
+      const card = item.card;
+      return {
+        label: 'Hecho',
+        run: () =>
+          void completeFeedCard(card).then((r) => {
+            if (!r) return notify('No se pudo guardar la tarjeta.');
+            notify(
+              r.repeatsOn
+                ? `Hecho. Se repite: vuelve ${friendlyDate(r.repeatsOn).toLowerCase()}.`
+                : `«${card.title.slice(0, 40)}» completada.`,
+              { label: 'Deshacer', icon: 'undo', run: r.undo },
+            );
+          }),
+      };
+    }
     switch (item.action) {
       case 'completar':
         return item.entry
@@ -294,6 +318,18 @@ function AgendaCard({
           </button>
         )}
         <div className="ag-minor">
+          {item.card && (
+            <button
+              type="button"
+              title={`Abrir en «${item.card.board_name}»`}
+              onClick={() => {
+                aimBoard(item.card!.board_id, item.card!.list_id, item.card!.id);
+                go('Tableros');
+              }}
+            >
+              Abrir
+            </button>
+          )}
           {item.person && item.action !== 'escribir' && item.action !== 'recordar' && (
             <button
               type="button"

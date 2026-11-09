@@ -1,15 +1,29 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Check, ChevronRight, CircleAlert, CircleCheck, Link2, LoaderCircle } from 'lucide-react';
-import { Minus, RotateCw, Square, X } from 'lucide-react';
-import { supabase } from '../backend';
-import { ReaderDialog } from './ReaderDialog';
-import { capture, failure, publicLink } from './capture';
-import { savePictures } from './media';
-import './readings.css';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
+import {
+  Check,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  Link2,
+  LoaderCircle,
+} from "lucide-react";
+import { Minus, RotateCw, Square, X } from "lucide-react";
+import { supabase } from "../backend";
+import { ReaderDialog } from "./ReaderDialog";
+import { capture, failure, publicLink } from "./capture";
+import { savePictures } from "./media";
+import { isEnglish, toSpanish } from "./translate";
+import "./readings.css";
 
 type Saved = { id: string; archived: boolean; folder: string; title: string };
-type Step = 'reading' | 'saving';
-type Status = 'queued' | Step | 'done' | 'exists' | 'error' | 'stopped';
+type Step = "reading" | "translating" | "saving";
+type Status = "queued" | Step | "done" | "exists" | "error" | "stopped";
 type Item = { url: string; status: Status; title?: string; error?: string };
 
 /** Enlaces que se capturan a la vez: Jina Reader limita las peticiones por minuto. */
@@ -18,13 +32,14 @@ const PARALLEL = 3;
 const MAX = 50;
 const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
 const LABEL: Record<Status, string> = {
-  queued: 'En cola',
-  reading: 'Leyendo…',
-  saving: 'Guardando…',
-  done: 'Guardado',
-  exists: 'Ya estaba',
-  error: 'Error',
-  stopped: 'Sin guardar',
+  queued: "En cola",
+  reading: "Leyendo…",
+  translating: "Traduciendo…",
+  saving: "Guardando…",
+  done: "Guardado",
+  exists: "Ya estaba",
+  error: "Error",
+  stopped: "Sin guardar",
 };
 
 const occurrences = (text: string, char: string) => text.split(char).length - 1;
@@ -34,12 +49,15 @@ function tidy(raw: string) {
   let link = raw;
   for (;;) {
     const before = link;
-    link = link.replace(/[.,;:!?…»”’*]+$/u, '');
+    link = link.replace(/[.,;:!?…»”’*]+$/u, "");
     for (const [open, shut] of [
-      ['(', ')'],
-      ['[', ']'],
+      ["(", ")"],
+      ["[", "]"],
     ]) {
-      if (link.endsWith(shut) && occurrences(link, open) < occurrences(link, shut))
+      if (
+        link.endsWith(shut) &&
+        occurrences(link, open) < occurrences(link, shut)
+      )
         link = link.slice(0, -1);
     }
     if (link === before) return link;
@@ -53,7 +71,7 @@ function tidy(raw: string) {
 function findLinks(text: string) {
   const raw = [
     ...(text
-      .replace(/[,;|](?=\s*(?:https?:\/\/|www\.))/gi, ' ')
+      .replace(/[,;|](?=\s*(?:https?:\/\/|www\.))/gi, " ")
       .match(/(?<![\w@.\/-])(?:https?:\/\/|www\.)[^\s<>"'`]+/gi) ?? []),
   ];
   // Un solo dominio escrito sin https:// («elpais.com/…»).
@@ -64,7 +82,9 @@ function findLinks(text: string) {
   for (const candidate of raw) {
     const clean = tidy(candidate);
     try {
-      const link = publicLink(/^https?:\/\//i.test(clean) ? clean : 'https://' + clean);
+      const link = publicLink(
+        /^https?:\/\//i.test(clean) ? clean : "https://" + clean,
+      );
       if (!links.includes(link)) links.push(link);
     } catch {
       invalid++;
@@ -73,30 +93,36 @@ function findLinks(text: string) {
   return { links, invalid, repeated: raw.length - invalid - links.length };
 }
 
-/** Guarda un enlace en Lecturas. Si ya estaba, devuelve el que había. */
+/** Guarda un enlace en Lecturas. Si ya estaba, devuelve el que había. `links`: con hipervínculos. */
 async function store(
   link: string,
   manual: { title: string; content: string } | null,
   step: (s: Step) => void,
+  links = false,
 ): Promise<{ row: Saved; existed: boolean }> {
   const lookup = await supabase
-    .from('readings')
-    .select('id,archived,folder,title')
-    .eq('url', link)
+    .from("readings")
+    .select("id,archived,folder,title")
+    .eq("url", link)
     .maybeSingle();
   if (lookup.error) throw lookup.error;
   if (lookup.data) return { row: lookup.data, existed: true };
-  const snap = manual ?? (await capture(link));
-  step('saving');
+  let snap = manual ?? (await capture(link, { links }));
+  // Los artículos en inglés se guardan traducidos al español (si se puede).
+  if (isEnglish(snap)) {
+    step("translating");
+    snap = await toSpanish(snap);
+  }
+  step("saving");
   const { data, error } = await supabase
-    .from('readings')
+    .from("readings")
     .insert({
       url: link,
       title: snap.title,
       content: snap.content,
       media: await savePictures(snap.content),
     })
-    .select('id,archived,folder,title')
+    .select("id,archived,folder,title")
     .single();
   if (error) throw error;
   return { row: data, existed: false };
@@ -105,8 +131,8 @@ async function store(
 /** «elpais.com/cultura/…» para mostrar un enlace mientras aún no tiene título. */
 function shortLink(url: string) {
   const u = new URL(url);
-  const host = u.hostname.replace(/^www\./, '');
-  let rest = u.pathname.replace(/\/$/, '') + u.search;
+  const host = u.hostname.replace(/^www\./, "");
+  let rest = u.pathname.replace(/\/$/, "") + u.search;
   try {
     rest = decodeURI(rest);
   } catch {
@@ -118,22 +144,24 @@ function shortLink(url: string) {
 function Row({ item, index }: { item: Item; index: number }) {
   const { host, full } = shortLink(item.url);
   const icon =
-    item.status === 'queued' ? (
+    item.status === "queued" ? (
       <i className="rd-sl-dot" />
-    ) : item.status === 'reading' || item.status === 'saving' ? (
+    ) : item.status === "reading" ||
+      item.status === "translating" ||
+      item.status === "saving" ? (
       <LoaderCircle className="spin" size={15} />
-    ) : item.status === 'done' || item.status === 'exists' ? (
+    ) : item.status === "done" || item.status === "exists" ? (
       <Check size={13} strokeWidth={2.75} />
-    ) : item.status === 'error' ? (
+    ) : item.status === "error" ? (
       <X size={13} strokeWidth={2.75} />
     ) : (
       <Minus size={13} strokeWidth={2.5} />
     );
-  const detail = item.error || (item.title ? host : '');
+  const detail = item.error || (item.title ? host : "");
   return (
     <li
-      className={'rd-sl-item ' + item.status}
-      style={{ '--i': Math.min(index, 14) } as CSSProperties}
+      className={"rd-sl-item " + item.status}
+      style={{ "--i": Math.min(index, 14) } as CSSProperties}
     >
       <span className="rd-sl-ico" aria-hidden="true">
         {icon}
@@ -147,7 +175,8 @@ function Row({ item, index }: { item: Item; index: number }) {
   );
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many: string) =>
+  `${n} ${n === 1 ? one : many}`;
 
 export function SaveLink({
   close,
@@ -160,15 +189,17 @@ export function SaveLink({
   /** Varios enlaces: al cerrar, si se añadió alguno nuevo. */
   savedMany: (added: number) => void;
 }) {
-  const [text, setText] = useState(''),
-    [manual, setManual] = useState(''),
-    [title, setTitle] = useState(''),
+  const [text, setText] = useState(""),
+    [manual, setManual] = useState(""),
+    [title, setTitle] = useState(""),
     [manualOpen, setManualOpen] = useState(false);
   const [step, setStep] = useState<Step | null>(null),
-    [error, fail] = useState('');
+    [error, fail] = useState("");
   const [items, setItems] = useState<Item[] | null>(null),
     [running, setRunning] = useState(false),
-    [stopping, setStopping] = useState(false);
+    [stopping, setStopping] = useState(false),
+    // Conservar los hipervínculos del artículo (vale también para el lote).
+    [keepLinks, setKeepLinks] = useState(false);
   const stop = useRef(false);
   const list = useRef<HTMLUListElement>(null);
   const found = useMemo(() => findLinks(text), [text]);
@@ -179,25 +210,27 @@ export function SaveLink({
   useEffect(() => {
     if (!running) return;
     list.current
-      ?.querySelector('.rd-sl-item.reading, .rd-sl-item.saving')
-      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      ?.querySelector(
+        ".rd-sl-item.reading, .rd-sl-item.translating, .rd-sl-item.saving",
+      )
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [items, running]);
 
   async function submit() {
     if (busy || !links.length) return;
-    fail('');
+    fail("");
     if (links.length > 1) {
-      setItems(links.map((url) => ({ url, status: 'queued' })));
+      setItems(links.map((url) => ({ url, status: "queued" })));
       void run(links);
       return;
     }
     const body = manual.trim();
-    setStep('reading');
+    setStep("reading");
     try {
       const snap = body
         ? { title: title.trim() || new URL(links[0]).hostname, content: body }
         : null;
-      const { row } = await store(links[0], snap, setStep);
+      const { row } = await store(links[0], snap, setStep, keepLinks);
       saved(row);
     } catch (e) {
       fail(failure(e));
@@ -209,7 +242,10 @@ export function SaveLink({
   }
 
   const patch = (url: string, change: Partial<Item>) =>
-    setItems((all) => all && all.map((it) => (it.url === url ? { ...it, ...change } : it)));
+    setItems(
+      (all) =>
+        all && all.map((it) => (it.url === url ? { ...it, ...change } : it)),
+    );
 
   /** Guarda los enlaces de `urls` de `PARALLEL` en `PARALLEL`. «Detener» deja de tomar nuevos. */
   async function run(urls: string[]) {
@@ -221,19 +257,26 @@ export function SaveLink({
       while (queue.length) {
         const url = queue.shift()!;
         if (stop.current) {
-          patch(url, { status: 'stopped' });
+          patch(url, { status: "stopped" });
           continue;
         }
-        patch(url, { status: 'reading', error: undefined });
+        patch(url, { status: "reading", error: undefined });
         try {
-          const { row, existed } = await store(url, null, (s) => patch(url, { status: s }));
-          patch(url, { status: existed ? 'exists' : 'done', title: row.title });
+          const { row, existed } = await store(
+            url,
+            null,
+            (s) => patch(url, { status: s }),
+            keepLinks,
+          );
+          patch(url, { status: existed ? "exists" : "done", title: row.title });
         } catch (e) {
-          patch(url, { status: 'error', error: failure(e, true) });
+          patch(url, { status: "error", error: failure(e, true) });
         }
       }
     };
-    await Promise.all(Array.from({ length: Math.min(PARALLEL, urls.length) }, worker));
+    await Promise.all(
+      Array.from({ length: Math.min(PARALLEL, urls.length) }, worker),
+    );
     setRunning(false);
     setStopping(false);
   }
@@ -241,19 +284,24 @@ export function SaveLink({
   function retry() {
     if (!items || running) return;
     const again = items
-      .filter((i) => i.status === 'error' || i.status === 'stopped')
+      .filter((i) => i.status === "error" || i.status === "stopped")
       .map((i) => i.url);
     setItems(
-      items.map((i) => (again.includes(i.url) ? { ...i, status: 'queued', error: undefined } : i)),
+      items.map((i) =>
+        again.includes(i.url)
+          ? { ...i, status: "queued", error: undefined }
+          : i,
+      ),
     );
     void run(again);
   }
 
-  const count = (status: Status) => items?.filter((i) => i.status === status).length ?? 0;
-  const added = count('done'),
-    existed = count('exists'),
-    failed = count('error'),
-    skipped = count('stopped');
+  const count = (status: Status) =>
+    items?.filter((i) => i.status === status).length ?? 0;
+  const added = count("done"),
+    existed = count("exists"),
+    failed = count("error"),
+    skipped = count("stopped");
   const total = items?.length ?? 0;
   const finished = added + existed + failed + skipped;
 
@@ -265,30 +313,35 @@ export function SaveLink({
 
   const summary =
     !failed && !skipped && !existed
-      ? plural(added, 'enlace guardado', 'enlaces guardados')
+      ? plural(added, "enlace guardado", "enlaces guardados")
       : !added && !failed && !skipped
         ? existed === 1
-          ? 'Ya lo tenías guardado'
-          : 'Ya los tenías guardados'
+          ? "Ya lo tenías guardado"
+          : "Ya los tenías guardados"
         : [
-            added && plural(added, 'guardado', 'guardados'),
-            existed && plural(existed, 'ya estaba', 'ya estaban'),
+            added && plural(added, "guardado", "guardados"),
+            existed && plural(existed, "ya estaba", "ya estaban"),
             failed && `${failed} con error`,
             skipped && `${skipped} sin guardar`,
           ]
             .filter(Boolean)
-            .join(' · ');
+            .join(" · ");
 
   const extras = [
-    found.repeated > 0 && plural(found.repeated, 'repetido', 'repetidos'),
-    found.invalid > 0 && plural(found.invalid, 'no válido', 'no válidos'),
+    found.repeated > 0 && plural(found.repeated, "repetido", "repetidos"),
+    found.invalid > 0 && plural(found.invalid, "no válido", "no válidos"),
     found.links.length > MAX && `se guardan ${MAX} por vez`,
   ]
     .filter(Boolean)
-    .join(' · ');
+    .join(" · ");
 
   return (
-    <ReaderDialog title="Guardar enlaces" className="rd-sl" close={finish} busy={busy}>
+    <ReaderDialog
+      title="Guardar enlaces"
+      className="rd-sl"
+      close={finish}
+      busy={busy}
+    >
       {items ? (
         <div className="rd-sl-run">
           <div className="rd-sl-status" role="status" aria-live="polite">
@@ -301,17 +354,24 @@ export function SaveLink({
                 ) : (
                   <CircleCheck className="ok" size={15} />
                 )}
-                {running ? (stopping ? 'Deteniendo…' : 'Guardando enlaces…') : summary}
+                {running
+                  ? stopping
+                    ? "Deteniendo…"
+                    : "Guardando enlaces…"
+                  : summary}
               </strong>
               <span className="rd-sl-num">
                 {finished} de {total}
               </span>
             </div>
             <div
-              className={'rd-sl-bar' + (running ? ' live' : failed || skipped ? ' partial' : '')}
+              className={
+                "rd-sl-bar" +
+                (running ? " live" : failed || skipped ? " partial" : "")
+              }
               aria-hidden="true"
             >
-              <i style={{ '--p': (100 * finished) / total } as CSSProperties} />
+              <i style={{ "--p": (100 * finished) / total } as CSSProperties} />
             </div>
           </div>
           <ul className="rd-sl-list" ref={list}>
@@ -322,7 +382,9 @@ export function SaveLink({
           <footer className="rd-sl-foot">
             {running ? (
               <>
-                <small>Si lo detienes, lo ya guardado se queda en Lecturas.</small>
+                <small>
+                  Si lo detienes, lo ya guardado se queda en Lecturas.
+                </small>
                 <button
                   type="button"
                   className="rd-sl-btn ghost"
@@ -339,11 +401,20 @@ export function SaveLink({
             ) : (
               <>
                 {failed + skipped > 0 && (
-                  <button type="button" className="rd-sl-btn ghost" onClick={retry}>
+                  <button
+                    type="button"
+                    className="rd-sl-btn ghost"
+                    onClick={retry}
+                  >
                     <RotateCw size={14} /> Reintentar {failed + skipped}
                   </button>
                 )}
-                <button type="button" className="rd-sl-btn primary" autoFocus onClick={finish}>
+                <button
+                  type="button"
+                  className="rd-sl-btn primary"
+                  autoFocus
+                  onClick={finish}
+                >
                   Listo
                 </button>
               </>
@@ -369,10 +440,10 @@ export function SaveLink({
               readOnly={busy}
               onChange={(e) => {
                 setText(e.target.value);
-                fail('');
+                fail("");
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
                   void submit();
                 }
@@ -382,15 +453,18 @@ export function SaveLink({
               {links.length ? (
                 <>
                   <span className="rd-sl-chip" key={links.length}>
-                    <Link2 size={12} /> {plural(links.length, 'enlace', 'enlaces')}
+                    <Link2 size={12} />{" "}
+                    {plural(links.length, "enlace", "enlaces")}
                   </span>
                   {extras && <span>{extras}</span>}
-                  <kbd className="rd-sl-kbd">{MAC ? '⌘' : 'Ctrl'} ↵</kbd>
+                  <kbd className="rd-sl-kbd">{MAC ? "⌘" : "Ctrl"} ↵</kbd>
                 </>
               ) : text.trim() ? (
                 <span className="warn">No hay enlaces válidos.</span>
               ) : (
-                <span>Uno por línea o una lista entera: se detectan solos.</span>
+                <span>
+                  Uno por línea o una lista entera: se detectan solos.
+                </span>
               )}
             </div>
           </div>
@@ -427,20 +501,38 @@ export function SaveLink({
             </p>
           )}
           <footer className="rd-sl-foot">
+            <button
+              type="button"
+              role="switch"
+              className="rd-sl-links"
+              aria-checked={keepLinks}
+              aria-label="Conservar los hipervínculos del artículo"
+              title={keepLinks ? "Con hipervínculos" : "Sin hipervínculos"}
+              disabled={busy}
+              onClick={() => setKeepLinks((v) => !v)}
+            >
+              <Link2 size={13} aria-hidden="true" />
+              Enlaces
+              <i aria-hidden="true" />
+            </button>
             <small>La captura envía los enlaces a Jina Reader.</small>
             <button
-              className={'rd-sl-btn primary' + (step ? ' busy' : '')}
+              className={"rd-sl-btn primary" + (step ? " busy" : "")}
               disabled={busy || !links.length}
             >
               {step ? (
                 <>
                   <LoaderCircle className="spin" size={15} />
-                  {step === 'reading' ? 'Leyendo la página…' : 'Guardando…'}
+                  {step === "reading"
+                    ? "Leyendo la página…"
+                    : step === "translating"
+                      ? "Traduciendo al español…"
+                      : "Guardando…"}
                 </>
               ) : links.length > 1 ? (
                 `Guardar ${links.length} enlaces`
               ) : (
-                'Guardar artículo'
+                "Guardar artículo"
               )}
             </button>
           </footer>

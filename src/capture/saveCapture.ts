@@ -21,7 +21,8 @@ import { deduceTastes } from '../lib/tastes';
 import { capture as captureLink, publicLink } from '../readings/capture';
 import { savePictures } from '../readings/media';
 
-const peopleOf = (p: Piece): string[] => {
+/** Las personas que nombra una pieza. */
+export const peopleOf = (p: Piece): string[] => {
   switch (p.kind) {
     case 'encuentro':
       return p.personIds;
@@ -109,11 +110,31 @@ const base = (over: Partial<EntryInput> & Pick<EntryInput, 'kind' | 'title'>): E
 });
 
 /**
+ * Lo que comparten las experiencias de un lote al guardarse una tras otra: las personas y los
+ * lugares ya creados (para no crearlos dos veces) y las fichas ya actualizadas (para que la
+ * segunda escritura no pise la primera).
+ */
+export type CaptureShared = {
+  people: Map<string, Person>;
+  places: Map<string, { id: string | null; name: string }>;
+  latest: Map<string, Person>;
+};
+export const newShared = (): CaptureShared => ({
+  people: new Map(),
+  places: new Map(),
+  latest: new Map(),
+});
+
+/**
  * Guarda una experiencia capturada: personas y lugar nuevos, el episodio que la reúne y cada pieza
  * (encuentro, movimiento, compromisos, novedades, conexiones…), todas enlazadas entre sí y al
  * texto original. Devuelve el episodio (si se creó) y cuántas piezas se guardaron.
  */
-export async function saveCapture(plan: CapturePlan, app: AppContextValue) {
+export async function saveCapture(
+  plan: CapturePlan,
+  app: AppContextValue,
+  shared: CaptureShared = newShared(),
+) {
   // 1. Personas nuevas: se crean todas las que dejaste marcadas. Si alguna no quedó en ninguna
   //    pieza, se suma al encuentro o al compromiso cuya frase la nombra.
   const fresh = plan.newPeople.filter((n) => n.on && n.name.trim());
@@ -137,10 +158,19 @@ export async function saveCapture(plan: CapturePlan, app: AppContextValue) {
 
   const created = new Map<string, Person>();
   const profiles = new Map<string, Partial<PersonProfile>>();
+  let madeNow = 0;
   for (const n of fresh) {
+    // Ya creada por otra experiencia del mismo lote.
+    const made = shared.people.get(n.id);
+    if (made) {
+      created.set(n.id, made);
+      continue;
+    }
     const person = await app.createPerson(n.name.trim().slice(0, 120));
     if (!person) continue;
     created.set(n.id, person);
+    shared.people.set(n.id, person);
+    madeNow++;
     // Cómo la conociste: la frase del texto que la nombra.
     const said = sentences(plan.text).find((s) => says(s, n.name));
     if (said) {
@@ -159,7 +189,9 @@ export async function saveCapture(plan: CapturePlan, app: AppContextValue) {
   const real = (id: string | null | undefined) =>
     !id
       ? null
-      : (created.get(id)?.id ?? (id.startsWith('new:') || id.startsWith('kin:') ? null : id));
+      : (created.get(id)?.id ??
+        shared.people.get(id)?.id ??
+        (id.startsWith('new:') || id.startsWith('kin:') ? null : id));
   const realIds = (ids: string[]) => [
     ...new Set(ids.map(real).filter((x): x is string => Boolean(x))),
   ];
@@ -167,7 +199,7 @@ export async function saveCapture(plan: CapturePlan, app: AppContextValue) {
   // 2. Lugar nuevo del encuentro o de la visita (se crea su ficha una sola vez).
   const enc = on.find((p) => p.kind === 'encuentro');
   const visit = on.find((p) => p.kind === 'visita');
-  const madePlaces = new Map<string, { id: string | null; name: string }>();
+  const madePlaces = shared.places;
   const placeFor = async (id: string | null, name: string, kind: PlaceKind) => {
     if (id) return { id, name: app.workspace.places.find((p) => p.id === id)?.name ?? '' };
     const clean = name.trim();
@@ -251,6 +283,14 @@ export async function saveCapture(plan: CapturePlan, app: AppContextValue) {
     );
   }
   const encounterPeople = enc ? realIds(enc.personIds) : [];
+  // El encuentro ya estaba registrado: ese es el origen de las demás piezas.
+  const dupEnc = !enc
+    ? pieces.find((p) => p.kind === 'encuentro' && !p.on && p.dup?.id)
+    : undefined;
+  if (dupEnc?.dup?.id) {
+    origin = app.workspace.entries.find((e) => e.id === dupEnc.dup!.id) ?? null;
+    if (dupEnc.kind === 'encuentro') encounterPeople.push(...realIds(dupEnc.personIds));
+  }
 
   // 5. Las demás piezas.
   const adds = new Map<string, ProfileAdds>();
@@ -261,9 +301,9 @@ export async function saveCapture(plan: CapturePlan, app: AppContextValue) {
   };
   const toLink: string[] = [];
   for (const p of pieces) {
-    if (p.kind === 'movimiento' && !p.on && p.dupOf) {
+    if (!p.on && p.dup?.id) {
       // Ya estaba registrado: se enlaza al episodio en vez de duplicarlo.
-      toLink.push(p.dupOf);
+      toLink.push(p.dup.id);
       continue;
     }
     if (!p.on) continue;
@@ -568,6 +608,7 @@ export async function saveCapture(plan: CapturePlan, app: AppContextValue) {
   //    y los datos de las personas nuevas): una sola escritura por persona.
   for (const id of new Set([...adds.keys(), ...profiles.keys()])) {
     const person =
+      shared.latest.get(id) ??
       [...created.values()].find((p) => p.id === id) ??
       app.workspace.people.find((p) => p.id === id);
     if (!person) continue;
@@ -601,6 +642,12 @@ export async function saveCapture(plan: CapturePlan, app: AppContextValue) {
       { profile: next, ...(moreInterests > 0 && { interests: interests.join(', ') }) },
       true,
     );
+    if (ok)
+      shared.latest.set(id, {
+        ...person,
+        profile: next,
+        ...(moreInterests > 0 && { interests: interests.join(', ') }),
+      });
     if (ok)
       count +=
         moreInterests +
@@ -637,7 +684,7 @@ export async function saveCapture(plan: CapturePlan, app: AppContextValue) {
     ties = saved.length;
   }
 
-  return { episode, count, people: created.size, ties };
+  return { episode, count, people: madeNow, ties };
 }
 
 /** Frases del texto (para saber qué se dijo de cada persona). */

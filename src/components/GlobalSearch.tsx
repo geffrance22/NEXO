@@ -1,29 +1,76 @@
-import { useCallback, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { Link2, Search, type LucideIcon } from 'lucide-react';
-import { useApp } from '../AppContext';
-import { kindMeta } from '../composer/kinds';
-import { useDismiss } from '../hooks/useDismiss';
-import { kindLabel } from '../lib/entries';
-import { episodeKindOf } from '../lib/episodes';
-import { shortDate } from '../lib/format';
-import { relationMeta, relationOf } from '../lib/people';
-import { placeKinds } from '../lib/places';
-import { ME, groupKinds, tieCategories, tieKinds } from '../lib/relations';
-import { searchWorkspace, type SearchHit } from '../lib/search';
-import { Avatar } from '../people/Avatar';
+import {
+  useCallback,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
+import {
+  BookOpen,
+  Columns3,
+  Highlighter,
+  Link2,
+  Search,
+  SquareCheck,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { useApp } from "../AppContext";
+import { kindMeta } from "../composer/kinds";
+import { useDismiss } from "../hooks/useDismiss";
+import { kindLabel } from "../lib/entries";
+import { episodeKindOf } from "../lib/episodes";
+import { friendlyDate, shortDate } from "../lib/format";
+import { relationMeta, relationOf } from "../lib/people";
+import { placeKinds } from "../lib/places";
+import { ME, groupKinds, tieCategories, tieKinds } from "../lib/relations";
+import { searchWorkspace, type SearchHit } from "../lib/search";
+import { Avatar } from "../people/Avatar";
+import { ensureFresh, useBoardFeed } from "../planner/boardFeed";
+import { aimBoard } from "../planner/boardView";
+import {
+  JUMP_KEY,
+  useReadingSearch,
+  type ReadingHit,
+} from "../readings/search";
 
 type Look = { icon: LucideIcon; color: string; soft: string };
+type Hit = SearchHit | ReadingHit;
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+};
+const clip = (s: string, n: number) =>
+  s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s;
 
 /** Ícono, colores y textos de una fila de resultado. */
-function describe(hit: SearchHit): { title: string; sub: string; look: Look | null } {
+function describe(hit: Hit): { title: string; sub: string; look: Look | null } {
   switch (hit.type) {
-    case 'person':
+    case "reading":
+      return {
+        title: hit.title,
+        sub: "Lectura · " + hostOf(hit.url),
+        look: { icon: BookOpen, color: "#365c52", soft: "#e4efe8" },
+      };
+    case "mark":
+      return {
+        title: "«" + clip(hit.quote || hit.note, 90) + "»",
+        sub: [hit.title && "De " + clip(hit.title, 60), hit.note && "con nota"]
+          .filter(Boolean)
+          .join(" · "),
+        look: { icon: Highlighter, color: "#9a6b00", soft: "#fff1c2" },
+      };
+    case "person":
       return {
         title: hit.person.name,
         sub: relationMeta[relationOf(hit.person)].label,
         look: null,
       };
-    case 'entry': {
+    case "entry": {
       const { entry } = hit;
       const meta = kindMeta[entry.kind];
       return {
@@ -32,93 +79,142 @@ function describe(hit: SearchHit): { title: string; sub: string; look: Look | nu
         look: { icon: meta.icon, color: meta.ink, soft: meta.soft },
       };
     }
-    case 'place': {
+    case "place": {
       const { place } = hit;
       const kind = placeKinds[place.kind] ?? placeKinds.otro;
       return {
         title: place.name,
-        sub: [kind.label, place.city].filter(Boolean).join(' · '),
+        sub: [kind.label, place.city].filter(Boolean).join(" · "),
         look: { icon: kind.icon, color: kind.color, soft: kind.soft },
       };
     }
-    case 'tie': {
+    case "tie": {
       const { tie, a, b } = hit;
       const info = tieKinds[tie.kind];
-      const category = tieCategories[info?.category ?? 'otro'];
+      const category = tieCategories[info?.category ?? "otro"];
       return {
-        title: `${a?.name ?? 'Tú'} → ${b.name}`,
-        sub: [info?.label, tie.note].filter(Boolean).join(' · '),
+        title: `${a?.name ?? "Tú"} → ${b.name}`,
+        sub: [info?.label, tie.note].filter(Boolean).join(" · "),
         look: { icon: Link2, color: category.color, soft: category.soft },
       };
     }
-    case 'group': {
+    case "group": {
       const { group } = hit;
       const kind = groupKinds[group.kind] ?? groupKinds.otro;
       const n = group.member_ids.length;
       return {
         title: group.name,
-        sub: `${kind.label} · ${n} ${n === 1 ? 'persona' : 'personas'}`,
+        sub: `${kind.label} · ${n} ${n === 1 ? "persona" : "personas"}`,
         look: { icon: kind.icon, color: kind.color, soft: kind.soft },
       };
     }
-    case 'episode': {
+    case "episode": {
       const { episode } = hit;
       const kind = episodeKindOf(episode.kind);
       const when = episode.starts_on ?? episode.created_at;
       return {
         title: episode.title,
-        sub: [kind.label, shortDate(when)].filter(Boolean).join(' · '),
+        sub: [kind.label, shortDate(when)].filter(Boolean).join(" · "),
         look: { icon: kind.icon, color: kind.color, soft: kind.soft },
+      };
+    }
+    case "card": {
+      const { card } = hit;
+      return {
+        title: card.title,
+        sub: [
+          `${card.board_name} › ${card.list_name}`,
+          card.done
+            ? "Completada"
+            : card.due
+              ? "Para " + friendlyDate(card.due).toLowerCase()
+              : "",
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        look: card.done
+          ? { icon: SquareCheck, color: "#2f9a5c", soft: "#e0f3e8" }
+          : { icon: Columns3, color: "#2f6b55", soft: "#e3f0ea" },
       };
     }
   }
 }
 
-/** Campo de búsqueda del encabezado: personas, recuerdos, lugares, vínculos y grupos. */
+/** Campo de búsqueda del encabezado: personas, recuerdos, tarjetas, lugares, vínculos, grupos y lecturas. */
 export function GlobalSearch() {
   const { workspace, go, viewEntry, openTie, openGroup } = useApp();
-  const [query, setQuery] = useState('');
+  const feed = useBoardFeed();
+  const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const root = useRef<HTMLDivElement>(null);
   const listId = useId();
+  const reading = useReadingSearch(open ? query : "");
 
-  const groups = useMemo(() => searchWorkspace(workspace, query), [workspace, query]);
+  const local = useMemo(
+    () => searchWorkspace(workspace, query, feed.cards),
+    [workspace, query, feed.cards],
+  );
+  // Lecturas llegan un instante después: van al final para no mover lo que ya ves.
+  const groups = useMemo<{ label: string; hits: Hit[] }[]>(
+    () =>
+      [
+        ...local,
+        { label: "Lecturas", hits: reading.readings },
+        { label: "Resaltados", hits: reading.marks },
+      ].filter((g) => g.hits.length > 0),
+    [local, reading.readings, reading.marks],
+  );
   const flat = useMemo(() => groups.flatMap((g) => g.hits), [groups]);
-  const shown = open && query.trim() !== '';
+  const shown = open && query.trim() !== "";
   const current = flat.length ? Math.min(active, flat.length - 1) : -1;
   const optionId = (i: number) => `${listId}-${i}`;
 
   const close = useCallback(() => setOpen(false), []);
   useDismiss(shown, root, close);
 
-  const pick = (hit: SearchHit) => {
+  const pick = (hit: Hit) => {
     setOpen(false);
-    setQuery('');
+    setQuery("");
     switch (hit.type) {
-      case 'person':
-        return go('Personas', hit.person);
-      case 'place':
-        return go('Lugares', hit.place);
-      case 'entry':
+      case "reading":
+        return go("Lecturas", { id: hit.id });
+      case "mark":
+        try {
+          sessionStorage.setItem(
+            JUMP_KEY,
+            JSON.stringify({ id: hit.reading_id, at: hit.start }),
+          );
+        } catch {
+          /* Sin almacenamiento: se abre el artículo sin ir al resaltado. */
+        }
+        return go("Lecturas", { id: hit.reading_id });
+      case "person":
+        return go("Personas", hit.person);
+      case "place":
+        return go("Lugares", hit.place);
+      case "entry":
         return viewEntry(hit.entry);
-      case 'tie':
+      case "tie":
         return openTie(hit.b, [hit.a?.id ?? ME]);
-      case 'group':
+      case "group":
         return openGroup(hit.group);
-      case 'episode':
-        return go('Episodios', hit.episode);
+      case "episode":
+        return go("Episodios", hit.episode);
+      case "card":
+        aimBoard(hit.card.board_id, hit.card.list_id, hit.card.id);
+        return go("Tableros");
     }
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      if (!shown) return setOpen(query.trim() !== '');
+      if (!shown) return setOpen(query.trim() !== "");
       if (!flat.length) return;
-      const step = e.key === 'ArrowDown' ? 1 : -1;
+      const step = e.key === "ArrowDown" ? 1 : -1;
       setActive((current + step + flat.length) % flat.length);
-    } else if (e.key === 'Enter' && shown && current >= 0) {
+    } else if (e.key === "Enter" && shown && current >= 0) {
       e.preventDefault();
       pick(flat[current]);
     }
@@ -136,7 +232,9 @@ export function GlobalSearch() {
           aria-expanded={shown}
           aria-controls={listId}
           aria-autocomplete="list"
-          aria-activedescendant={shown && current >= 0 ? optionId(current) : undefined}
+          aria-activedescendant={
+            shown && current >= 0 ? optionId(current) : undefined
+          }
           placeholder="Buscar…"
           autoComplete="off"
           spellCheck={false}
@@ -146,15 +244,25 @@ export function GlobalSearch() {
             setActive(0);
             setOpen(true);
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => {
+            setOpen(true);
+            ensureFresh();
+          }}
           onKeyDown={onKeyDown}
         />
       </label>
       {shown && (
         <div className="pp-dropdown gs-panel" role="listbox" id={listId}>
           {groups.length === 0 && (
-            <div className="gs-empty" role="option" aria-selected="false" aria-disabled="true">
-              Sin resultados para «{query.trim()}»
+            <div
+              className="gs-empty"
+              role="option"
+              aria-selected="false"
+              aria-disabled="true"
+            >
+              {reading.loading
+                ? "Buscando…"
+                : `Sin resultados para «${query.trim()}»`}
             </div>
           )}
           {groups.map((group) => (
@@ -169,13 +277,13 @@ export function GlobalSearch() {
                   <div
                     key={i}
                     id={optionId(i)}
-                    className={'gs-row' + (i === current ? ' active' : '')}
+                    className={"gs-row" + (i === current ? " active" : "")}
                     role="option"
                     aria-selected={i === current}
                     onMouseMove={() => i !== current && setActive(i)}
                     onClick={() => pick(hit)}
                   >
-                    {hit.type === 'person' ? (
+                    {hit.type === "person" ? (
                       <Avatar person={hit.person} size={28} />
                     ) : (
                       look && (

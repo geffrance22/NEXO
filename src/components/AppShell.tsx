@@ -50,6 +50,8 @@ import { ComparePage } from '../pages/ComparePage';
 import { ConnectionsPage } from '../pages/ConnectionsPage';
 import { Libroteca } from '../library/Libroteca';
 import { ProgressSheet } from '../library/ProgressSheet';
+import { ClosingRitual } from '../ritual/ClosingRitual';
+import { isFinished } from '../ritual/learning';
 import { FinancePage } from '../pages/FinancePage';
 import { PeoplePage } from '../pages/PeoplePage';
 import { Notes } from '../planner/Notes';
@@ -151,6 +153,8 @@ export function AppShell({ user }: { user: AppUser }) {
   const [weekly, setWeekly] = useState(false);
   // Actualizar el progreso de un libro o una serie (puede abrirse encima de su ficha).
   const [progress, setProgress] = useState<string | null>(null);
+  // Ritual de cierre de un libro o una película (también encima de su ficha).
+  const [ritual, setRitual] = useState<string | null>(null);
   // Unir dos fichas de la misma persona (con la otra ya elegida o por elegir).
   const [merge, setMerge] = useState<{ personId: string; otherId?: string } | null>(null);
 
@@ -221,6 +225,20 @@ export function AppShell({ user }: { user: AppUser }) {
     const saved = await ok;
     if (saved) void learnTastes(input, before);
     return saved;
+  };
+  /**
+   * Recuerdo nuevo. Un libro o una película que ya terminaste no abre el ritual de cierre por su
+   * cuenta (quizá lo viste hace años): el aviso lo ofrece.
+   */
+  const saveNew = async (input: EntryInput) => {
+    if (!isFinished(input)) return data.saveEntry(input);
+    const saved = await data.createEntry(input, true);
+    if (!saved) return false;
+    notify(input.kind === 'Libro' ? 'Libro guardado.' : 'Guardado en tu Libroteca.', {
+      label: 'Hacer el cierre',
+      run: () => setRitual(saved.id),
+    });
+    return true;
   };
   const selected = route.personId
     ? (workspace.people.find((p) => p.id === route.personId) ?? null)
@@ -332,6 +350,7 @@ export function AppShell({ user }: { user: AppUser }) {
     editEntry: (entry) => setModal({ type: 'compose', init: { entry, links: entry.person_ids } }),
     viewEntry: (entry) => setModal({ type: 'entry', entryId: entry.id }),
     openProgress: (entry) => setProgress(entry.id),
+    openRitual: (entry) => setRitual(entry.id),
     editPerson: (person, section) => setModal({ type: 'person', person, section }),
     quickPerson: (person, mode) => setQuick({ personId: person.id, mode }),
     createPerson: (name) =>
@@ -422,6 +441,7 @@ export function AppShell({ user }: { user: AppUser }) {
   const quickTarget = quick ? workspace.people.find((p) => p.id === quick.personId) : undefined;
   const peekTarget = peek ? workspace.people.find((p) => p.id === peek) : undefined;
   const progressTarget = progress ? workspace.entries.find((e) => e.id === progress) : undefined;
+  const ritualTarget = ritual ? workspace.entries.find((e) => e.id === ritual) : undefined;
   const mergeTarget = merge ? workspace.people.find((p) => p.id === merge.personId) : undefined;
 
   return (
@@ -559,11 +579,16 @@ export function AppShell({ user }: { user: AppUser }) {
         {composing && (
           <ComposeModal
             init={composing}
-            onSave={(input) =>
-              composing.entry
-                ? savedThen(data.updateEntry(composing.entry, input), input, composing.entry)
-                : savedThen(data.saveEntry(input), input)
-            }
+            onSave={(input) => {
+              const before = composing.entry;
+              if (!before) return savedThen(saveNew(input), input);
+              return savedThen(data.updateEntry(before, input), input, before).then((ok) => {
+                // Acabas de marcarlo como terminado: es el momento del ritual de cierre.
+                if (ok && isFinished(input) && !isFinished(before) && !before.details.ritual)
+                  setRitual(before.id);
+                return ok;
+              });
+            }}
             onClose={closeModal}
           />
         )}
@@ -597,6 +622,13 @@ export function AppShell({ user }: { user: AppUser }) {
             key={'progreso-' + progressTarget.id}
             entry={progressTarget}
             onClose={() => setProgress(null)}
+          />
+        )}
+        {ritualTarget && (
+          <ClosingRitual
+            key={'cierre-' + ritualTarget.id}
+            entry={ritualTarget}
+            onClose={() => setRitual(null)}
           />
         )}
         {weekly && <WeeklyDigest onClose={() => setWeekly(false)} />}

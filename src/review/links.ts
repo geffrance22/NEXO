@@ -171,10 +171,23 @@ export function buildCorpus(ws: Workspace): Corpus {
   return { docs, df };
 }
 
-/** Lo que se cruza: el texto de la idea y de dónde viene. */
-export type Probe = { text: string; context: string; bookId?: string; quoteId?: string };
+/** Lo que se cruza: el texto de la idea y de dónde viene. `skip`: recuerdos que no cuentan. */
+export type Probe = {
+  text: string;
+  context: string;
+  bookId?: string;
+  quoteId?: string;
+  skip?: string[];
+};
 
 export function probeOf(card: ReviewCard): Probe {
+  if (card.source === 'aprendizaje')
+    return {
+      text: card.quote,
+      context: card.from.title,
+      bookId: card.origin?.id,
+      skip: [card.entry.id],
+    };
   return card.source === 'cita'
     ? {
         text: card.quote,
@@ -202,7 +215,9 @@ export function findLinks(probe: Probe, corpus: Corpus, people: Person[]): Link[
   // Ni la idea misma ni su libro: lo interesante es lo de afuera. Y como tampoco cuentan para saber
   // qué tan común es una palabra, se descuentan (si no, todo lo que dice la idea parecería vulgar).
   const outside = (l: Doc['link']) =>
-    (probe.quoteId && l.id === probe.quoteId) || (probe.bookId && l.entry?.id === probe.bookId);
+    (probe.quoteId && l.id === probe.quoteId) ||
+    (probe.bookId && l.entry?.id === probe.bookId) ||
+    (l.entry && probe.skip?.includes(l.entry.id));
   const left = new Map<string, number>();
   let total = 0;
   for (const doc of corpus.docs) {

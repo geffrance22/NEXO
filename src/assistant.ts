@@ -179,3 +179,50 @@ export async function reviewSpark(input: {
   if (!idea) throw new Error('La IA no devolvió una idea. Inténtalo de nuevo.');
   return { idea, step: text(data?.step), why: text(data?.why) };
 }
+
+/** Una pregunta de opción múltiple del test de cierre. `answer` es el índice de la correcta. */
+export type QuizQuestion = {
+  q: string;
+  options: string[];
+  answer: number;
+  why: string;
+};
+
+/**
+ * Test de cierre de un libro, una película o una serie: cinco preguntas de opción múltiple sobre
+ * sus ideas, personajes y temas (no sobre detalles triviales). `known` es false cuando la IA no
+ * conoce bien la obra y se apoyó solo en la sinopsis.
+ */
+export async function closingQuiz(work: {
+  tipo: 'libro' | 'película' | 'serie';
+  titulo: string;
+  autor?: string;
+  año?: string;
+  generos?: string[];
+  sinopsis?: string;
+}): Promise<{ questions: QuizQuestion[]; known: boolean }> {
+  const data = await callMode({ mode: 'closing-quiz', work });
+  const list = Array.isArray(data?.questions) ? (data.questions as Partial<QuizQuestion>[]) : [];
+  const questions = list
+    .filter(
+      (x) =>
+        typeof x?.q === 'string' &&
+        x.q.trim() &&
+        Array.isArray(x.options) &&
+        x.options.length >= 2 &&
+        x.options.every((o) => typeof o === 'string' && o.trim()) &&
+        Number.isInteger(x.answer) &&
+        x.answer! >= 0 &&
+        x.answer! < x.options.length,
+    )
+    .slice(0, 5)
+    .map((x) => ({
+      q: x.q!.trim(),
+      options: x.options!.map((o) => o.trim()),
+      answer: x.answer!,
+      why: typeof x.why === 'string' ? x.why.trim() : '',
+    }));
+  if (questions.length < 3)
+    throw new Error('La IA no devolvió un test válido. Inténtalo de nuevo.');
+  return { questions, known: data?.known !== false };
+}

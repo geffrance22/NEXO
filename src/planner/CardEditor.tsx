@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
+  AlarmClock,
   AlignLeft,
   Archive,
   ArchiveRestore,
@@ -10,6 +11,9 @@ import {
   CheckSquare,
   ChevronDown,
   Columns3,
+  Flag,
+  Highlighter,
+  Hourglass,
   Layers,
   Link2,
   ListChecks,
@@ -30,7 +34,10 @@ import { addDays, friendlyDate, nextMonday, shortDate, todayInputValue } from '.
 import { relationMeta, relationOf, searchText } from '../lib/people';
 import { Avatar } from '../people/Avatar';
 import { Popover } from './BoardPopover';
-import type { BoardCard, CardChanges, Column } from './boardStore';
+import { ageOf, ageText, snoozeState } from './BoardCard';
+import { SnoozeMenu } from './BoardSnooze';
+import { priorityLabels } from './boardRules';
+import { PRIORITIES, type BoardCard, type CardChanges, type Column, type Priority } from './boardStore';
 import { dueState, tagTone, tones, toneOf } from './boardTheme';
 import { LinkPicker, type PickItem } from './LinkPicker';
 import { boardEntryInput, cardPeople, isBoardEntry } from './boardPeople';
@@ -87,6 +94,8 @@ export function CardEditor({
   columns,
   done,
   extras,
+  power = true,
+  aging = 0,
   onPatch,
   onToggleDone,
   onArchive,
@@ -99,6 +108,10 @@ export function CardEditor({
   done: boolean;
   /** Ya existe la migración 014 (completar, archivar, color). */
   extras: boolean;
+  /** Ya existe la migración 202611090002 (prioridad, resaltar, posponer). */
+  power?: boolean;
+  /** Días para «Tarjetas que envejecen» en su tablero (0: no). */
+  aging?: number;
   onPatch: (changes: CardChanges) => void;
   onToggleDone: () => void;
   /** Archivar o, si ya está archivada, desarchivar. */
@@ -108,15 +121,18 @@ export function CardEditor({
 }) {
   const archived = Boolean(card.archived_at);
   const title = useDraft(card.title, (v) => {
-    const t = v.replace(/\s+/g, ' ').trim().slice(0, 240);
+    const t = v.replace(/\s+/g, ' ').trim();
     if (t && t !== card.title) onPatch({ title: t });
   });
-  const body = useDraft(card.body, (v) => v !== card.body && onPatch({ body: v.slice(0, 20000) }));
+  const body = useDraft(card.body, (v) => v !== card.body && onPatch({ body: v }));
   const [tag, setTag] = useState('');
   const [item, setItem] = useState('');
   const [editingBody, setEditingBody] = useState(false);
   const [colMenu, setColMenu] = useState<DOMRect | null>(null);
   const [repeatMenu, setRepeatMenu] = useState<DOMRect | null>(null);
+  const [snoozeMenu, setSnoozeMenu] = useState<DOMRect | null>(null);
+  const snz = snoozeState(card);
+  const age = ageOf(card, aging, done);
   const due = dueState(card.due, done);
   const ticked = card.checks.filter((c) => c.done).length;
   const pct = card.checks.length ? Math.round((100 * ticked) / card.checks.length) : 0;
@@ -127,7 +143,7 @@ export function CardEditor({
   const addTag = () => {
     const parts = tag
       .split(',')
-      .map((t) => t.trim().slice(0, 40))
+      .map((t) => t.trim())
       .filter(Boolean);
     if (parts.length) onPatch({ tags: [...new Set([...card.tags, ...parts])] });
     setTag('');
@@ -142,7 +158,7 @@ export function CardEditor({
         ...card.checks,
         ...lines.map((text) => ({
           id: crypto.randomUUID(),
-          text: text.slice(0, 300),
+          text,
           done: false,
         })),
       ]);
@@ -179,7 +195,6 @@ export function CardEditor({
           <textarea
             className="bdm-title"
             rows={1}
-            maxLength={240}
             value={title.text}
             aria-label="Título de la tarjeta"
             onChange={(e) => title.set(e.target.value)}
@@ -356,7 +371,6 @@ export function CardEditor({
                       </button>
                       <input
                         defaultValue={c.text}
-                        maxLength={300}
                         aria-label="Punto de la lista"
                         onBlur={(e) => {
                           const text = e.target.value.trim();
@@ -538,6 +552,80 @@ export function CardEditor({
 
           <section>
             <h4>
+              <Flag size={13} /> Prioridad
+            </h4>
+            <div className="bdm-prio" role="radiogroup" aria-label="Prioridad">
+              {(['', ...PRIORITIES] as Priority[]).map((p) => (
+                <button
+                  type="button"
+                  key={p || 'none'}
+                  role="radio"
+                  aria-checked={card.priority === p}
+                  className={(card.priority === p ? 'on ' : '') + 'p-' + (p || 'none')}
+                  disabled={!power}
+                  onClick={() => onPatch({ priority: p })}
+                >
+                  {p ? priorityLabels[p] : 'Ninguna'}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className={'bdm-toggle' + (card.highlight ? ' on' : '')}
+              aria-pressed={card.highlight}
+              disabled={!power}
+              title="Resalta la tarjeta entera. Para unas palabras escribe **así**; para tacharlas, --así--"
+              onClick={() => onPatch({ highlight: !card.highlight })}
+            >
+              <Highlighter size={14} />
+              <span>{card.highlight ? 'Resaltada' : 'Resaltar'}</span>
+              <i className="bdm-switch" aria-hidden="true" />
+            </button>
+          </section>
+
+          {!archived && (
+            <section>
+              <h4>
+                <AlarmClock size={13} /> Posponer
+              </h4>
+              <button
+                type="button"
+                className={'bdm-repeat' + (snz?.on ? ' on' : '')}
+                aria-haspopup="menu"
+                aria-expanded={Boolean(snoozeMenu)}
+                disabled={!power}
+                onClick={(e) => setSnoozeMenu(e.currentTarget.getBoundingClientRect())}
+              >
+                <AlarmClock size={14} />
+                <span>{snz?.on ? `Hasta ${snz.label.toLowerCase()}` : 'Ahora no'}</span>
+                <ChevronDown size={13} />
+              </button>
+              {snz?.on && (
+                <small className="bdm-repeat-hint">
+                  No se ve en la columna; vuelve sola ese día.
+                </small>
+              )}
+              {snoozeMenu && (
+                <Popover
+                  anchor={snoozeMenu}
+                  width={260}
+                  label="Posponer"
+                  onClose={() => setSnoozeMenu(null)}
+                >
+                  <SnoozeMenu
+                    current={card.snoozed_until}
+                    onPick={(until) => {
+                      setSnoozeMenu(null);
+                      onPatch({ snoozed_until: until });
+                    }}
+                  />
+                </Popover>
+              )}
+            </section>
+          )}
+
+          <section>
+            <h4>
               <Tag size={13} /> Etiquetas
             </h4>
             <form
@@ -550,7 +638,6 @@ export function CardEditor({
               <Plus size={13} />
               <input
                 value={tag}
-                maxLength={120}
                 placeholder="Nueva etiqueta"
                 aria-label="Nueva etiqueta"
                 onChange={(e) => setTag(e.target.value)}
@@ -607,6 +694,12 @@ export function CardEditor({
           </section>
 
           {card.created_at && <p className="bdm-meta">Creada el {shortDate(card.created_at)}</p>}
+          {card.touched_at && (
+            <p className={'bdm-meta' + (age.level ? ' aged' : '')}>
+              {age.level ? <Hourglass size={11} /> : null} Último cambio:{' '}
+              {age.days ? `hace ${ageText(age.days)}` : shortDate(card.touched_at)}
+            </p>
+          )}
         </aside>
       </div>
     </Sheet>

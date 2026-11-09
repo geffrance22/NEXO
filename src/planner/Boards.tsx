@@ -1,8 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
+import {
+  AlarmClock,
   Archive,
   ArrowDownAZ,
+  ArrowDownWideNarrow,
   ArrowLeft,
   ArrowRight,
   CalendarClock,
@@ -12,39 +21,88 @@ import {
   Columns3,
   Eye,
   EyeOff,
+  Flag,
   FoldHorizontal,
   FolderInput,
+  Highlighter,
+  Hourglass,
   LayoutTemplate,
   Menu as MenuIcon,
   MoreHorizontal,
+  Palette,
   Pencil,
   Pin,
   PinOff,
   Plus,
   RectangleHorizontal,
+  RotateCcw,
   Search,
+  Sparkles,
   SquareStack,
+  Tag,
   TextCursorInput,
   Trash2,
   UnfoldHorizontal,
   X,
-} from 'lucide-react';
-import { useApp } from '../AppContext';
-import { supabase } from '../backend';
-import { friendlyDate, normalizeText } from '../lib/format';
-import { ArchiveView } from './ArchiveView';
-import { isBoardEntry } from './boardPeople';
-import { nextDue } from './boardRepeat';
-import { builtinTemplates } from './boardTemplates';
-import { MoveColumnMenu } from './MoveColumn';
-import { TemplateGallery } from './TemplateGallery';
-import { CardFace, CardTile, DividerTile, type CardInline } from './BoardCard';
-import { useBoardDrag, useFlip } from './boardDrag';
-import { MenuItem, Popover } from './BoardPopover';
+  Zap,
+} from "lucide-react";
+import { useApp } from "../AppContext";
+import { supabase } from "../backend";
+import type { Person } from "../data";
+import {
+  addDays,
+  friendlyDate,
+  nextMonday,
+  normalizeText,
+  todayInputValue,
+} from "../lib/format";
+import { daysBetween } from "../lib/people";
+import { Avatar } from "../people/Avatar";
+import { ArchiveView } from "./ArchiveView";
+import { takeTriggers } from "./boardFeed";
+import { boardEntryInput, cardPeople, isBoardEntry } from "./boardPeople";
+import { hasQuick, parseQuick, tokenAt } from "./boardQuick";
+import { nextDue } from "./boardRepeat";
+import {
+  actionText,
+  conditionsHold,
+  fieldChanges,
+  hasRules,
+  priorityLabels,
+  scheduledHit,
+  SCHEDULED,
+  sortCards,
+  sortLabels,
+  stampOf,
+  triggerText,
+  type Rule,
+  type RuleCtx,
+  type TriggerType,
+} from "./boardRules";
+import { builtinTemplates } from "./boardTemplates";
+import { MoveColumnMenu } from "./MoveColumn";
+import { TemplateGallery } from "./TemplateGallery";
+import {
+  ageOf,
+  CardFace,
+  CardText,
+  CardTile,
+  DividerTile,
+  type CardInline,
+} from "./BoardCard";
+import { BoardLinks, type Linking } from "./BoardLinks";
+import { useCardLinks, type CardLink } from "./cardLinks";
+import { SnoozeMenu } from "./BoardSnooze";
+import { useBoardDrag, useFlip } from "./boardDrag";
+import { MenuItem, Popover } from "./BoardPopover";
 import {
   BOARD_SQL,
   byRank,
+  PRIORITIES,
   snapshotBoard,
+  snapshotBoardRows,
+  snapshotColumns,
+  snapshotEntries,
   useArchive,
   useBoard,
   useBoardList,
@@ -52,21 +110,80 @@ import {
   type BoardCard,
   type CardChanges,
   type NewCardInput,
-} from './boardStore';
-import { backgroundOf, backgrounds, isDivider, tones, toneOf } from './boardTheme';
-import { BOARD_GO, BOARD_LAST, useBoardView } from './boardView';
-import { CardEditor } from './CardEditor';
-import './boards.css';
+  type Priority,
+  type Snapshot,
+} from "./boardStore";
+import {
+  backgroundOf,
+  backgrounds,
+  isDivider,
+  tagTone,
+  tones,
+  toneOf,
+} from "./boardTheme";
+import { BOARD_GO, BOARD_LAST, useBoardView } from "./boardView";
+import { CardEditor } from "./CardEditor";
+import { RulesEditor } from "./RulesEditor";
+import "./boards.css";
+import "./rules.css";
 
 const LAST = BOARD_LAST;
-const ARCHIVE = 'archivados';
-const HIDE = 'nexo-board-hide-done';
+const ARCHIVE = "archivados";
+/** Tableros con las completadas ocultas (cada tablero por su lado). */
+const HIDE = "nexo-board-hide-done-by";
+/** Reglas programadas ya aplicadas (para no repetirlas sobre la misma situación). */
+const FIRED = "nexo-board-rule-fired";
+/** Cada cuánto se revisan las reglas programadas con el tablero abierto. */
+const SWEEP_EVERY = 5 * 60_000;
 
+type BulkWhat = "move" | "due" | "prio" | "tag" | "color" | "snooze";
 type Menu =
-  | { kind: 'list'; id: string; anchor: DOMRect }
-  | { kind: 'move'; id: string; anchor: DOMRect }
-  | { kind: 'board'; anchor: DOMRect }
-  | { kind: 'picker'; anchor: DOMRect };
+  | { kind: "list"; id: string; anchor: DOMRect }
+  | { kind: "move"; id: string; anchor: DOMRect }
+  | { kind: "board"; anchor: DOMRect }
+  | { kind: "picker"; anchor: DOMRect }
+  | { kind: "snooze"; id: string; anchor: DOMRect }
+  | { kind: "bulk"; what: BulkWhat; anchor: DOMRect };
+
+/** Lo que una regla cambió en una tarjeta, para poder deshacerlo. */
+type Effect = {
+  before: BoardCard;
+  wasDone: boolean;
+  archived: boolean;
+  /** Cómo quedó tras las reglas (para no pisar lo que cambies después). */
+  after?: BoardCard;
+};
+type Fired = { type: TriggerType; card: string; list: string };
+
+function readHidden(): Record<string, 1> {
+  try {
+    const v = JSON.parse(localStorage.getItem(HIDE) ?? "{}");
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+}
+function readFired(): Set<string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(FIRED) ?? "[]");
+    return new Set(Array.isArray(v) ? (v as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+const writeFired = (s: Set<string>) => {
+  try {
+    localStorage.setItem(FIRED, JSON.stringify([...s].slice(-3000)));
+  } catch {
+    /* sin almacenamiento */
+  }
+};
+const ruleLabel = (r: Rule) =>
+  (r.name || `${triggerText(r.trigger)} → ${actionText(r.then[0], [], () => "")}`)
+    .replace(/\s+/g, " ")
+    .slice(0, 60);
+const plural = (n: number, one: string, many: string) =>
+  `${n} ${n === 1 ? one : many}`;
 
 /**
  * Tableros al estilo Trello: columnas que se crean con doble clic donde quieras, se renombran
@@ -74,9 +191,19 @@ type Menu =
  * completan con su círculo y se abren en una ficha completa. Archivados guarda lo que sacas.
  */
 export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
-  const { workspace, toggleEntry, patchEntry, removeEntry, notify, confirm } = useApp();
+  const {
+    workspace,
+    toggleEntry,
+    patchEntry,
+    removeEntry,
+    createEntry,
+    notify,
+    confirm,
+  } = useApp();
   const list = useBoardList(notify);
-  const [selected, setSelected] = useState(() => localStorage.getItem(LAST) ?? '');
+  const [selected, setSelected] = useState(
+    () => localStorage.getItem(LAST) ?? "",
+  );
   const inArchive = selected === ARCHIVE;
   // También puede ser una plantilla tuya (se edita como un tablero).
   const board = inArchive
@@ -86,27 +213,56 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   // Nuevo tablero: la galería de plantillas (con lo que quieras preseleccionar).
   const [gallery, setGallery] = useState<string | null>(null);
   const api = useBoard(board?.id ?? null, notify);
+  // Tarjetas vinculadas entre columnas, y la que estás vinculando ahora.
+  const links = useCardLinks(board?.id ?? null, notify);
+  const [linking, setLinking] = useState<Linking | null>(null);
+  useEffect(() => setLinking(null), [board?.id]);
   const archive = useArchive(inArchive, notify);
   // Tarjetas desplegadas y columnas plegadas (se recuerda en este equipo).
   const view = useBoardView();
 
-  const [query, setQuery] = useState('');
-  const [hideDone, setHideDone] = useState(() => localStorage.getItem(HIDE) === '1');
+  const [query, setQuery] = useState("");
+  // Ocultar completadas: cada tablero lo recuerda por su lado.
+  const [hidden, setHidden] = useState<Record<string, 1>>(readHidden);
+  const hideDone = Boolean(board && hidden[board.id]);
+  const setHideDone = (fn: (v: boolean) => boolean) => {
+    if (!board) return;
+    setHidden((h) => {
+      const n = { ...h };
+      if (fn(Boolean(h[board.id]))) n[board.id] = 1;
+      else delete n[board.id];
+      localStorage.setItem(HIDE, JSON.stringify(n));
+      return n;
+    });
+  };
   const [composer, setComposer] = useState<string | null>(null);
   const [draftAt, setDraftAt] = useState<number | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [rulesFor, setRulesFor] = useState<string | null>(null);
+  // Columnas que muestran sus tarjetas pospuestas.
+  const [showSnoozed, setShowSnoozed] = useState<Set<string>>(() => new Set());
+  // Selección múltiple (Ctrl o ⌘ + clic; Mayús + clic, un tramo).
+  const [selection, setSelection] = useState<Set<string>>(() => new Set());
+  const anchorSel = useRef<string | null>(null);
   const canvas = useRef<HTMLDivElement>(null);
   const main = useRef<HTMLDivElement>(null);
-  const pan = useRef<{ x: number; left: number; id: number; moved: boolean } | null>(null);
+  const pan = useRef<{
+    x: number;
+    left: number;
+    id: number;
+    moved: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (board) localStorage.setItem(LAST, board.id);
   }, [board?.id]);
-  useEffect(() => localStorage.setItem(HIDE, hideDone ? '1' : '0'), [hideDone]);
 
   const pick = (id: string) => {
+    // Las que se repiten y estaban por volver, vuelven ya (antes de cambiar de tablero).
+    recurTimers.current.forEach((t) => window.clearTimeout(t));
+    [...recurRuns.current.values()].forEach((run) => run());
     setSelected(id);
     localStorage.setItem(LAST, id);
     setMenu(null);
@@ -114,7 +270,10 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     setDraftAt(null);
     setRenaming(null);
     setOpenId(null);
-    setQuery('');
+    setRulesFor(null);
+    setQuery("");
+    setSelection(new Set());
+    setShowSnoozed(new Set());
   };
 
   // ── Completadas (también si el pendiente vinculado ya se hizo) ──
@@ -122,8 +281,13 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     () => new Map(workspace.entries.map((e) => [e.id, e])),
     [workspace.entries],
   );
+  const tasksNow = useRef(tasks);
+  tasksNow.current = tasks;
   // Tarjetas que se repiten: se ven completadas un momento y vuelven con la fecha siguiente.
   const [recurring, setRecurring] = useState<Set<string>>(() => new Set());
+  const recurTimers = useRef(new Map<string, number>());
+  /** Lo que hace cada vuelta pendiente (si sales de Tableros antes, se aplica igual). */
+  const recurRuns = useRef(new Map<string, () => void>());
   // Las tarjetas a la vista ahora mismo (si la archivas o la borras antes de que vuelva, no vuelve).
   const present = useRef(new Set<string>());
   present.current = new Set([
@@ -133,30 +297,82 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   /** Con un pendiente vinculado, su estado manda (se completa desde la persona o desde aquí). */
   const isDone = (c: BoardCard) => {
     if (isDivider(c.title)) return false;
-    if (recurring.has(c.id)) return true;
-    const task = tasks.get(c.entry_id ?? '');
-    return task ? task.status === 'completado' : c.done;
+    if (recurring.has(c.id) || recurTimers.current.has(c.id)) return true;
+    const task = tasksNow.current.get(c.entry_id ?? "");
+    return task ? task.status === "completado" : c.done;
   };
   const linked = (c: BoardCard) => Boolean(c.entry_id && tasks.has(c.entry_id));
   /** El pendiente que nació con la tarjeta (al añadirle personas): va y viene con ella. */
   const boardTask = (c: BoardCard) => {
-    const t = tasks.get(c.entry_id ?? '');
+    const t = tasks.get(c.entry_id ?? "");
     return t && isBoardEntry(t) ? t : undefined;
   };
-  function toggleDone(c: BoardCard, patch: (ch: CardChanges) => void) {
+  const today = todayInputValue();
+  const isSnoozed = (c: BoardCard) =>
+    Boolean(c.snoozed_until && c.snoozed_until > today);
+  const ruleCtx: RuleCtx = {
+    today,
+    isDone,
+    people: (c) => cardPeople(c, tasks.get(c.entry_id ?? "")).length,
+  };
+
+  /** Deja de esperar la vuelta de una tarjeta que se repite (como si no se hubiera completado). */
+  const cancelRecur = (id: string) => {
+    const t = recurTimers.current.get(id);
+    if (t === undefined) return false;
+    window.clearTimeout(t);
+    recurTimers.current.delete(id);
+    recurRuns.current.delete(id);
+    setRecurring((s) => {
+      const n = new Set(s);
+      n.delete(id);
+      return n;
+    });
+    return true;
+  };
+
+  /**
+   * Completa o reabre. Devuelve cómo deshacerlo. Con `rules: false` no dispara las reglas de la
+   * columna (cuando ya lo hace una regla o una acción en grupo); con `quiet`, sin aviso.
+   */
+  function toggleDone(
+    c: BoardCard,
+    patch: (ch: CardChanges) => void,
+    opts: { rules?: boolean; quiet?: boolean } = {},
+  ): () => void {
+    // Un segundo toque mientras la que se repite «vuelve»: se cancela, sin más.
+    if (cancelRecur(c.id)) return () => {};
     const next = !isDone(c);
-    const task = tasks.get(c.entry_id ?? '');
-    if (next && c.repeat) return recur(c, patch);
+    const task = tasks.get(c.entry_id ?? "");
+    if (next && c.repeat) return recur(c, patch, opts.quiet);
+    const before = { done: c.done, done_at: c.done_at };
     patch({ done: next, done_at: next ? new Date().toISOString() : null });
-    if (task && (task.status === 'completado') !== next) toggleEntry(task);
+    if (task && (task.status === "completado") !== next) toggleEntry(task);
+    const undo = () => {
+      patch(before);
+      const t = tasksNow.current.get(c.entry_id ?? "");
+      if (t && (t.status === "completado") === next) toggleEntry(t);
+    };
+    if (opts.rules !== false)
+      fire([{ type: next ? "done" : "undone", card: c.id, list: c.list_id }], undo);
+    return undo;
   }
-  /** Completar una que se repite: se marca un instante y vuelve abierta, con su lista limpia. */
-  function recur(c: BoardCard, patch: (ch: CardChanges) => void) {
+  /**
+   * Completar una que se repite: se marca un instante y vuelve abierta, con su lista limpia.
+   * «Deshacer» funciona igual de rápido que lo pulses: si aún no volvió, se cancela la vuelta.
+   */
+  function recur(
+    c: BoardCard,
+    patch: (ch: CardChanges) => void,
+    quiet = false,
+  ): () => void {
     const due = nextDue(c.repeat, c.due) ?? c.due;
     const before = { due: c.due, checks: c.checks };
-    const task = tasks.get(c.entry_id ?? '');
+    const task = tasks.get(c.entry_id ?? "");
     setRecurring((s) => new Set(s).add(c.id));
-    window.setTimeout(() => {
+    const back = () => {
+      recurTimers.current.delete(c.id);
+      recurRuns.current.delete(c.id);
       setRecurring((s) => {
         const n = new Set(s);
         n.delete(c.id);
@@ -171,27 +387,48 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
       });
       if (task)
         void patchEntry(task, {
-          status: 'pendiente',
+          status: "pendiente",
           details: { ...task.details, ...(due && { due }) },
         });
-    }, 850);
-    notify(`Hecho. Se repite: vuelve ${due ? friendlyDate(due).toLowerCase() : 'abierta'}.`, {
-      label: 'Deshacer',
-      icon: 'undo',
-      run: () => {
-        patch({ ...before, done: false, done_at: null });
-        if (task)
-          void patchEntry(task, { details: { ...task.details, due: before.due ?? undefined } });
-      },
-    });
+    };
+    recurTimers.current.set(c.id, window.setTimeout(back, 850));
+    recurRuns.current.set(c.id, back);
+    const undo = () => {
+      // Aún no volvió: basta con no dejarla volver.
+      if (cancelRecur(c.id)) return;
+      patch({ ...before, done: false, done_at: null });
+      const t = tasksNow.current.get(c.entry_id ?? "");
+      if (t)
+        void patchEntry(t, {
+          status: "pendiente",
+          details: { ...t.details, due: before.due ?? undefined },
+        });
+    };
+    if (!quiet)
+      notify(
+        `Hecho. Se repite: vuelve ${due ? friendlyDate(due).toLowerCase() : "abierta"}.`,
+        { label: "Deshacer", icon: "undo", run: undo },
+      );
+    return undo;
   }
+  // Al salir de Tableros, las que estaban por volver vuelven ya (no se pierde la fecha nueva).
+  useEffect(
+    () => () => {
+      recurTimers.current.forEach((t) => window.clearTimeout(t));
+      [...recurRuns.current.values()].forEach((run) => run());
+    },
+    [],
+  );
+
   /** Al editar la tarjeta, su pendiente (el que nació aquí) cambia igual. */
   function syncTask(c: BoardCard, ch: CardChanges) {
     const t = boardTask(c);
     if (!t) return;
     const next: Parameters<typeof patchEntry>[1] = {};
-    if (ch.title !== undefined && ch.title !== t.title) next.title = ch.title.slice(0, 180);
-    if (ch.body !== undefined && ch.body !== t.body) next.body = ch.body.slice(0, 4000);
+    if (ch.title !== undefined && ch.title !== t.title)
+      next.title = ch.title;
+    if (ch.body !== undefined && ch.body !== t.body)
+      next.body = ch.body;
     if (ch.due !== undefined && (ch.due ?? undefined) !== t.details.due)
       next.details = { ...t.details, due: ch.due ?? undefined };
     if (Object.keys(next).length) void patchEntry(t, next);
@@ -199,32 +436,365 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   /** Borra los pendientes que nacieron con estas tarjetas (al borrarlas, no al archivarlas). */
   const dropTasks = (ids: (string | null)[]) => {
     for (const id of ids) {
-      const t = id ? tasks.get(id) : undefined;
+      const t = id ? tasksNow.current.get(id) : undefined;
       if (t && isBoardEntry(t)) removeEntry(t, true);
     }
+  };
+  /** Igual, pero cuando pasa el tiempo de «Deshacer». Devuelve cómo cancelarlo. */
+  const dropTasksLater = (ids: (string | null)[]) => {
+    if (!ids.some(Boolean)) return () => {};
+    const timer = window.setTimeout(() => dropTasks(ids), 8500);
+    return () => window.clearTimeout(timer);
   };
   /** Igual, pero leyendo de la base las tarjetas de una columna o un tablero (incluye archivadas). */
   async function dropTasksOf(filter: { list?: string; board?: string }) {
     const q = filter.list
-      ? supabase.from('board_cards').select('entry_id').eq('list_id', filter.list)
-      : supabase.from('planner_board_cards').select('entry_id').eq('board_id', filter.board!);
-    const { data } = await q.not('entry_id', 'is', null).limit(5000);
-    dropTasks(((data ?? []) as { entry_id: string | null }[]).map((r) => r.entry_id));
+      ? supabase
+          .from("board_cards")
+          .select("entry_id")
+          .eq("list_id", filter.list)
+      : supabase
+          .from("planner_board_cards")
+          .select("entry_id")
+          .eq("board_id", filter.board!);
+    const { data } = await q.not("entry_id", "is", null).limit(5000);
+    dropTasks(
+      ((data ?? []) as { entry_id: string | null }[]).map((r) => r.entry_id),
+    );
+  }
+
+  // ───────────────────────── Reglas ─────────────────────────
+
+  /** Tarjetas reales (sin divisores ni pospuestas) en una columna: lo que cuenta para su límite. */
+  const countIn = (listId: string) =>
+    api
+      .peekAll()
+      .filter(
+        (c) => c.list_id === listId && !isDivider(c.title) && !isSnoozed(c),
+      ).length;
+  /** ¿La columna no deja pasar `adding` tarjetas más? Avisa si es así. */
+  const blocked = (listId: string, adding: number) => {
+    const col = api.peekColumn(listId);
+    const r = col?.rules;
+    if (!col || !r?.limit || r.limitMode !== "block") return false;
+    if (countIn(listId) + adding <= r.limit) return false;
+    notify(
+      `«${col.name.slice(0, 40)}» tiene un límite de ${plural(r.limit, "tarjeta", "tarjetas")}. Libera espacio o cambia sus reglas.`,
+    );
+    return true;
+  };
+  const remember = (effects: Map<string, Effect>, id: string) => {
+    if (effects.has(id)) return;
+    const card = api.peek(id);
+    if (card) effects.set(id, { before: card, wasDone: isDone(card), archived: false });
+  };
+
+  /** Aplica las acciones de una regla a una tarjeta, en orden. Devuelve si cambió algo. */
+  function applyRule(
+    rule: Rule,
+    id: string,
+    depth: number,
+    seen: Set<string>,
+    effects: Map<string, Effect>,
+  ) {
+    let did = false;
+    remember(effects, id);
+    for (const a of rule.then) {
+      const card = api.peek(id);
+      if (!card) break; // archivada por una acción anterior
+      const ch = fieldChanges(card, a, today);
+      if (ch) {
+        if (!api.power && ("priority" in ch || "highlight" in ch || "snoozed_until" in ch))
+          continue;
+        api.patchCard(id, ch);
+        syncTask(card, ch);
+        did = true;
+        continue;
+      }
+      const patch = (x: CardChanges) => api.patchCard(id, x);
+      if (a.type === "complete" && !isDone(card)) {
+        toggleDone(card, patch, { rules: false, quiet: true });
+        did = true;
+      } else if (a.type === "reopen" && isDone(card)) {
+        toggleDone(card, patch, { rules: false, quiet: true });
+        did = true;
+      } else if (a.type === "archive" && api.extras) {
+        effects.get(id)!.after = card;
+        if (api.archiveCard(id)) {
+          effects.get(id)!.archived = true;
+          list.setArchived((n) => n + 1);
+          did = true;
+        }
+      } else if (a.type === "move") {
+        const target = a.list;
+        if (!target || target === card.list_id || !api.peekColumn(target)) continue;
+        if (blocked(target, 1)) continue;
+        const from = card.list_id;
+        // Al final de verdad (moveCards lo ajusta a lo que haya ahora).
+        api.moveCard(id, target, a.where === "top" ? 0 : Infinity);
+        did = true;
+        runTrigger("leave", id, from, depth + 1, seen, effects);
+        runTrigger("enter", id, target, depth + 1, seen, effects);
+      }
+    }
+    return did;
+  }
+  /** Las reglas de una columna para algo que acaba de pasar. Devuelve los nombres de las que actuaron. */
+  function runTrigger(
+    type: TriggerType,
+    id: string,
+    listId: string,
+    depth: number,
+    seen: Set<string>,
+    effects: Map<string, Effect>,
+  ): string[] {
+    if (depth > 5 || editingTemplate) return [];
+    const col = api.peekColumn(listId);
+    if (!col) return [];
+    const out: string[] = [];
+    for (const rule of col.rules.rules) {
+      if (!rule.on || rule.trigger.type !== type) continue;
+      const key = rule.id + "|" + id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const card = api.peek(id);
+      if (!card || isDivider(card.title)) break;
+      if (!conditionsHold(rule, card, ruleCtx)) continue;
+      if (applyRule(rule, id, depth, seen, effects)) out.push(ruleLabel(rule));
+    }
+    return out;
+  }
+  /**
+   * Vuelve las tarjetas a como estaban antes de las reglas: solo los campos que cambió una regla y
+   * solo si siguen como la regla los dejó (lo que tocaste después se respeta).
+   */
+  function revert(effects: Map<string, Effect>) {
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    const keys: (keyof CardChanges)[] = [
+      "list_id",
+      "rank",
+      "done",
+      "done_at",
+      "due",
+      "tags",
+      "color",
+      "checks",
+      ...(api.power
+        ? (["priority", "highlight", "snoozed_until"] as const)
+        : []),
+    ];
+    for (const [id, e] of effects) {
+      const b = e.before;
+      const after = e.after ?? b;
+      cancelRecur(id);
+      const archivedNow = !api.peek(id);
+      if (e.archived && archivedNow) {
+        api.unarchiveCard(after);
+        list.setArchived((n) => Math.max(0, n - 1));
+      } else if (archivedNow) continue; // la borraste o archivaste tú después
+      const cur = api.peek(id)!;
+      const fields: CardChanges = {};
+      for (const k of keys)
+        if (!same(b[k], after[k]) && same(cur[k], after[k]))
+          (fields as Record<string, unknown>)[k] = b[k];
+      if (Object.keys(fields).length) api.patchCard(id, fields);
+      const t = tasksNow.current.get(b.entry_id ?? "");
+      if (t && (t.status === "completado") !== e.wasDone) toggleEntry(t);
+    }
+  }
+  /** Avisa qué reglas actuaron. «Deshacer» revierte las reglas y, con `undo`, también lo tuyo. */
+  function announce(
+    names: string[],
+    effects: Map<string, Effect>,
+    lead = "",
+    undo?: () => void,
+  ) {
+    if (!names.length || !effects.size) return false;
+    for (const [id, e] of effects) e.after = api.peek(id) ?? e.after ?? e.before;
+    const uniq = [...new Set(names)];
+    const what =
+      uniq.length === 1 ? `Regla «${uniq[0]}»` : `${uniq.length} reglas`;
+    notify(
+      `${lead}${what}${effects.size > 1 ? ` en ${plural(effects.size, "tarjeta", "tarjetas")}` : ""}.`,
+      {
+        label: "Deshacer",
+        icon: "undo",
+        run: () => {
+          revert(effects);
+          undo?.();
+        },
+      },
+    );
+    return true;
+  }
+  /**
+   * Dispara las reglas por lo que acabas de hacer. Devuelve si alguna actuó. `undo` deshace lo
+   * tuyo (completar, mover…): así «Deshacer» del aviso de la regla lo devuelve todo.
+   */
+  function fire(events: Fired[], undo?: () => void) {
+    if (!events.length) return false;
+    const effects = new Map<string, Effect>();
+    const seen = new Set<string>();
+    const names = events.flatMap((e) =>
+      runTrigger(e.type, e.card, e.list, 0, seen, effects),
+    );
+    return announce(names, effects, "Se aplicó: ", undo);
+  }
+  /** «Aplicar ahora»: las acciones de la regla sobre las tarjetas de la columna que la cumplen. */
+  function runRuleNow(rule: Rule, listId: string) {
+    const effects = new Map<string, Effect>();
+    const seen = new Set<string>();
+    let n = 0;
+    const ids = api
+      .peekAll()
+      .filter((x) => x.list_id === listId && !isDivider(x.title))
+      .map((x) => x.id);
+    for (const id of ids) {
+      // Se vuelve a mirar: una acción anterior pudo moverla o cambiarla.
+      const c = api.peek(id);
+      if (!c || c.list_id !== listId || !conditionsHold(rule, c, ruleCtx)) continue;
+      seen.add(rule.id + "|" + c.id);
+      if (applyRule(rule, c.id, 0, seen, effects)) n++;
+    }
+    announce(n ? [ruleLabel(rule)] : [], effects, "Se aplicó: ");
+    return n;
+  }
+  /**
+   * Lo que se revisa solo: archivar lo completado hace tiempo y las reglas de fechas y de días
+   * quietas. Cada una actúa una vez por situación (la misma fecha, la misma llegada, la misma vez
+   * que se completó): si lo deshaces, no vuelve a actuar.
+   */
+  function sweep() {
+    if (api.status !== "ready" || editingTemplate || inArchive) return;
+    const memo = readFired();
+    const effects = new Map<string, Effect>();
+    const seen = new Set<string>();
+    const names: string[] = [];
+    let archived = 0;
+    for (const col of api.columns) {
+      const cfg = col.rules;
+      const here = () =>
+        api
+          .peekAll()
+          .filter((c) => c.list_id === col.id && !isDivider(c.title))
+          .map((c) => c.id);
+      if (cfg.autoArchive > 0 && api.extras)
+        for (const id of here()) {
+          const c = api.peek(id);
+          // Solo con la fecha real en que se completó.
+          if (!c || !isDone(c) || !c.done_at) continue;
+          if (daysBetween(todayInputValue(new Date(c.done_at)), today) < cfg.autoArchive)
+            continue;
+          const key = `auto|${c.id}|${c.done_at}`;
+          if (memo.has(key)) continue;
+          memo.add(key);
+          remember(effects, c.id);
+          effects.get(c.id)!.after = c;
+          if (api.archiveCard(c.id)) {
+            effects.get(c.id)!.archived = true;
+            archived++;
+          }
+        }
+      for (const rule of cfg.rules) {
+        if (!rule.on || !SCHEDULED.includes(rule.trigger.type)) continue;
+        for (const id of here()) {
+          const c = api.peek(id);
+          if (!c || c.list_id !== col.id) continue;
+          if (!scheduledHit(rule.trigger, c, ruleCtx)) continue;
+          if (!conditionsHold(rule, c, ruleCtx)) continue;
+          const key = `${rule.id}|${c.id}|${stampOf(rule.trigger, c)}`;
+          if (memo.has(key)) continue;
+          memo.add(key);
+          if (applyRule(rule, c.id, 0, seen, effects)) names.push(ruleLabel(rule));
+        }
+      }
+    }
+    writeFired(memo);
+    if (archived) {
+      list.setArchived((n) => n + archived);
+      names.push(`Archivar completadas`);
+    }
+    announce(names, effects, "Automático: ");
+  }
+  const sweepNow = useRef(sweep);
+  sweepNow.current = sweep;
+  const fireNow = useRef(fire);
+  fireNow.current = fire;
+  // Al abrir el tablero: lo que quedó pendiente desde fuera (completar en la Agenda) y lo programado.
+  useEffect(() => {
+    if (api.status !== "ready" || !board) return;
+    const t = window.setTimeout(() => {
+      const pend = takeTriggers(new Set(api.columns.map((c) => c.id)));
+      // Solo lo que sigue siendo cierto (si lo deshiciste, no cuenta).
+      const real = pend.filter((p) => {
+        const c = api.peek(p.card);
+        return c && c.list_id === p.list && isDone(c) === (p.trigger === "done");
+      });
+      if (real.length)
+        fireNow.current(
+          real.map((p) => ({ type: p.trigger, card: p.card, list: p.list })),
+        );
+      sweepNow.current();
+    }, 700);
+    const every = window.setInterval(() => sweepNow.current(), SWEEP_EVERY);
+    const onFocus = () => sweepNow.current();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearTimeout(t);
+      window.clearInterval(every);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [api.status, board?.id]);
+
+  /**
+   * Mueve tarjetas (con la columna llena, no) y dispara las reglas de salida y de llegada.
+   * Devuelve null si la columna no las deja pasar; si no, si alguna regla actuó.
+   */
+  function moveWithRules(
+    ids: string[],
+    listId: string,
+    index: number,
+    undo?: () => void,
+  ) {
+    const moving = ids
+      .map((id) => api.peek(id))
+      .filter((c): c is BoardCard => Boolean(c));
+    const incoming = moving.filter((c) => c.list_id !== listId);
+    if (incoming.length && blocked(listId, incoming.length)) return null;
+    const from = new Map(incoming.map((c) => [c.id, c.list_id]));
+    api.moveCards(
+      moving.map((c) => c.id),
+      listId,
+      index,
+    );
+    return fire(
+      incoming.flatMap((c): Fired[] => [
+        { type: "leave", card: c.id, list: from.get(c.id)! },
+        { type: "enter", card: c.id, list: listId },
+      ]),
+      undo,
+    );
   }
 
   /** Lo que se hace desde la tarjeta en la columna, sin abrirla. */
   const inlineFor = (c: BoardCard): CardInline => ({
-    toggleChecks: () => view.toggleCard(c.id, 'c'),
-    toggleBody: () => view.toggleCard(c.id, 'd'),
+    toggleChecks: () => view.toggleCard(c.id, "c"),
+    toggleBody: () => view.toggleCard(c.id, "d"),
     check: (id) => {
-      const checks = c.checks.map((x) => (x.id === id ? { ...x, done: !x.done } : x));
+      const checks = c.checks.map((x) =>
+        x.id === id ? { ...x, done: !x.done } : x,
+      );
       api.patchCard(c.id, { checks });
-      // Terminaste la lista: propone completar la tarjeta.
-      if (checks.every((x) => x.done) && !c.checks.every((x) => x.done) && !isDone(c))
-        notify(`Terminaste la lista de «${c.title.slice(0, 40)}».`, {
-          label: 'Completar tarjeta',
-          run: () => toggleDone({ ...c, checks }, (ch) => api.patchCard(c.id, ch)),
-        });
+      // Terminaste la lista: sus reglas o, si no hay, propone completar la tarjeta.
+      if (checks.every((x) => x.done) && !c.checks.every((x) => x.done)) {
+        if (fire([{ type: "checks", card: c.id, list: c.list_id }])) return;
+        if (!isDone(c))
+          notify(`Terminaste la lista de «${c.title.slice(0, 40)}».`, {
+            label: "Completar tarjeta",
+            run: () =>
+              toggleDone({ ...c, checks }, (ch) => api.patchCard(c.id, ch)),
+          });
+      }
     },
     addCheck: (text) =>
       api.patchCard(c.id, {
@@ -247,14 +817,84 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     isDivider(c.title)
       ? !needle
       : (!hideDone || !isDone(c)) &&
-        (!needle || normalizeText(`${c.title} ${c.body} ${c.tags.join(' ')}`).includes(needle));
+        // Las pospuestas no se ven (salvo al buscar o si pides verlas).
+        (!isSnoozed(c) || Boolean(needle) || showSnoozed.has(c.list_id)) &&
+        (!needle ||
+          normalizeText(`${c.title} ${c.body} ${c.tags.join(" ")}`).includes(
+            needle,
+          ));
+  /** Las tarjetas de una columna en el orden en que se ven (manual o automático). */
+  const orderedIn = (listId: string) => {
+    const every = byList.get(listId) ?? [];
+    const key = api.peekColumn(listId)?.rules.sort ?? "";
+    return key ? sortCards(every, key, isDivider) : every;
+  };
+
+  // ── Selección ──
+  const picked = [...selection]
+    .map((id) => api.cards.find((c) => c.id === id))
+    .filter((c): c is BoardCard => Boolean(c));
+  const colOrder = new Map(api.columns.map((c, i) => [c.id, i]));
+  /** Lo seleccionado, en el orden del tablero (por columna y luego por posición). */
+  const pickedInOrder = () =>
+    [...picked].sort(
+      (a, b) =>
+        (colOrder.get(a.list_id) ?? 0) - (colOrder.get(b.list_id) ?? 0) ||
+        a.rank - b.rank,
+    );
+  const selectCard = (c: BoardCard, mode: "toggle" | "range") => {
+    const anchor = anchorSel.current ? api.peek(anchorSel.current) : undefined;
+    if (mode === "range" && anchor && anchor.list_id === c.list_id) {
+      const order = orderedIn(c.list_id).filter(
+        (x) => visible(x) && !isDivider(x.title),
+      );
+      const i = order.findIndex((x) => x.id === anchor.id);
+      const j = order.findIndex((x) => x.id === c.id);
+      if (i >= 0 && j >= 0) {
+        const [a, b] = i < j ? [i, j] : [j, i];
+        setSelection((s) => {
+          const n = new Set(s);
+          order.slice(a, b + 1).forEach((x) => n.add(x.id));
+          return n;
+        });
+        return;
+      }
+    }
+    anchorSel.current = c.id;
+    setSelection((s) => {
+      const n = new Set(s);
+      if (n.has(c.id)) n.delete(c.id);
+      else n.add(c.id);
+      return n;
+    });
+  };
+  const clearSelection = () => {
+    anchorSel.current = null;
+    setSelection((s) => (s.size ? new Set() : s));
+  };
+  // Esc deselecciona (si no hay una ventana o un menú abierto encima).
+  useEffect(() => {
+    if (!selection.size) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (document.querySelector(".sheet, .bd-pop")) return;
+      clearSelection();
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [selection.size]);
 
   // ── Arrastre ──
+  // Arrastrar una seleccionada lleva todas las seleccionadas (en su orden).
+  const multi = (id: string) => selection.has(id) && picked.length > 1;
   const dnd = useBoardDrag(canvas, (d) => {
-    if (d.kind === 'card') {
-      const others = (byList.get(d.list) ?? []).filter((c) => c.id !== d.id);
+    if (d.kind === "card") {
+      const ids = multi(d.id) ? pickedInOrder().map((c) => c.id) : [d.id];
+      const others = (byList.get(d.list) ?? []).filter(
+        (c) => !ids.includes(c.id),
+      );
       const at = d.before ? others.findIndex((c) => c.id === d.before) : -1;
-      api.moveCard(d.id, d.list, at < 0 ? others.length : at);
+      moveWithRules(ids, d.list, at < 0 ? others.length : at);
     } else {
       const others = api.columns.filter((c) => c.id !== d.id);
       const at = d.before ? others.findIndex((c) => c.id === d.before) : -1;
@@ -262,11 +902,14 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     }
   });
   const drag = dnd.drag;
+  const dragging = (c: BoardCard) =>
+    drag?.kind === "card" &&
+    (drag.id === c.id || (multi(drag.id) && selection.has(c.id)));
   useFlip(main);
 
   // Llegaste desde Mi espacio: muestra la columna anclada y, si tocaste una tarjeta, la abre.
   useEffect(() => {
-    if (api.status !== 'ready') return;
+    if (api.status !== "ready") return;
     const raw = sessionStorage.getItem(BOARD_GO);
     if (!raw) return;
     sessionStorage.removeItem(BOARD_GO);
@@ -275,14 +918,21 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
       if (go.list && api.columns.some((c) => c.id === go.list)) {
         view.setFolded([go.list], false);
         requestAnimationFrame(() => {
-          const el = canvas.current?.querySelector<HTMLElement>(`[data-list="${go.list}"]`);
+          const el = canvas.current?.querySelector<HTMLElement>(
+            `[data-list="${go.list}"]`,
+          );
           if (!el) return;
-          el.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-          el.classList.add('bd-flash');
-          window.setTimeout(() => el.classList.remove('bd-flash'), 1600);
+          el.scrollIntoView({
+            inline: "center",
+            block: "nearest",
+            behavior: "smooth",
+          });
+          el.classList.add("bd-flash");
+          window.setTimeout(() => el.classList.remove("bd-flash"), 1600);
         });
       }
-      if (go.card && api.cards.some((c) => c.id === go.card)) setOpenId(go.card);
+      if (go.card && api.cards.some((c) => c.id === go.card))
+        setOpenId(go.card);
     } catch {
       /* enlace viejo: se ignora */
     }
@@ -293,7 +943,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     const root = canvas.current;
     if (!root) return api.columns.length;
     const left = root.getBoundingClientRect().left - root.scrollLeft;
-    return [...root.querySelectorAll<HTMLElement>('[data-list]')].filter(
+    return [...root.querySelectorAll<HTMLElement>("[data-list]")].filter(
       (el) => left + el.offsetLeft + el.offsetWidth / 2 < x,
     ).length;
   };
@@ -311,25 +961,47 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
 
   // ── Acciones con «Deshacer» ──
   function deleteCard(c: BoardCard) {
+    const tied = links.of([c.id]);
     const removed = api.deleteCard(c.id);
     if (!removed) return;
     const keep = dropTaskLater(c);
-    notify(boardTask(c) ? 'Tarjeta eliminada (y su pendiente).' : 'Tarjeta eliminada.', {
-      label: 'Deshacer',
-      icon: 'undo',
-      run: () => {
-        keep();
-        api.restoreCard(removed);
+    notify(
+      boardTask(c)
+        ? "Tarjeta eliminada (y su pendiente)."
+        : "Tarjeta eliminada.",
+      {
+        label: "Deshacer",
+        icon: "undo",
+        run: () => {
+          keep();
+          api.restoreCard(removed);
+          links.restore(tied);
+        },
       },
+    );
+  }
+  /** Vincula dos tarjetas de columnas distintas; si ya lo estaban, las desvincula. */
+  const pickLink = (from: string, to: string) => {
+    setLinking(null);
+    if (links.has(from, to)) unlinkCards({ a: from, b: to });
+    else links.link(from, to);
+  };
+  const cancelLink = () => setLinking(null);
+  function unlinkCards(l: CardLink) {
+    links.unlink(l.a, l.b);
+    notify("Vínculo quitado.", {
+      label: "Deshacer",
+      icon: "undo",
+      run: () => links.link(l.a, l.b),
     });
   }
   function archiveCard(c: BoardCard) {
     const done = api.archiveCard(c.id);
     if (!done) return;
     list.setArchived((n) => n + 1);
-    notify('Tarjeta archivada. La encuentras en Archivados.', {
-      label: 'Deshacer',
-      icon: 'undo',
+    notify("Tarjeta archivada. La encuentras en Archivados.", {
+      label: "Deshacer",
+      icon: "undo",
       run: () => {
         api.unarchiveCard(done);
         list.setArchived((n) => Math.max(0, n - 1));
@@ -341,10 +1013,10 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     if (!card) return;
     list.setArchived((n) => Math.max(0, n - 1));
     notify(
-      `Volvió a «${card.list_name ?? 'su columna'}»${card.board_name ? ` en ${card.board_name}` : ''}.`,
+      `Volvió a «${card.list_name ?? "su columna"}»${card.board_name ? ` en ${card.board_name}` : ""}.`,
       {
-        label: 'Deshacer',
-        icon: 'undo',
+        label: "Deshacer",
+        icon: "undo",
         run: () => {
           archive.rearchive(card);
           list.setArchived((n) => n + 1);
@@ -357,9 +1029,9 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     if (!card) return;
     list.setArchived((n) => Math.max(0, n - 1));
     const keep = dropTaskLater(c);
-    notify('Tarjeta eliminada.', {
-      label: 'Deshacer',
-      icon: 'undo',
+    notify("Tarjeta eliminada.", {
+      label: "Deshacer",
+      icon: "undo",
       run: () => {
         keep();
         archive.restore(card);
@@ -375,36 +1047,77 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
       n &&
       !(await confirm({
         title: `¿Eliminar la columna «${col.name.slice(0, 60)}»?`,
-        message: `También se eliminarán sus ${n} ${n === 1 ? 'tarjeta' : 'tarjetas'} y los pendientes que nacieron con ellas. Las notas y los pendientes que ya tenías se conservan.`,
-        confirmLabel: 'Eliminar',
+        message: `También se eliminarán sus ${n} ${n === 1 ? "tarjeta" : "tarjetas"} y los pendientes que nacieron con ellas. Podrás deshacerlo durante unos segundos.`,
+        confirmLabel: "Eliminar",
         danger: true,
-        icon: 'trash',
+        icon: "trash",
       }))
     )
       return;
-    // Antes de borrar: después ya no se sabe qué pendientes eran suyos.
-    await dropTasksOf({ list: id });
+    // Una copia completa (también las archivadas) para poder deshacerlo.
+    let snap: Snapshot | null = null;
+    try {
+      snap = await snapshotColumns([id]);
+    } catch {
+      snap = null;
+    }
+    const pinned = list.pinned?.id === id ? list.pinned : null;
+    // Sin copia no hay Deshacer: los pendientes se borran ya (después no se sabría cuáles eran).
+    if (!snap) await dropTasksOf({ list: id });
     api.deleteColumn(id);
     list.forgetPin(id);
-    notify(`Columna «${col.name.slice(0, 40)}» eliminada.`);
+    if (rulesFor === id) setRulesFor(null);
+    if (!snap) return notify(`Columna «${col.name.slice(0, 40)}» eliminada.`);
+    const copy = snap;
+    const keep = dropTasksLater(snapshotEntries(copy));
+    notify(`Columna «${col.name.slice(0, 40)}» eliminada.`, {
+      label: "Deshacer",
+      icon: "undo",
+      run: () => {
+        keep();
+        void api
+          .restoreColumns(copy)
+          .then(() => pinned && list.notePin(pinned))
+          .catch(() => {});
+      },
+    });
   }
   async function deleteBoard() {
     if (!board) return;
     const template = Boolean(board.is_template);
     const ok = await confirm({
-      title: `¿Eliminar ${template ? 'la plantilla' : 'el tablero'} «${board.name.slice(0, 60)}»?`,
+      title: `¿Eliminar ${template ? "la plantilla" : "el tablero"} «${board.name.slice(0, 60)}»?`,
       message: template
-        ? 'Los tableros que ya creaste con ella no cambian.'
-        : 'Se eliminarán sus columnas y tarjetas (también las archivadas) y los pendientes que nacieron con ellas. Las notas y los pendientes que ya tenías se conservan.',
-      confirmLabel: 'Eliminar',
+        ? "Los tableros que ya creaste con ella no cambian. Podrás deshacerlo durante unos segundos."
+        : "Se eliminarán sus columnas y tarjetas (también las archivadas) y los pendientes que nacieron con ellas. Podrás deshacerlo durante unos segundos.",
+      confirmLabel: "Eliminar",
       danger: true,
-      icon: 'trash',
+      icon: "trash",
     });
     if (!ok) return;
-    if (!template) await dropTasksOf({ board: board.id });
-    const rest = (list.boards ?? []).filter((b) => b.id !== board.id);
-    list.remove(board.id);
-    pick(rest[0]?.id ?? '');
+    const gone = board;
+    let snap: Snapshot | null = null;
+    try {
+      snap = await snapshotBoardRows(gone.id);
+    } catch {
+      snap = null;
+    }
+    if (!snap && !template) await dropTasksOf({ board: gone.id });
+    const rest = (list.boards ?? []).filter((b) => b.id !== gone.id);
+    list.remove(gone.id);
+    pick(rest[0]?.id ?? "");
+    const label = `${template ? "Plantilla" : "Tablero"} «${gone.name.slice(0, 40)}» eliminado${template ? "a" : ""}.`;
+    if (!snap) return notify(label);
+    const copy = snap;
+    const keep = template ? () => {} : dropTasksLater(snapshotEntries(copy));
+    notify(label, {
+      label: "Deshacer",
+      icon: "undo",
+      run: () => {
+        keep();
+        void list.restore(copy).then((done) => done && pick(gone.id));
+      },
+    });
   }
   /** Guarda el tablero tal como está (sin fechas, vínculos ni completadas) como plantilla. */
   async function saveAsTemplate() {
@@ -416,13 +1129,15 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         description: `Copia de «${board.name}»`,
       });
       if (id)
-        notify('Guardado en Mis plantillas.', {
-          label: 'Editar',
-          icon: 'open',
+        notify("Guardado en Mis plantillas.", {
+          label: "Editar",
+          icon: "open",
           run: () => pick(id),
         });
     } catch (e) {
-      notify('No se pudo guardar la plantilla: ' + ((e as Error).message ?? 'error'));
+      notify(
+        "No se pudo guardar la plantilla: " + ((e as Error).message ?? "error"),
+      );
     }
   }
   /** Lleva la columna a otro tablero, con sus tarjetas. */
@@ -432,8 +1147,8 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     api.moveColumnToBoard(colId, target.id, rank);
     list.repointPin(colId, target.id);
     notify(`«${col.name.slice(0, 40)}» pasó a «${target.name.slice(0, 40)}».`, {
-      label: 'Ir allí',
-      icon: 'open',
+      label: "Ir allí",
+      icon: "open",
       run: () => {
         sessionStorage.setItem(BOARD_GO, JSON.stringify({ list: colId }));
         pick(target.id);
@@ -442,24 +1157,29 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   }
   function archiveDone(listId: string) {
     const done = (byList.get(listId) ?? []).filter(isDone);
-    const moved = done.map((c) => api.archiveCard(c.id)).filter((c): c is BoardCard => Boolean(c));
+    const moved = done
+      .map((c) => api.archiveCard(c.id))
+      .filter((c): c is BoardCard => Boolean(c));
     if (!moved.length) return;
     list.setArchived((n) => n + moved.length);
-    notify(`${moved.length} ${moved.length === 1 ? 'tarjeta archivada' : 'tarjetas archivadas'}.`, {
-      label: 'Deshacer',
-      icon: 'undo',
-      run: () => {
-        moved.forEach((c) => api.unarchiveCard(c));
-        list.setArchived((n) => Math.max(0, n - moved.length));
+    notify(
+      `${moved.length} ${moved.length === 1 ? "tarjeta archivada" : "tarjetas archivadas"}.`,
+      {
+        label: "Deshacer",
+        icon: "undo",
+        run: () => {
+          moved.forEach((c) => api.unarchiveCard(c));
+          list.setArchived((n) => Math.max(0, n - moved.length));
+        },
       },
-    });
+    );
   }
-  function sortList(listId: string, by: 'due' | 'name') {
+  function sortList(listId: string, by: "due" | "name") {
     const all = [...(byList.get(listId) ?? [])];
     all.sort((a, b) =>
-      by === 'name'
-        ? a.title.localeCompare(b.title, 'es', { sensitivity: 'base' })
-        : (a.due ?? '9999').localeCompare(b.due ?? '9999') || a.rank - b.rank,
+      by === "name"
+        ? a.title.localeCompare(b.title, "es", { sensitivity: "base" })
+        : (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.rank - b.rank,
     );
     api.reorder(all);
   }
@@ -473,50 +1193,269 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     if (!openCard) return;
     syncTask(openCard, ch);
     if (inArchive) return archive.patch(openCard.id, ch);
-    // Cambiar de columna desde la ficha: va al final de la nueva.
+    // Cambiar de columna desde la ficha: va al final de la nueva (y corren sus reglas).
     if (ch.list_id && ch.list_id !== openCard.list_id) {
       const { list_id, ...rest } = ch;
-      api.moveCard(openCard.id, list_id, byList.get(list_id)?.length ?? 0);
+      if (
+        moveWithRules([openCard.id], list_id, byList.get(list_id)?.length ?? 0) ===
+        null
+      )
+        return;
       if (Object.keys(rest).length) api.patchCard(openCard.id, rest);
       return;
     }
+    const was = openCard.checks;
     api.patchCard(openCard.id, ch);
+    if (
+      ch.checks?.length &&
+      ch.checks.every((x) => x.done) &&
+      !(was.length && was.every((x) => x.done))
+    )
+      fire([{ type: "checks", card: openCard.id, list: openCard.list_id }]);
   };
+
+  /**
+   * Añade tarjetas con escritura rápida: #etiqueta, @persona, !prioridad y **resaltada**. Las
+   * personas van en un pendiente vinculado (como al añadirlas desde la ficha).
+   */
+  function addFrom(listId: string, items: NewCardInput[]) {
+    const parsed = items
+      .map((i) => {
+        const raw = typeof i === "string" ? i : i.title;
+        const q = parseQuick(raw, workspace.people);
+        return {
+          input: {
+            title: q.title,
+            body: typeof i === "string" ? "" : (i.body ?? ""),
+            tags: q.tags,
+            priority: q.priority,
+            highlight: q.highlight,
+          },
+          people: q.people,
+        };
+      })
+      .filter((p) => p.input.title.trim());
+    if (!parsed.length) return;
+    const real = parsed.filter((p) => !isDivider(p.input.title)).length;
+    if (real && blocked(listId, real)) return;
+    if (!api.power && parsed.some((p) => p.input.priority || p.input.highlight))
+      notify(
+        "La prioridad y el resaltado no se guardaron: falta la migración 202611090002_board_power.sql.",
+      );
+    const made = api.addCards(
+      listId,
+      parsed.map((p) =>
+        api.power ? p.input : { ...p.input, priority: "" as const, highlight: false },
+      ),
+    );
+    made.forEach((card, k) => {
+      const ids = parsed[k]?.people ?? [];
+      if (!ids.length) return;
+      void createEntry(boardEntryInput(card, ids, false), true).then(
+        (e) => e && api.patchIfPresent(card.id, { entry_id: e.id }),
+      );
+    });
+    fire(
+      made
+        .filter((c) => !isDivider(c.title))
+        .map((c) => ({ type: "create" as const, card: c.id, list: listId })),
+    );
+  }
+
+  /** Pospone (o despierta, con null) estas tarjetas. */
+  function snoozeCards(ids: string[], until: string | null) {
+    if (!api.power) return notify("Para posponer ejecuta supabase/migrations/202611090002_board_power.sql en el SQL Editor de Supabase.");
+    const before = ids
+      .map((id) => api.peek(id))
+      .filter((c): c is BoardCard => Boolean(c))
+      .map((c) => ({ id: c.id, snoozed_until: c.snoozed_until }));
+    before.forEach((b) => api.patchCard(b.id, { snoozed_until: until }));
+    if (until) setSelection((s) => new Set([...s].filter((id) => !ids.includes(id))));
+    const n = before.length;
+    notify(
+      until
+        ? `${n === 1 ? "Pospuesta" : `${n} pospuestas`} hasta ${friendlyDate(until).toLowerCase()}. Vuelve${n === 1 ? "" : "n"} sola${n === 1 ? "" : "s"} ese día.`
+        : n === 1
+          ? "Tarjeta despierta: vuelve a su columna."
+          : `${n} tarjetas despiertas.`,
+      {
+        label: "Deshacer",
+        icon: "undo",
+        run: () =>
+          before.forEach((b) =>
+            api.patchIfPresent(b.id, { snoozed_until: b.snoozed_until }),
+          ),
+      },
+    );
+  }
+
+  // ── Acciones en grupo (selección) ──
+  /** Cambia campos de las seleccionadas; «Deshacer» deja cada una como estaba. */
+  function bulkPatch(
+    label: string,
+    fn: (c: BoardCard) => CardChanges | null,
+  ) {
+    const undo: { id: string; ch: CardChanges }[] = [];
+    for (const c of picked) {
+      const ch = fn(c);
+      if (!ch || !Object.keys(ch).length) continue;
+      const back = Object.fromEntries(
+        Object.keys(ch).map((k) => [k, c[k as keyof CardChanges]]),
+      ) as CardChanges;
+      undo.push({ id: c.id, ch: back });
+      api.patchCard(c.id, ch);
+      syncTask(c, ch);
+    }
+    if (!undo.length) return;
+    notify(`${label} · ${plural(undo.length, "tarjeta", "tarjetas")}.`, {
+      label: "Deshacer",
+      icon: "undo",
+      run: () => undo.forEach((u) => api.patchIfPresent(u.id, u.ch)),
+    });
+  }
+  function bulkDone() {
+    const allDone = picked.every(isDone);
+    const undos: (() => void)[] = [];
+    const events: Fired[] = [];
+    for (const c of pickedInOrder()) {
+      if (isDone(c) !== allDone) continue;
+      undos.push(
+        toggleDone(c, (ch) => api.patchCard(c.id, ch), {
+          rules: false,
+          quiet: true,
+        }),
+      );
+      if (!c.repeat)
+        events.push({
+          type: allDone ? "undone" : "done",
+          card: c.id,
+          list: c.list_id,
+        });
+    }
+    const undoAll = () => undos.forEach((u) => u());
+    // Si actúan reglas, su aviso trae «Deshacer» para todo (las reglas y el completar).
+    if (fire(events, undoAll)) return;
+    notify(
+      `${plural(undos.length, "tarjeta", "tarjetas")} ${allDone ? "sin completar" : "completada" + (undos.length === 1 ? "" : "s")}.`,
+      { label: "Deshacer", icon: "undo", run: undoAll },
+    );
+  }
+  function bulkMove(target: string) {
+    const before = picked.map((c) => ({
+      id: c.id,
+      list_id: c.list_id,
+      rank: c.rank,
+    }));
+    const back = () =>
+      before.forEach((b) =>
+        api.patchIfPresent(b.id, { list_id: b.list_id, rank: b.rank }),
+      );
+    const col = api.peekColumn(target);
+    const ruled = moveWithRules(
+      pickedInOrder().map((c) => c.id),
+      target,
+      byList.get(target)?.length ?? 0,
+      back,
+    );
+    if (ruled === null) return;
+    clearSelection();
+    if (ruled) return;
+    notify(
+      `${plural(before.length, "tarjeta movida", "tarjetas movidas")} a «${col?.name.slice(0, 40) ?? "la columna"}».`,
+      { label: "Deshacer", icon: "undo", run: back },
+    );
+  }
+  function bulkArchive() {
+    if (!api.extras) return notify(`Para archivar ejecuta ${BOARD_SQL} en el SQL Editor de Supabase.`);
+    const moved = picked
+      .map((c) => api.archiveCard(c.id))
+      .filter((c): c is BoardCard => Boolean(c));
+    clearSelection();
+    if (!moved.length) return;
+    list.setArchived((n) => n + moved.length);
+    notify(`${plural(moved.length, "tarjeta archivada", "tarjetas archivadas")}.`, {
+      label: "Deshacer",
+      icon: "undo",
+      run: () => {
+        moved.forEach((c) => api.unarchiveCard(c));
+        list.setArchived((n) => Math.max(0, n - moved.length));
+      },
+    });
+  }
+  function bulkDelete() {
+    const tied = links.of(picked.map((c) => c.id));
+    const removed = picked
+      .map((c) => api.deleteCard(c.id))
+      .filter((c): c is BoardCard => Boolean(c));
+    clearSelection();
+    if (!removed.length) return;
+    const keep = dropTasksLater(
+      removed.filter((c) => boardTask(c)).map((c) => c.entry_id),
+    );
+    notify(`${plural(removed.length, "tarjeta eliminada", "tarjetas eliminadas")}.`, {
+      label: "Deshacer",
+      icon: "undo",
+      run: () => {
+        keep();
+        removed.forEach((c) => api.restoreCard(c));
+        links.restore(tied);
+      },
+    });
+  }
 
   const bg = backgroundOf(board?.background);
   const realCards = api.cards.filter((c) => !isDivider(c.title));
   const activeCount = realCards.length;
   const doneCount = realCards.filter(isDone).length;
+  const snoozedCount = realCards.filter(isSnoozed).length;
   const cols = api.columns;
+  const aging = board?.settings.aging ?? 0;
+  const boardTags = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const c of api.cards)
+      for (const t of c.tags) {
+        const k = normalizeText(t);
+        if (!seen.has(k)) seen.set(k, t);
+      }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b, "es"));
+  }, [api.cards]);
 
   // ── Una columna ──
   const renderColumn = (col: (typeof cols)[number], i: number) => {
-    const every = byList.get(col.id) ?? [];
+    const every = orderedIn(col.id);
     // Los divisores («---») ordenan la columna, pero no cuentan como tarjetas.
-    const all = every.filter((c) => !isDivider(c.title));
-    const shown = every.filter((c) => visible(c) && !(drag?.kind === 'card' && drag.id === c.id));
+    const all = (byList.get(col.id) ?? []).filter((c) => !isDivider(c.title));
+    const shown = every.filter((c) => visible(c) && !dragging(c));
     const tone = toneOf(col.color);
     const done = all.filter(isDone).length;
+    const sleeping = all.filter(isSnoozed).length;
     const isPinned = list.pinned?.id === col.id;
-    const here = drag?.kind === 'card' && drag.list === col.id;
+    const here = drag?.kind === "card" && drag.list === col.id;
     const nextCol = cols[i + 1]?.id ?? null;
+    const cfg = col.rules;
+    const ruleCount = cfg.rules.filter((r) => r.on).length;
+    const count = all.length - sleeping;
+    const over = cfg.limit > 0 && count > cfg.limit;
+    const full = cfg.limit > 0 && count >= cfg.limit;
 
     // Plegada: una franja delgada con su nombre en vertical. Un clic la despliega.
     if (view.folded(col.id))
       return (
         <section
           key={col.id}
-          className={'bd-list folded' + (tone ? ' toned' : '')}
+          className={"bd-list folded" + (tone ? " toned" : "")}
           data-list={col.id}
-          data-flip={'l:' + col.id}
-          style={tone ? ({ '--lc': tone.c } as CSSProperties) : undefined}
+          data-flip={"l:" + col.id}
+          style={tone ? ({ "--lc": tone.c } as CSSProperties) : undefined}
         >
           <button
             type="button"
             className="bd-fold"
             title={`${col.name} · clic para desplegar, arrastra para mover`}
             aria-label={`Desplegar la columna ${col.name}`}
-            onPointerDown={(e) => dnd.start(e, { kind: 'list', id: col.id, before: nextCol })}
+            onPointerDown={(e) =>
+              dnd.start(e, { kind: "list", id: col.id, before: nextCol })
+            }
             onClick={() => !dnd.wasDrag() && view.setFolded([col.id], false)}
           >
             <UnfoldHorizontal size={15} className="bd-fold-icon" />
@@ -538,7 +1477,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         key="ph"
         className="bd-ph"
         data-flip="c:ph"
-        style={{ height: drag?.kind === 'card' ? drag.h : 0 }}
+        style={{ height: drag?.kind === "card" ? drag.h : 0 }}
       />
     );
     const items: ReactNode[] = [];
@@ -552,28 +1491,44 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             before={shown[j + 1]?.id ?? null}
             onDelete={() => deleteCard(c)}
             onDragStart={(e, before) =>
-              dnd.start(e, { kind: 'card', id: c.id, list: col.id, before })
+              dnd.start(e, { kind: "card", id: c.id, list: col.id, before })
             }
           />,
         );
         return;
       }
+      const cardDone = isDone(c);
       items.push(
         <CardTile
           key={c.id}
           card={c}
-          done={isDone(c)}
+          done={cardDone}
           linkedTask={linked(c)}
           before={shown[j + 1]?.id ?? null}
           open={view.open(c.id)}
           inline={inlineFor(c)}
+          selected={selection.has(c.id)}
+          age={ageOf(c, aging, cardDone, today)}
           onOpen={() => !dnd.wasDrag() && setOpenId(c.id)}
-          onToggle={() => toggleDone(c, (ch) => api.patchCard(c.id, ch))}
+          onSelect={(mode) => !dnd.wasDrag() && selectCard(c, mode)}
+          onToggle={() => void toggleDone(c, (ch) => api.patchCard(c.id, ch))}
           onDelete={() => deleteCard(c)}
           onArchive={() => archiveCard(c)}
+          onSnooze={(anchor) => setMenu({ kind: "snooze", id: c.id, anchor })}
           onDragStart={(e, before) =>
-            dnd.start(e, { kind: 'card', id: c.id, list: col.id, before })
+            dnd.start(e, { kind: "card", id: c.id, list: col.id, before })
           }
+          hooks={{ left: i > 0, right: i < cols.length - 1 }}
+          linkState={
+            linking
+              ? linking.id === c.id
+                ? "source"
+                : links.has(linking.id, c.id)
+                  ? "linked"
+                  : undefined
+              : undefined
+          }
+          onHook={(side) => setLinking({ id: c.id, list: col.id, side })}
         />,
       );
     });
@@ -581,14 +1536,22 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     return (
       <section
         key={col.id}
-        className={'bd-list' + (tone ? ' toned' : '') + (here ? ' over' : '')}
+        className={
+          "bd-list" +
+          (tone ? " toned" : "") +
+          (here ? " over" : "") +
+          (over ? " over-limit" : "") +
+          (linking?.list === col.id ? " link-from" : "")
+        }
         data-list={col.id}
-        data-flip={'l:' + col.id}
-        style={tone ? ({ '--lc': tone.c } as CSSProperties) : undefined}
+        data-flip={"l:" + col.id}
+        style={tone ? ({ "--lc": tone.c } as CSSProperties) : undefined}
       >
         <header
           className="bd-list-head"
-          onPointerDown={(e) => dnd.start(e, { kind: 'list', id: col.id, before: nextCol })}
+          onPointerDown={(e) =>
+            dnd.start(e, { kind: "list", id: col.id, before: nextCol })
+          }
         >
           {renaming === col.id ? (
             <TitleInput
@@ -618,11 +1581,39 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               <Pin size={13} />
             </span>
           )}
+          {renaming !== col.id && (ruleCount > 0 || cfg.sort || cfg.autoArchive > 0) && (
+            <button
+              type="button"
+              className="bd-list-rules"
+              data-nodrag
+              title={[
+                ruleCount && plural(ruleCount, "regla activa", "reglas activas"),
+                cfg.sort && `Orden: ${sortLabels[cfg.sort].toLowerCase()}`,
+                cfg.autoArchive && `Archiva lo completado a los ${cfg.autoArchive} días`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              aria-label="Reglas de la columna"
+              onClick={() => setRulesFor(col.id)}
+            >
+              {cfg.sort && !ruleCount ? (
+                <ArrowDownWideNarrow size={12} />
+              ) : (
+                <Zap size={12} />
+              )}
+              {ruleCount > 0 && <span>{ruleCount}</span>}
+            </button>
+          )}
           <span
-            className="bd-list-count"
-            title={`${all.length} ${all.length === 1 ? 'tarjeta' : 'tarjetas'}${done ? ` · ${done} completadas` : ''}`}
+            className={"bd-list-count" + (over ? " over" : full ? " full" : "")}
+            title={
+              `${all.length} ${all.length === 1 ? "tarjeta" : "tarjetas"}${done ? ` · ${done} completadas` : ""}${sleeping ? ` · ${sleeping} pospuestas` : ""}` +
+              (cfg.limit
+                ? ` · límite ${cfg.limit}${cfg.limitMode === "block" ? " (no deja pasar más)" : ""}`
+                : "")
+            }
           >
-            {all.length}
+            {cfg.limit ? `${count}/${cfg.limit}` : all.length}
           </span>
           <button
             type="button"
@@ -642,9 +1633,13 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             className="bd-icon bd-list-menu"
             data-nodrag
             aria-label="Opciones de la columna"
-            aria-expanded={menu?.kind === 'list' && menu.id === col.id}
+            aria-expanded={menu?.kind === "list" && menu.id === col.id}
             onClick={(e) =>
-              setMenu({ kind: 'list', id: col.id, anchor: e.currentTarget.getBoundingClientRect() })
+              setMenu({
+                kind: "list",
+                id: col.id,
+                anchor: e.currentTarget.getBoundingClientRect(),
+              })
             }
           >
             <MoreHorizontal size={17} />
@@ -653,24 +1648,69 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         <div
           className="bd-stack"
           data-stack
-          onDoubleClick={(e) => e.target === e.currentTarget && setComposer(col.id)}
+          onDoubleClick={(e) =>
+            e.target === e.currentTarget && setComposer(col.id)
+          }
         >
           {items}
           {!shown.length && !here && all.length > 0 && composer !== col.id && (
-            <p className="bd-list-none">{needle ? 'Nada coincide' : 'Todas completadas'}</p>
+            <p className="bd-list-none">
+              {needle
+                ? "Nada coincide"
+                : sleeping === all.length
+                  ? "Todas pospuestas"
+                  : "Todas completadas"}
+            </p>
           )}
           {composer === col.id && (
             <Composer
-              onAdd={(titles) => api.addCards(col.id, titles)}
+              people={workspace.people}
+              tags={boardTags}
+              onAdd={(titles) => addFrom(col.id, titles)}
               onClose={() => setComposer(null)}
             />
           )}
         </div>
-        {composer !== col.id && (
+        {(composer !== col.id || sleeping > 0) && (
           <footer className="bd-list-foot">
-            <button type="button" className="bd-add" onClick={() => setComposer(col.id)}>
-              <Plus size={16} /> Añade una tarjeta
-            </button>
+            {composer !== col.id && (
+              <button
+                type="button"
+                className="bd-add"
+                disabled={full && cfg.limitMode === "block"}
+                title={
+                  full && cfg.limitMode === "block"
+                    ? "La columna llegó a su límite"
+                    : undefined
+                }
+                onClick={() => setComposer(col.id)}
+              >
+                <Plus size={16} /> Añade una tarjeta
+              </button>
+            )}
+            {sleeping > 0 && !needle && (
+              <button
+                type="button"
+                className={"bd-snz-toggle" + (showSnoozed.has(col.id) ? " on" : "")}
+                aria-pressed={showSnoozed.has(col.id)}
+                title={
+                  showSnoozed.has(col.id)
+                    ? "Ocultar las pospuestas"
+                    : "Ver las pospuestas"
+                }
+                onClick={() =>
+                  setShowSnoozed((s) => {
+                    const n = new Set(s);
+                    if (n.has(col.id)) n.delete(col.id);
+                    else n.add(col.id);
+                    return n;
+                  })
+                }
+              >
+                <AlarmClock size={13} />
+                {plural(sleeping, "pospuesta", "pospuestas")}
+              </button>
+            )}
           </footer>
         )}
       </section>
@@ -690,7 +1730,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   const columns: ReactNode[] = [];
   cols.forEach((col, i) => {
     if (draftAt === i) columns.push(newColumn(i));
-    if (drag?.kind === 'list' && drag.before === col.id)
+    if (drag?.kind === "list" && drag.before === col.id)
       columns.push(
         <div
           key="lph"
@@ -699,10 +1739,10 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           style={{ width: drag.w, height: drag.h }}
         />,
       );
-    if (drag?.kind === 'list' && drag.id === col.id) return;
+    if (drag?.kind === "list" && drag.id === col.id) return;
     columns.push(renderColumn(col, i));
   });
-  if (drag?.kind === 'list' && drag.before === null)
+  if (drag?.kind === "list" && drag.before === null)
     columns.push(
       <div
         key="lph"
@@ -711,14 +1751,17 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         style={{ width: drag.w, height: drag.h }}
       />,
     );
-  if (draftAt !== null && draftAt >= cols.length) columns.push(newColumn(cols.length));
+  if (draftAt !== null && draftAt >= cols.length)
+    columns.push(newColumn(cols.length));
 
-  const menuCol = menu?.kind === 'list' ? cols.find((c) => c.id === menu.id) : undefined;
-  const moveCol = menu?.kind === 'move' ? cols.find((c) => c.id === menu.id) : undefined;
+  const menuCol =
+    menu?.kind === "list" ? cols.find((c) => c.id === menu.id) : undefined;
+  const moveCol =
+    menu?.kind === "move" ? cols.find((c) => c.id === menu.id) : undefined;
   // A dónde se puede mover una columna: tus otros tableros (o tus otras plantillas, si editas una).
-  const otherBoards = ((editingTemplate ? list.templates : list.boards) ?? []).filter(
-    (b) => b.id !== board?.id,
-  );
+  const otherBoards = (
+    (editingTemplate ? list.templates : list.boards) ?? []
+  ).filter((b) => b.id !== board?.id);
   const menuIdx = menuCol ? cols.indexOf(menuCol) : -1;
   const menuCards = menuCol ? (byList.get(menuCol.id) ?? []) : [];
   const menuDone = menuCards.filter(isDone).length;
@@ -726,8 +1769,10 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
 
   return (
     <section
-      className={'bd' + (bg.dark && !inArchive ? ' on-dark' : '')}
-      style={{ '--bd-bg': inArchive ? backgrounds[0].css : bg.css } as CSSProperties}
+      className={"bd" + (bg.dark && !inArchive ? " on-dark" : "")}
+      style={
+        { "--bd-bg": inArchive ? backgrounds[0].css : bg.css } as CSSProperties
+      }
     >
       <header className="bd-bar">
         {toggleMenu && (
@@ -744,22 +1789,32 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           type="button"
           className="bd-picker"
           aria-haspopup="menu"
-          aria-expanded={menu?.kind === 'picker'}
+          aria-expanded={menu?.kind === "picker"}
           onClick={(e) =>
-            setMenu({ kind: 'picker', anchor: e.currentTarget.getBoundingClientRect() })
+            setMenu({
+              kind: "picker",
+              anchor: e.currentTarget.getBoundingClientRect(),
+            })
           }
         >
-          <span className="bd-picker-mark" style={{ background: inArchive ? '#66727f' : bg.css }}>
+          <span
+            className="bd-picker-mark"
+            style={{ background: inArchive ? "#66727f" : bg.css }}
+          >
             {inArchive ? <Archive size={14} /> : <Columns3 size={14} />}
           </span>
-          <strong>{inArchive ? 'Archivados' : (board?.name ?? 'Tableros')}</strong>
+          <strong>
+            {inArchive ? "Archivados" : (board?.name ?? "Tableros")}
+          </strong>
           {editingTemplate && <span className="bd-picker-tag">Plantilla</span>}
           <ChevronDown size={15} />
         </button>
-        {board && !inArchive && api.status === 'ready' && (
+        {board && !inArchive && api.status === "ready" && (
           <span className="bd-stats">
-            {activeCount} {activeCount === 1 ? 'tarjeta' : 'tarjetas'}
-            {doneCount > 0 && ` · ${doneCount} ${doneCount === 1 ? 'completada' : 'completadas'}`}
+            {activeCount} {activeCount === 1 ? "tarjeta" : "tarjetas"}
+            {doneCount > 0 &&
+              ` · ${doneCount} ${doneCount === 1 ? "completada" : "completadas"}`}
+            {snoozedCount > 0 && ` · ${snoozedCount} pospuestas`}
           </span>
         )}
         <div className="bd-bar-end">
@@ -768,18 +1823,24 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               <Search size={15} aria-hidden="true" />
               <input
                 value={query}
-                placeholder={inArchive ? 'Buscar en archivados…' : 'Filtrar tarjetas…'}
+                placeholder={
+                  inArchive ? "Buscar en archivados…" : "Filtrar tarjetas…"
+                }
                 aria-label="Filtrar tarjetas"
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Escape' && query) {
+                  if (e.key === "Escape" && query) {
                     e.stopPropagation();
-                    setQuery('');
+                    setQuery("");
                   }
                 }}
               />
               {query && (
-                <button type="button" aria-label="Borrar el filtro" onClick={() => setQuery('')}>
+                <button
+                  type="button"
+                  aria-label="Borrar el filtro"
+                  onClick={() => setQuery("")}
+                >
                   <X size={13} />
                 </button>
               )}
@@ -789,10 +1850,18 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             <>
               <button
                 type="button"
-                className={'bd-icon' + (hideDone ? ' on' : '')}
+                className={"bd-icon" + (hideDone ? " on" : "")}
                 aria-pressed={hideDone}
-                title={hideDone ? 'Mostrar las completadas' : 'Ocultar las completadas'}
-                aria-label={hideDone ? 'Mostrar las completadas' : 'Ocultar las completadas'}
+                title={
+                  hideDone
+                    ? "Mostrar las completadas"
+                    : "Ocultar las completadas"
+                }
+                aria-label={
+                  hideDone
+                    ? "Mostrar las completadas"
+                    : "Ocultar las completadas"
+                }
                 onClick={() => setHideDone((v) => !v)}
               >
                 {hideDone ? <EyeOff size={17} /> : <Eye size={17} />}
@@ -808,9 +1877,12 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
                 type="button"
                 className="bd-icon"
                 aria-label="Opciones del tablero"
-                aria-expanded={menu?.kind === 'board'}
+                aria-expanded={menu?.kind === "board"}
                 onClick={(e) =>
-                  setMenu({ kind: 'board', anchor: e.currentTarget.getBoundingClientRect() })
+                  setMenu({
+                    kind: "board",
+                    anchor: e.currentTarget.getBoundingClientRect(),
+                  })
                 }
               >
                 <MoreHorizontal size={18} />
@@ -826,26 +1898,30 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             <LayoutTemplate size={15} />
           </span>
           <p>
-            <b>Editando la plantilla «{board.name}».</b> Los cambios se guardan solos y se usan en
-            los tableros nuevos que crees con ella.
+            <b>Editando la plantilla «{board.name}».</b> Los cambios se guardan
+            solos y se usan en los tableros nuevos que crees con ella.
           </p>
-          <button type="button" className="bd-btn sm" onClick={() => setGallery('m:' + board.id)}>
+          <button
+            type="button"
+            className="bd-btn sm"
+            onClick={() => setGallery("m:" + board.id)}
+          >
             <Plus size={14} /> Crear tablero con ella
           </button>
           <button
             type="button"
             className="bd-btn primary sm"
-            onClick={() => pick(list.boards?.[0]?.id ?? '')}
+            onClick={() => pick(list.boards?.[0]?.id ?? "")}
           >
             <Check size={14} /> Listo
           </button>
         </div>
       )}
 
-      {board && !inArchive && !api.extras && api.status === 'ready' && (
+      {board && !inArchive && !api.extras && api.status === "ready" && (
         <p className="bd-notice">
-          Para completar, archivar y dar color, ejecuta <code>{BOARD_SQL}</code> en el SQL Editor de
-          Supabase.
+          Para completar, archivar y dar color, ejecuta <code>{BOARD_SQL}</code>{" "}
+          en el SQL Editor de Supabase.
         </p>
       )}
 
@@ -860,6 +1936,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           <ArchiveView
             cards={archive.cards}
             missing={archive.missing}
+            loading={archive.loading}
             query={query}
             isDone={isDone}
             linked={linked}
@@ -875,11 +1952,11 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             }}
             onTemplates={(key) => setGallery(key)}
           />
-        ) : api.status === 'loading' ? (
+        ) : api.status === "loading" ? (
           <Skeleton />
-        ) : api.status === 'error' ? (
+        ) : api.status === "error" ? (
           <p className="bd-error" role="alert">
-            No se pudo cargar el tablero.{' '}
+            No se pudo cargar el tablero.{" "}
             <button type="button" onClick={() => void api.reload()}>
               Reintentar
             </button>
@@ -887,10 +1964,15 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         ) : (
           <div
             ref={canvas}
-            className="bd-canvas"
+            className={"bd-canvas" + (linking ? " linking" : "")}
             onPointerDown={(e) => {
-              if (e.button !== 0 || e.pointerType === 'touch' || e.target !== e.currentTarget)
+              if (
+                e.button !== 0 ||
+                e.pointerType === "touch" ||
+                e.target !== e.currentTarget
+              )
                 return;
+              clearSelection();
               pan.current = {
                 x: e.clientX,
                 left: e.currentTarget.scrollLeft,
@@ -905,29 +1987,40 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               const dx = e.clientX - p.x;
               if (!p.moved && Math.abs(dx) < 4) return;
               p.moved = true;
-              e.currentTarget.classList.add('panning');
+              e.currentTarget.classList.add("panning");
               e.currentTarget.scrollLeft = p.left - dx;
             }}
             onLostPointerCapture={(e) => {
               pan.current = null;
-              e.currentTarget.classList.remove('panning');
+              e.currentTarget.classList.remove("panning");
             }}
             onDoubleClick={(e) => {
               const t = e.target as HTMLElement;
-              if (t !== e.currentTarget && !t.classList.contains('bd-canvas-end')) return;
+              if (
+                t !== e.currentTarget &&
+                !t.classList.contains("bd-canvas-end")
+              )
+                return;
               setDraftAt(insertIndex(e.clientX));
             }}
             onWheel={(e) => {
               const el = canvas.current;
-              if (!el || e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-              const stack = (e.target as HTMLElement).closest<HTMLElement>('[data-stack]');
+              if (!el || e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX))
+                return;
+              const stack = (e.target as HTMLElement).closest<HTMLElement>(
+                "[data-stack]",
+              );
               if (stack && stack.scrollHeight > stack.clientHeight + 1) return;
               el.scrollLeft += e.deltaY;
             }}
           >
             {columns}
             {draftAt === null && !drag && (
-              <button type="button" className="bd-addlist" onClick={() => setDraftAt(cols.length)}>
+              <button
+                type="button"
+                className="bd-addlist"
+                onClick={() => setDraftAt(cols.length)}
+              >
                 <Plus size={16} /> Añade otra columna
                 <small>o haz doble clic en el fondo</small>
               </button>
@@ -936,10 +2029,23 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               <div className="bd-empty-hint">
                 <Columns3 size={22} />
                 <strong>Este tablero no tiene columnas</strong>
-                <span>Haz doble clic en cualquier parte del fondo para crear una, justo ahí.</span>
+                <span>
+                  Haz doble clic en cualquier parte del fondo para crear una,
+                  justo ahí.
+                </span>
               </div>
             )}
             <div className="bd-canvas-end" aria-hidden="true" />
+            <BoardLinks
+              canvas={canvas}
+              links={links.links}
+              order={cols.map((c) => c.id)}
+              hidden={Boolean(drag)}
+              linking={linking}
+              onPick={pickLink}
+              onCancel={cancelLink}
+              onUnlink={unlinkCards}
+            />
           </div>
         )}
       </div>
@@ -953,7 +2059,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             style={{ width: drag.w, transform: dnd.ghostAt() }}
             aria-hidden="true"
           >
-            {drag.kind === 'card'
+            {drag.kind === "card"
               ? (() => {
                   const c = api.cards.find((x) => x.id === drag.id);
                   if (!c) return null;
@@ -964,13 +2070,22 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
                       </div>
                     );
                   const tone = toneOf(c.color);
+                  const many = multi(c.id) ? picked.length : 0;
                   return (
                     <div
                       className={
-                        'bd-card lifted' + (isDone(c) ? ' done' : '') + (tone ? ' tinted' : '')
+                        "bd-card lifted" +
+                        (isDone(c) ? " done" : "") +
+                        (tone ? " tinted" : "") +
+                        (many ? " stacked" : "")
                       }
-                      style={tone ? ({ '--cc': tone.c } as CSSProperties) : undefined}
+                      style={
+                        tone ? ({ "--cc": tone.c } as CSSProperties) : undefined
+                      }
                     >
+                      {many > 0 && (
+                        <span className="bd-ghost-count">{many}</span>
+                      )}
                       <div className="bd-card-row">
                         <span className="bd-done" aria-pressed={isDone(c)}>
                           <Check size={11} strokeWidth={3.2} />
@@ -994,12 +2109,23 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
                   if (view.folded(col.id))
                     return (
                       <section
-                        className={'bd-list folded lifted' + (tone ? ' toned' : '')}
-                        style={tone ? ({ '--lc': tone.c } as CSSProperties) : undefined}
+                        className={
+                          "bd-list folded lifted" + (tone ? " toned" : "")
+                        }
+                        style={
+                          tone
+                            ? ({ "--lc": tone.c } as CSSProperties)
+                            : undefined
+                        }
                       >
                         <div className="bd-fold">
-                          <UnfoldHorizontal size={15} className="bd-fold-icon" />
-                          <span className="bd-list-count">{byList.get(col.id)?.length ?? 0}</span>
+                          <UnfoldHorizontal
+                            size={15}
+                            className="bd-fold-icon"
+                          />
+                          <span className="bd-list-count">
+                            {byList.get(col.id)?.length ?? 0}
+                          </span>
                           <span className="bd-fold-name">{col.name}</span>
                         </div>
                       </section>
@@ -1007,11 +2133,11 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
                   const some = (byList.get(col.id) ?? []).slice(0, 7);
                   return (
                     <section
-                      className={'bd-list lifted' + (tone ? ' toned' : '')}
+                      className={"bd-list lifted" + (tone ? " toned" : "")}
                       style={
                         {
                           maxHeight: Math.min(drag.h, 560),
-                          ...(tone && { '--lc': tone.c }),
+                          ...(tone && { "--lc": tone.c }),
                         } as CSSProperties
                       }
                     >
@@ -1020,17 +2146,27 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
                           {tone && <i className="bd-list-dot" />}
                           <span>{col.name}</span>
                         </span>
-                        <span className="bd-list-count">{byList.get(col.id)?.length ?? 0}</span>
+                        <span className="bd-list-count">
+                          {byList.get(col.id)?.length ?? 0}
+                        </span>
                       </header>
                       <div className="bd-stack">
                         {some.map((c) => (
-                          <div key={c.id} className={'bd-card' + (isDone(c) ? ' done' : '')}>
+                          <div
+                            key={c.id}
+                            className={"bd-card" + (isDone(c) ? " done" : "")}
+                          >
                             <div className="bd-card-row">
-                              <span className="bd-done" aria-pressed={isDone(c)}>
+                              <span
+                                className="bd-done"
+                                aria-pressed={isDone(c)}
+                              >
                                 <Check size={11} strokeWidth={3.2} />
                               </span>
                               <div className="bd-card-body">
-                                <span className="bd-card-title">{c.title}</span>
+                                <span className="bd-card-title">
+                                  <CardText text={c.title} whole={c.highlight} />
+                                </span>
                               </div>
                             </div>
                           </div>
@@ -1044,7 +2180,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         )}
 
       {/* Menús */}
-      {menu?.kind === 'picker' && (
+      {menu?.kind === "picker" && (
         <Popover
           anchor={menu.anchor}
           align="start"
@@ -1060,7 +2196,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
                 <button
                   type="button"
                   key={b.id}
-                  className={'bd-pick-item' + (on ? ' on' : '')}
+                  className={"bd-pick-item" + (on ? " on" : "")}
                   onClick={() => pick(b.id)}
                 >
                   <i style={{ background: backgroundOf(b.background).css }} />
@@ -1072,7 +2208,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           </div>
           <button
             type="button"
-            className={'bd-pick-item' + (inArchive ? ' on' : '')}
+            className={"bd-pick-item" + (inArchive ? " on" : "")}
             onClick={() => pick(ARCHIVE)}
           >
             <i className="arch">
@@ -1092,15 +2228,22 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
                     <button
                       type="button"
                       key={t.id}
-                      className={'bd-pick-item' + (on ? ' on' : '')}
+                      className={"bd-pick-item" + (on ? " on" : "")}
                       title="Editar la plantilla"
                       onClick={() => pick(t.id)}
                     >
-                      <i className="tpl" style={{ background: backgroundOf(t.background).css }}>
+                      <i
+                        className="tpl"
+                        style={{ background: backgroundOf(t.background).css }}
+                      >
                         <LayoutTemplate size={12} />
                       </i>
                       <span>{t.name}</span>
-                      {on ? <Check size={15} /> : <Pencil size={13} className="bd-pick-go" />}
+                      {on ? (
+                        <Check size={15} />
+                      ) : (
+                        <Pencil size={13} className="bd-pick-go" />
+                      )}
                     </button>
                   );
                 })}
@@ -1113,7 +2256,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             className="bd-pick-item bd-pick-new"
             onClick={() => {
               close();
-              setGallery('blank');
+              setGallery("blank");
             }}
           >
             <i className="new">
@@ -1125,15 +2268,23 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         </Popover>
       )}
 
-      {menu?.kind === 'board' && board && (
-        <Popover anchor={menu.anchor} width={286} label="Opciones del tablero" onClose={close}>
+      {menu?.kind === "board" && board && (
+        <Popover
+          anchor={menu.anchor}
+          width={286}
+          label="Opciones del tablero"
+          onClose={close}
+        >
           <p className="bd-pop-label">Nombre</p>
           <form
             className="bd-pop-form"
             onSubmit={(e) => {
               e.preventDefault();
-              const name = String(new FormData(e.currentTarget).get('name') ?? '').trim();
-              if (name && name !== board.name) list.update(board.id, { name: name.slice(0, 120) });
+              const name = String(
+                new FormData(e.currentTarget).get("name") ?? "",
+              ).trim();
+              if (name && name !== board.name)
+                list.update(board.id, { name: name.slice(0, 120) });
               close();
             }}
           >
@@ -1150,14 +2301,14 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             {backgrounds.map((b) => (
               <button
                 type="button"
-                key={b.key || 'base'}
+                key={b.key || "base"}
                 title={b.label}
-                aria-label={'Fondo ' + b.label}
-                aria-pressed={(board.background ?? '') === b.key}
+                aria-label={"Fondo " + b.label}
+                aria-pressed={(board.background ?? "") === b.key}
                 style={{ background: b.css }}
                 onClick={() => list.update(board.id, { background: b.key })}
               >
-                {(board.background ?? '') === b.key && <Check size={14} />}
+                {(board.background ?? "") === b.key && <Check size={14} />}
               </button>
             ))}
           </div>
@@ -1198,8 +2349,71 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               close();
             }}
           >
-            {hideDone ? 'Mostrar las completadas' : 'Ocultar las completadas'}
+            {hideDone ? "Mostrar las completadas" : "Ocultar las completadas"}
           </MenuItem>
+          {!editingTemplate && (
+            <>
+              <div className="bd-pop-sep" />
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={Boolean(board.settings.greeting)}
+                className="bd-pop-item bd-pop-check"
+                title="Nexo tendrá en cuenta lo que vence, lo prioritario y lo resaltado de este tablero al saludarte"
+                onClick={() => {
+                  const on = !board.settings.greeting;
+                  list.update(board.id, {
+                    settings: { ...board.settings, greeting: on },
+                  });
+                  notify(
+                    on
+                      ? `El saludo de Mi espacio tendrá en cuenta «${board.name.slice(0, 40)}».`
+                      : `«${board.name.slice(0, 40)}» ya no aparece en el saludo.`,
+                  );
+                }}
+              >
+                <Sparkles size={15} />
+                <span>
+                  En el saludo de Mi espacio
+                  <small className="bd-pop-sub">
+                    Solo los tableros que elijas
+                  </small>
+                </span>
+                <i className="bd-mini-switch" aria-hidden="true" />
+              </button>
+              <p className="bd-pop-label">
+                <Hourglass size={11} /> Tarjetas que envejecen
+              </p>
+              <div className="bd-pop-chips" role="radiogroup">
+                {(
+                  [
+                    [0, "No"],
+                    [7, "1 semana"],
+                    [14, "2 semanas"],
+                    [30, "1 mes"],
+                  ] as const
+                ).map(([n, label]) => (
+                  <button
+                    type="button"
+                    key={n}
+                    role="radio"
+                    aria-checked={(board.settings.aging ?? 0) === n}
+                    className={(board.settings.aging ?? 0) === n ? "on" : ""}
+                    onClick={() =>
+                      list.update(board.id, {
+                        settings: { ...board.settings, aging: n },
+                      })
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="bd-pop-note">
+                Las que pasan ese tiempo sin cambios se ven más apagadas.
+              </p>
+            </>
+          )}
           {!editingTemplate && (
             <MenuItem
               icon={<Archive size={15} />}
@@ -1213,7 +2427,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           {editingTemplate ? (
             <MenuItem
               icon={<Plus size={15} />}
-              onClick={() => (close(), setGallery('m:' + board.id))}
+              onClick={() => (close(), setGallery("m:" + board.id))}
             >
               Crear tablero con esta plantilla
             </MenuItem>
@@ -1230,17 +2444,24 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             danger
             onClick={() => (close(), void deleteBoard())}
           >
-            {editingTemplate ? 'Eliminar plantilla' : 'Eliminar tablero'}
+            {editingTemplate ? "Eliminar plantilla" : "Eliminar tablero"}
           </MenuItem>
         </Popover>
       )}
 
-      {menu?.kind === 'move' && moveCol && (
-        <Popover anchor={menu.anchor} width={286} label="Mover a otro tablero" onClose={close}>
+      {menu?.kind === "move" && moveCol && (
+        <Popover
+          anchor={menu.anchor}
+          width={286}
+          label="Mover a otro tablero"
+          onClose={close}
+        >
           <MoveColumnMenu
             column={moveCol}
             boards={otherBoards}
-            onBack={() => setMenu({ kind: 'list', id: moveCol.id, anchor: menu.anchor })}
+            onBack={() =>
+              setMenu({ kind: "list", id: moveCol.id, anchor: menu.anchor })
+            }
             onMove={(target, rank) => {
               close();
               moveToBoard(moveCol.id, target, rank);
@@ -1249,13 +2470,36 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         </Popover>
       )}
 
-      {menu?.kind === 'list' && menuCol && (
-        <Popover anchor={menu.anchor} label="Opciones de la columna" onClose={close}>
+      {menu?.kind === "list" && menuCol && (
+        <Popover
+          anchor={menu.anchor}
+          label="Opciones de la columna"
+          onClose={close}
+        >
           <p className="bd-pop-title">{menuCol.name}</p>
-          <MenuItem icon={<Plus size={15} />} onClick={() => (close(), setComposer(menuCol.id))}>
+          <MenuItem
+            icon={<Plus size={15} />}
+            onClick={() => (close(), setComposer(menuCol.id))}
+          >
             Añadir tarjeta
           </MenuItem>
-          <MenuItem icon={<Pencil size={15} />} onClick={() => (close(), setRenaming(menuCol.id))}>
+          <MenuItem
+            icon={<Zap size={15} />}
+            hint={
+              menuCol.rules.rules.filter((r) => r.on).length
+                ? String(menuCol.rules.rules.filter((r) => r.on).length)
+                : hasRules(menuCol.rules)
+                  ? "Sí"
+                  : undefined
+            }
+            onClick={() => (close(), setRulesFor(menuCol.id))}
+          >
+            Reglas y automatizaciones
+          </MenuItem>
+          <MenuItem
+            icon={<Pencil size={15} />}
+            onClick={() => (close(), setRenaming(menuCol.id))}
+          >
             Renombrar
           </MenuItem>
           <MenuItem
@@ -1271,8 +2515,10 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           <MenuItem
             icon={<FolderInput size={15} />}
             disabled={!otherBoards.length}
-            hint={otherBoards.length ? undefined : 'No hay otros'}
-            onClick={() => setMenu({ kind: 'move', id: menuCol.id, anchor: menu.anchor })}
+            hint={otherBoards.length ? undefined : "No hay otros"}
+            onClick={() =>
+              setMenu({ kind: "move", id: menuCol.id, anchor: menu.anchor })
+            }
           >
             Mover a otro tablero
           </MenuItem>
@@ -1281,7 +2527,8 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               icon={<PinOff size={15} />}
               onClick={() => {
                 close();
-                if (list.pin(null)) notify('La columna ya no está en Mi espacio.');
+                if (list.pin(null))
+                  notify("La columna ya no está en Mi espacio.");
               }}
             >
               Desanclar de Mi espacio
@@ -1290,11 +2537,19 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             <MenuItem
               icon={<Pin size={15} />}
               disabled={Boolean(list.pinned)}
-              hint={list.pinned ? 'Ya hay una' : undefined}
+              hint={list.pinned ? "Ya hay una" : undefined}
               onClick={() => {
                 close();
-                if (list.pin({ id: menuCol.id, name: menuCol.name, board_id: menuCol.board_id }))
-                  notify(`«${menuCol.name.slice(0, 40)}» quedó anclada en Mi espacio.`);
+                if (
+                  list.pin({
+                    id: menuCol.id,
+                    name: menuCol.name,
+                    board_id: menuCol.board_id,
+                  })
+                )
+                  notify(
+                    `«${menuCol.name.slice(0, 40)}» quedó anclada en Mi espacio.`,
+                  );
               }}
             >
               Anclar a Mi espacio
@@ -1309,16 +2564,16 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           <div className="bd-tones">
             <button
               type="button"
-              className={'none' + (!menuCol.color ? ' on' : '')}
+              className={"none" + (!menuCol.color ? " on" : "")}
               title="Sin color"
               aria-label="Sin color"
-              onClick={() => api.updateColumn(menuCol.id, { color: '' })}
+              onClick={() => api.updateColumn(menuCol.id, { color: "" })}
             />
             {tones.map((t) => (
               <button
                 type="button"
                 key={t.key}
-                className={menuCol.color === t.key ? 'on' : ''}
+                className={menuCol.color === t.key ? "on" : ""}
                 style={{ background: t.c }}
                 title={t.label}
                 aria-label={t.label}
@@ -1330,14 +2585,14 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           <MenuItem
             icon={<CalendarClock size={15} />}
             disabled={menuCards.length < 2}
-            onClick={() => (close(), sortList(menuCol.id, 'due'))}
+            onClick={() => (close(), sortList(menuCol.id, "due"))}
           >
             Ordenar por fecha límite
           </MenuItem>
           <MenuItem
             icon={<ArrowDownAZ size={15} />}
             disabled={menuCards.length < 2}
-            onClick={() => (close(), sortList(menuCol.id, 'name'))}
+            onClick={() => (close(), sortList(menuCol.id, "name"))}
           >
             Ordenar de la A a la Z
           </MenuItem>
@@ -1374,6 +2629,323 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         </Popover>
       )}
 
+      {menu?.kind === "snooze" && api.peek(menu.id) && (
+        <Popover
+          anchor={menu.anchor}
+          width={260}
+          label="Posponer"
+          onClose={close}
+        >
+          <SnoozeMenu
+            current={api.peek(menu.id)!.snoozed_until}
+            onPick={(until) => {
+              const id = menu.id;
+              close();
+              snoozeCards(
+                selection.has(id) && picked.length > 1
+                  ? picked.map((c) => c.id)
+                  : [id],
+                until,
+              );
+            }}
+          />
+        </Popover>
+      )}
+
+      {menu?.kind === "bulk" && picked.length > 0 && (
+        <Popover
+          anchor={menu.anchor}
+          width={menu.what === "color" ? 236 : 250}
+          label="Acción en grupo"
+          onClose={close}
+        >
+          {menu.what === "move" && (
+            <>
+              <p className="bd-pop-label">Mover a</p>
+              {cols.map((c) => {
+                const t = toneOf(c.color);
+                return (
+                  <button
+                    type="button"
+                    key={c.id}
+                    className="bd-pick-item"
+                    onClick={() => (close(), bulkMove(c.id))}
+                  >
+                    <i className="dot" style={{ background: t?.c ?? "#c3cbc5" }} />
+                    <span>{c.name}</span>
+                    <small>{byList.get(c.id)?.length ?? 0}</small>
+                  </button>
+                );
+              })}
+            </>
+          )}
+          {menu.what === "due" && (
+            <>
+              <p className="bd-pop-label">Fecha límite</p>
+              {(
+                [
+                  ["Hoy", today],
+                  ["Mañana", addDays(today, 1)],
+                  ["El lunes", nextMonday(today)],
+                  ["En 7 días", addDays(today, 7)],
+                ] as const
+              ).map(([label, d]) => (
+                <button
+                  type="button"
+                  key={label}
+                  className="bd-pick-item"
+                  onClick={() => {
+                    close();
+                    bulkPatch(`Fecha: ${label.toLowerCase()}`, (c) =>
+                      c.due === d ? null : { due: d },
+                    );
+                  }}
+                >
+                  <CalendarClock size={14} className="bd-pick-lead" />
+                  <span>{label}</span>
+                  <small>{friendlyDate(d, today)}</small>
+                </button>
+              ))}
+              <label className="bd-snz-date">
+                <span>Otra fecha</span>
+                <input
+                  type="date"
+                  onChange={(e) => {
+                    const d = e.target.value;
+                    if (!d) return;
+                    close();
+                    bulkPatch(`Fecha: ${friendlyDate(d).toLowerCase()}`, (c) =>
+                      c.due === d ? null : { due: d },
+                    );
+                  }}
+                />
+              </label>
+              <div className="bd-pop-sep" />
+              <button
+                type="button"
+                className="bd-pick-item"
+                onClick={() => {
+                  close();
+                  bulkPatch("Sin fecha", (c) =>
+                    c.due ? { due: null, ...(c.repeat && { repeat: "" as const }) } : null,
+                  );
+                }}
+              >
+                <X size={14} className="bd-pick-lead" />
+                <span>Quitar la fecha</span>
+              </button>
+            </>
+          )}
+          {menu.what === "prio" && (
+            <>
+              <p className="bd-pop-label">Prioridad</p>
+              {([...PRIORITIES, ""] as Priority[]).map((p) => (
+                <button
+                  type="button"
+                  key={p || "none"}
+                  className="bd-pick-item"
+                  onClick={() => {
+                    close();
+                    bulkPatch(
+                      p ? `Prioridad ${priorityLabels[p].toLowerCase()}` : "Sin prioridad",
+                      (c) => (c.priority === p ? null : { priority: p }),
+                    );
+                  }}
+                >
+                  <Flag size={14} className={"bd-pick-lead bd-prio-ico " + (p || "none")} />
+                  <span>{priorityLabels[p]}</span>
+                </button>
+              ))}
+            </>
+          )}
+          {menu.what === "tag" && (
+            <BulkTags
+              tags={boardTags}
+              picked={picked}
+              onAdd={(t) => {
+                close();
+                bulkPatch(`Etiqueta «${t}»`, (c) =>
+                  c.tags.some((x) => normalizeText(x) === normalizeText(t))
+                    ? null
+                    : { tags: [...c.tags, t] },
+                );
+              }}
+              onRemove={(t) => {
+                close();
+                bulkPatch(`Sin «${t}»`, (c) =>
+                  c.tags.some((x) => normalizeText(x) === normalizeText(t))
+                    ? {
+                        tags: c.tags.filter(
+                          (x) => normalizeText(x) !== normalizeText(t),
+                        ),
+                      }
+                    : null,
+                );
+              }}
+            />
+          )}
+          {menu.what === "color" && (
+            <>
+              <p className="bd-pop-label">Color</p>
+              <div className="bd-tones">
+                <button
+                  type="button"
+                  className="none"
+                  title="Sin color"
+                  aria-label="Sin color"
+                  onClick={() => {
+                    close();
+                    bulkPatch("Sin color", (c) => (c.color ? { color: "" } : null));
+                  }}
+                />
+                {tones.map((t) => (
+                  <button
+                    type="button"
+                    key={t.key}
+                    style={{ background: t.c }}
+                    title={t.label}
+                    aria-label={t.label}
+                    onClick={() => {
+                      close();
+                      bulkPatch(`Color ${t.label.toLowerCase()}`, (c) =>
+                        c.color === t.key ? null : { color: t.key },
+                      );
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+          {menu.what === "snooze" && (
+            <SnoozeMenu
+              onPick={(until) => {
+                close();
+                snoozeCards(
+                  picked.map((c) => c.id),
+                  until,
+                );
+              }}
+            />
+          )}
+        </Popover>
+      )}
+
+      {picked.length > 0 &&
+        !inArchive &&
+        createPortal(
+          <div
+            className={"bd-bulk" + (bg.dark ? " on-dark" : "")}
+            role="toolbar"
+            aria-label="Acciones con las seleccionadas"
+          >
+            <span className="bd-bulk-count">
+              <b>{picked.length}</b>{" "}
+              {picked.length === 1 ? "seleccionada" : "seleccionadas"}
+            </span>
+            <i className="bd-bulk-sep" />
+            <button type="button" onClick={bulkDone}>
+              {picked.every(isDone) ? (
+                <RotateCcw size={15} />
+              ) : (
+                <Check size={15} />
+              )}
+              <span>{picked.every(isDone) ? "Reabrir" : "Completar"}</span>
+            </button>
+            {(
+              [
+                ["move", <FolderInput size={15} key="i" />, "Mover"],
+                ["due", <CalendarClock size={15} key="i" />, "Fecha"],
+                ["prio", <Flag size={15} key="i" />, "Prioridad"],
+                ["tag", <Tag size={15} key="i" />, "Etiqueta"],
+                ["color", <Palette size={15} key="i" />, "Color"],
+                ["snooze", <AlarmClock size={15} key="i" />, "Posponer"],
+              ] as const
+            ).map(([what, icon, label]) => (
+              <button
+                type="button"
+                key={what}
+                aria-haspopup="menu"
+                aria-expanded={menu?.kind === "bulk" && menu.what === what}
+                disabled={
+                  !api.power && (what === "prio" || what === "snooze")
+                }
+                onClick={(e) =>
+                  setMenu({
+                    kind: "bulk",
+                    what,
+                    anchor: e.currentTarget.getBoundingClientRect(),
+                  })
+                }
+              >
+                {icon}
+                <span>{label}</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              disabled={!api.power}
+              title={
+                picked.every((c) => c.highlight)
+                  ? "Quitar el resaltado"
+                  : "Resaltar"
+              }
+              onClick={() => {
+                const on = !picked.every((c) => c.highlight);
+                bulkPatch(on ? "Resaltadas" : "Sin resaltar", (c) =>
+                  c.highlight === on ? null : { highlight: on },
+                );
+              }}
+            >
+              <Highlighter size={15} />
+              <span>Resaltar</span>
+            </button>
+            <i className="bd-bulk-sep" />
+            <button type="button" title="Archivar" onClick={bulkArchive}>
+              <Archive size={15} />
+            </button>
+            <button
+              type="button"
+              className="danger"
+              title="Eliminar"
+              onClick={bulkDelete}
+            >
+              <Trash2 size={15} />
+            </button>
+            <button
+              type="button"
+              className="bd-bulk-x"
+              title="Deseleccionar (Esc)"
+              aria-label="Deseleccionar"
+              onClick={clearSelection}
+            >
+              <X size={15} />
+            </button>
+          </div>,
+          document.body,
+        )}
+
+      {rulesFor &&
+        (() => {
+          const col = cols.find((c) => c.id === rulesFor);
+          if (!col) return null;
+          return (
+            <RulesEditor
+              key={col.id}
+              column={col}
+              columns={cols}
+              cards={(byList.get(col.id) ?? []).filter(
+                (c) => !isDivider(c.title),
+              )}
+              tags={boardTags}
+              power={api.power}
+              ctx={ruleCtx}
+              onSave={(rules) => api.updateColumn(col.id, { rules })}
+              onRunNow={(rule) => runRuleNow(rule, col.id)}
+              onClose={() => setRulesFor(null)}
+            />
+          );
+        })()}
+
       {gallery !== null && (
         <TemplateGallery
           list={list}
@@ -1391,9 +2963,13 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           columns={inArchive ? [] : cols}
           done={isDone(openCard)}
           extras={inArchive || api.extras}
+          power={api.power}
+          aging={aging}
           onPatch={patchOpen}
-          onToggleDone={() => toggleDone(openCard, patchOpen)}
-          onArchive={() => (inArchive ? unarchive(openCard) : archiveCard(openCard))}
+          onToggleDone={() => void toggleDone(openCard, patchOpen)}
+          onArchive={() =>
+            inArchive ? unarchive(openCard) : archiveCard(openCard)
+          }
           onDelete={() => {
             setOpenId(null);
             if (inArchive) deleteArchived(openCard);
@@ -1403,6 +2979,80 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         />
       )}
     </section>
+  );
+}
+
+/** Etiqueta para las seleccionadas: escribir una nueva, elegir una del tablero o quitar una que tengan. */
+function BulkTags({
+  tags,
+  picked,
+  onAdd,
+  onRemove,
+}: {
+  tags: string[];
+  picked: BoardCard[];
+  onAdd: (t: string) => void;
+  onRemove: (t: string) => void;
+}) {
+  const [text, setText] = useState("");
+  const theirs = [
+    ...new Map(
+      picked.flatMap((c) => c.tags).map((t) => [normalizeText(t), t]),
+    ).values(),
+  ];
+  const q = normalizeText(text.trim());
+  const shown = tags
+    .filter((t) => !q || normalizeText(t).includes(q))
+    .slice(0, 8);
+  return (
+    <>
+      <p className="bd-pop-label">Añadir etiqueta</p>
+      <form
+        className="bd-pop-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const t = text.replace(/^#/, "").trim();
+          if (t) onAdd(t.slice(0, 40));
+        }}
+      >
+        <Tag size={14} />
+        <input
+          autoFocus
+          value={text}
+          maxLength={40}
+          placeholder="Nueva o existente…"
+          aria-label="Etiqueta"
+          onChange={(e) => setText(e.target.value)}
+        />
+      </form>
+      <div className="bd-pop-tags">
+        {shown.map((t) => {
+          const tone = tagTone(t);
+          return (
+            <button
+              type="button"
+              key={t}
+              style={{ "--tc": tone.c, "--ts": tone.s } as CSSProperties}
+              onClick={() => onAdd(t)}
+            >
+              {t}
+            </button>
+          );
+        })}
+      </div>
+      {theirs.length > 0 && (
+        <>
+          <p className="bd-pop-label">Quitar</p>
+          <div className="bd-pop-tags remove">
+            {theirs.map((t) => (
+              <button type="button" key={t} onClick={() => onRemove(t)}>
+                {t} <X size={11} />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
@@ -1421,7 +3071,7 @@ function TitleInput({
   const end = (save: boolean) => {
     if (done.current) return;
     done.current = true;
-    if (save) onDone(v.replace(/\s+/g, ' ').trim());
+    if (save) onDone(v.replace(/\s+/g, " ").trim());
     else onCancel();
   };
   return (
@@ -1435,10 +3085,10 @@ function TitleInput({
       onChange={(e) => setV(e.target.value)}
       onBlur={() => end(true)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') {
+        if (e.key === "Enter") {
           e.preventDefault();
           end(true);
-        } else if (e.key === 'Escape') {
+        } else if (e.key === "Escape") {
           e.preventDefault();
           e.stopPropagation();
           end(false);
@@ -1450,59 +3100,115 @@ function TitleInput({
 
 /** Lo pegado con varias líneas, a la espera de que elijas cómo añadirlo. */
 type Pending = { text: string; lines: string[] };
-/** Máximo de tarjetas de una vez al pegar. */
-const PASTE_MAX = 100;
 /** Viñetas de lista al inicio de una línea («- », «• », «1. », «[ ] »). «---» no cuenta. */
-const BULLET = /^\s*(?:[-*•·▪◦□■☐✓✔]|\d{1,3}[.)])\s+(?:\[[ xX]\]\s+)?|^\s*\[[ xX]\]\s+/;
+const BULLET =
+  /^\s*(?:[-*•·▪◦□■☐✓✔]|\d{1,3}[.)])\s+(?:\[[ xX]\]\s+)?|^\s*\[[ xX]\]\s+/;
 const linesOf = (text: string) =>
   text
     .split(/\r?\n/)
-    .map((l) => l.replace(BULLET, '').trim())
+    .map((l) => l.replace(BULLET, "").trim())
     .filter(Boolean);
 
 /**
  * Añadir tarjetas escribiendo: Enter añade y deja el campo listo para la siguiente. Si pegas un
- * texto con varias líneas, pregunta si son varias tarjetas (una por línea) o una sola.
+ * texto con varias líneas, pregunta si son varias tarjetas (una por línea) o una sola. Escritura
+ * rápida: #etiqueta, @persona, !prioridad y **resaltada**, con sugerencias mientras escribes.
  */
 function Composer({
+  people,
+  tags,
   onAdd,
   onClose,
 }: {
+  people: Person[];
+  tags: string[];
   onAdd: (items: NewCardInput[]) => void;
   onClose: () => void;
 }) {
-  const [text, setText] = useState('');
+  const [text, setText] = useState("");
   const [pending, setPending] = useState<Pending | null>(null);
+  const [caret, setCaret] = useState(0);
+  const [pickIdx, setPickIdx] = useState(0);
+  const [noSuggest, setNoSuggest] = useState(false);
   const form = useRef<HTMLFormElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   const latest = useRef({ text, pending, onClose });
   latest.current = { text, pending, onClose };
   useEffect(() => {
-    form.current?.scrollIntoView({ block: 'nearest' });
+    form.current?.scrollIntoView({ block: "nearest" });
     // Un clic fuera con el campo vacío lo cierra (con texto o algo pegado, lo deja por si vuelves).
     const down = (e: PointerEvent) => {
       const { text, pending, onClose } = latest.current;
-      if (!form.current?.contains(e.target as Node) && !text.trim() && !pending) onClose();
+      if (!form.current?.contains(e.target as Node) && !text.trim() && !pending)
+        onClose();
     };
-    document.addEventListener('pointerdown', down, true);
-    return () => document.removeEventListener('pointerdown', down, true);
+    document.addEventListener("pointerdown", down, true);
+    return () => document.removeEventListener("pointerdown", down, true);
   }, []);
   useEffect(() => {
-    if (pending) requestAnimationFrame(() => form.current?.scrollIntoView({ block: 'nearest' }));
+    if (pending)
+      requestAnimationFrame(() =>
+        form.current?.scrollIntoView({ block: "nearest" }),
+      );
   }, [pending]);
 
-  const lines = text.split('\n').filter((l) => l.trim()).length;
-  const done = () => {
-    setText('');
-    setPending(null);
+  const lines = text.split("\n").filter((l) => l.trim()).length;
+  // Sugerencias para la @ o el # que estás escribiendo.
+  const token = pending || noSuggest ? null : tokenAt(text, caret);
+  const suggestions = useMemo(() => {
+    if (!token) return [];
+    const q = normalizeText(token.query);
+    if (token.kind === "@") {
+      const starts = (p: Person) =>
+        normalizeText(p.name)
+          .split(/\s+/)
+          .some((w) => w.startsWith(q)) ||
+        normalizeText(p.profile.alias ?? "").startsWith(q);
+      return people
+        .filter((p) => !q || starts(p))
+        .sort(
+          (a, b) =>
+            Number(Boolean(b.profile.favorite)) -
+              Number(Boolean(a.profile.favorite)) ||
+            a.name.localeCompare(b.name, "es"),
+        )
+        .slice(0, 6)
+        .map((p) => ({ key: p.id, label: p.name, insert: "@" + p.name, person: p }));
+    }
+    return tags
+      .filter((t) => normalizeText(t).startsWith(q) && normalizeText(t) !== q)
+      .slice(0, 6)
+      .map((t) => ({ key: t, label: t, insert: "#" + t, person: undefined }));
+  }, [token?.kind, token?.query, people, tags]);
+  const choose = (s: (typeof suggestions)[number]) => {
+    if (!token) return;
+    const next = text.slice(0, token.start) + s.insert + " " + text.slice(caret);
+    const at = token.start + s.insert.length + 1;
+    setText(next);
+    setPickIdx(0);
     requestAnimationFrame(() => {
       area.current?.focus();
-      form.current?.scrollIntoView({ block: 'nearest' });
+      area.current?.setSelectionRange(at, at);
+      setCaret(at);
+    });
+  };
+  // Lo que entenderá de la escritura rápida (con una sola tarjeta).
+  const quick =
+    !pending && lines === 1 ? parseQuick(text.trim(), people) : null;
+  const preview = quick && hasQuick(quick) ? quick : null;
+
+  const done = () => {
+    setText("");
+    setPending(null);
+    setCaret(0);
+    requestAnimationFrame(() => {
+      area.current?.focus();
+      form.current?.scrollIntoView({ block: "nearest" });
     });
   };
   const submit = () => {
     const titles = text
-      .split('\n')
+      .split("\n")
       .map((t) => t.trim())
       .filter(Boolean);
     if (!titles.length) return;
@@ -1513,26 +3219,25 @@ function Composer({
   // ── Lo pegado ──
   const asMany = () => {
     if (!pending) return;
-    onAdd(pending.lines.slice(0, PASTE_MAX));
+    onAdd(pending.lines);
     done();
   };
   /** Una sola: la primera línea es el título y el resto, la descripción. */
   const asOne = () => {
     if (!pending) return;
-    const all = pending.text.replace(/\r\n?/g, '\n').trim();
-    const [first, ...rest] = all.split('\n');
-    const title = first.trim();
+    const all = pending.text.replace(/\r\n?/g, "\n").trim();
+    const [first, ...rest] = all.split("\n");
     const body = rest
-      .join('\n')
-      .replace(/\n{3,}/g, '\n\n')
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
       .trim();
-    onAdd([title.length > 240 ? { title: title.slice(0, 240), body: all } : { title, body }]);
+    onAdd([{ title: first, body }]);
     done();
   };
   /** Pegarlo tal cual en el campo, para editarlo antes. */
   const asText = () => {
     if (!pending) return;
-    const value = pending.text.replace(/\r\n?/g, '\n').slice(0, 4000);
+    const value = pending.text.replace(/\r\n?/g, "\n");
     setText(value);
     setPending(null);
     requestAnimationFrame(() => {
@@ -1547,11 +3252,11 @@ function Composer({
     requestAnimationFrame(() => area.current?.focus());
   };
 
-  const many = pending ? Math.min(pending.lines.length, PASTE_MAX) : 0;
+  const many = pending ? pending.lines.length : 0;
   return (
     <form
       ref={form}
-      className={'bd-composer' + (pending ? ' asking' : '')}
+      className={"bd-composer" + (pending ? " asking" : "")}
       data-flip="c:composer"
       onSubmit={(e) => {
         e.preventDefault();
@@ -1562,27 +3267,58 @@ function Composer({
         ref={area}
         autoFocus
         rows={2}
-        maxLength={4000}
         value={text}
         readOnly={Boolean(pending)}
         placeholder="Escribe un título para esta tarjeta…"
         aria-label="Título de la tarjeta nueva"
-        onChange={(e) => setText(e.target.value)}
+        aria-autocomplete="list"
+        aria-expanded={suggestions.length > 0}
+        onChange={(e) => {
+          setText(e.target.value);
+          setCaret(e.target.selectionStart ?? e.target.value.length);
+          setPickIdx(0);
+          setNoSuggest(false);
+        }}
+        onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
         onPaste={(e) => {
-          const clip = e.clipboardData.getData('text');
+          const clip = e.clipboardData.getData("text");
           if (!/\r?\n/.test(clip.trim())) return;
           const el = e.currentTarget;
-          const merged = text.slice(0, el.selectionStart) + clip + text.slice(el.selectionEnd);
+          const merged =
+            text.slice(0, el.selectionStart) +
+            clip +
+            text.slice(el.selectionEnd);
           const found = linesOf(merged);
           if (found.length < 2) return;
           e.preventDefault();
           setPending({ text: merged, lines: found });
         }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
+          if (suggestions.length) {
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              const step = e.key === "ArrowDown" ? 1 : -1;
+              setPickIdx(
+                (i) => (i + step + suggestions.length) % suggestions.length,
+              );
+              return;
+            }
+            if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+              e.preventDefault();
+              choose(suggestions[Math.min(pickIdx, suggestions.length - 1)]);
+              return;
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              setNoSuggest(true);
+              return;
+            }
+          }
+          if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             submit();
-          } else if (e.key === 'Escape') {
+          } else if (e.key === "Escape") {
             e.preventDefault();
             e.stopPropagation();
             onClose();
@@ -1590,13 +3326,86 @@ function Composer({
         }}
       />
 
+      {suggestions.length > 0 && (
+        <ul className="bd-suggest" role="listbox" aria-label="Sugerencias">
+          {suggestions.map((s, i) => (
+            <li key={s.key}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={i === pickIdx}
+                className={i === pickIdx ? "on" : ""}
+                onPointerDown={(e) => e.preventDefault()}
+                onMouseMove={() => i !== pickIdx && setPickIdx(i)}
+                onClick={() => choose(s)}
+              >
+                {s.person ? (
+                  <Avatar person={s.person} size={20} />
+                ) : (
+                  <i
+                    className="bd-suggest-tag"
+                    style={{ background: tagTone(s.label).c }}
+                  />
+                )}
+                <span>{s.label}</span>
+                {i === pickIdx && <kbd>Tab</kbd>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {preview && (
+        <div className="bd-quick" aria-live="polite">
+          {preview.highlight && (
+            <span className="bd-quick-chip hl">
+              <Highlighter size={11} /> Resaltada
+            </span>
+          )}
+          {preview.priority && (
+            <span className={"bd-quick-chip bd-prio " + preview.priority}>
+              <Flag size={11} /> {priorityLabels[preview.priority]}
+            </span>
+          )}
+          {preview.tags.map((t) => {
+            const tone = tagTone(t);
+            return (
+              <span
+                key={t}
+                className="bd-quick-chip tag"
+                style={{ "--tc": tone.c, "--ts": tone.s } as CSSProperties}
+              >
+                #{t}
+              </span>
+            );
+          })}
+          {preview.people.map((id) => {
+            const p = people.find((x) => x.id === id);
+            return p ? (
+              <span key={id} className="bd-quick-chip person">
+                <Avatar person={p} size={16} /> {p.name.split(" ")[0]}
+              </span>
+            ) : null;
+          })}
+          {preview.unknown.map((u) => (
+            <span
+              key={u}
+              className="bd-quick-chip unknown"
+              title="No hay nadie con ese nombre en tu gente"
+            >
+              @{u}?
+            </span>
+          ))}
+        </div>
+      )}
+
       {pending ? (
         <div
           className="bd-paste"
           role="dialog"
           aria-label="¿Cómo añado lo que pegaste?"
           onKeyDown={(e) => {
-            if (e.key !== 'Escape') return;
+            if (e.key !== "Escape") return;
             e.preventDefault();
             e.stopPropagation();
             dismiss();
@@ -1610,7 +3419,12 @@ function Composer({
               <b>Pegaste {pending.lines.length} líneas</b>
               <small>¿Cómo las añado?</small>
             </span>
-            <button type="button" className="bd-paste-x" aria-label="Cancelar" onClick={dismiss}>
+            <button
+              type="button"
+              className="bd-paste-x"
+              aria-label="Cancelar"
+              onClick={dismiss}
+            >
               <X size={14} />
             </button>
           </header>
@@ -1619,20 +3433,23 @@ function Composer({
             {pending.lines.slice(0, 3).map((l, i) => (
               <li key={i}>{l}</li>
             ))}
-            {pending.lines.length > 3 && <li className="more">y {pending.lines.length - 3} más</li>}
+            {pending.lines.length > 3 && (
+              <li className="more">y {pending.lines.length - 3} más</li>
+            )}
           </ol>
 
-          <button type="button" className="bd-paste-opt primary" autoFocus onClick={asMany}>
+          <button
+            type="button"
+            className="bd-paste-opt primary"
+            autoFocus
+            onClick={asMany}
+          >
             <SquareStack size={16} />
             <span>
               <b>
-                {many} {many === 1 ? 'tarjeta' : 'tarjetas'}
+                {many} {many === 1 ? "tarjeta" : "tarjetas"}
               </b>
-              <small>
-                {pending.lines.length > PASTE_MAX
-                  ? `Una por línea (las primeras ${PASTE_MAX})`
-                  : 'Una por línea'}
-              </small>
+              <small>Una por línea</small>
             </span>
             <kbd>Enter</kbd>
           </button>
@@ -1640,7 +3457,9 @@ function Composer({
             <RectangleHorizontal size={16} />
             <span>
               <b>Una sola tarjeta</b>
-              <small>La primera línea es el título; el resto, la descripción</small>
+              <small>
+                La primera línea es el título; el resto, la descripción
+              </small>
             </span>
           </button>
           <button type="button" className="bd-paste-text" onClick={asText}>
@@ -1650,14 +3469,16 @@ function Composer({
       ) : (
         <div className="bd-composer-foot">
           <button type="submit" className="bd-btn primary" disabled={!lines}>
-            {lines > 1 ? `Añadir ${lines} tarjetas` : 'Añadir tarjeta'}
+            {lines > 1 ? `Añadir ${lines} tarjetas` : "Añadir tarjeta"}
           </button>
-          <button type="button" className="bd-icon" aria-label="Cancelar" onClick={onClose}>
+          <button
+            type="button"
+            className="bd-icon"
+            aria-label="Cancelar"
+            onClick={onClose}
+          >
             <X size={17} />
           </button>
-          <small>
-            {lines > 1 ? 'Una tarjeta por línea' : 'Enter añade · Shift+Enter, otra línea'}
-          </small>
         </div>
       )}
     </form>
@@ -1665,30 +3486,46 @@ function Composer({
 }
 
 /** Columna nueva en el sitio (donde hiciste doble clic o al final). */
-function NewColumn({ onAdd, onClose }: { onAdd: (name: string) => void; onClose: () => void }) {
-  const [name, setName] = useState('');
+function NewColumn({
+  onAdd,
+  onClose,
+}: {
+  onAdd: (name: string) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
   const box = useRef<HTMLFormElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const latest = useRef({ name, onClose });
   latest.current = { name, onClose };
   useEffect(() => {
-    box.current?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    box.current?.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+      behavior: "smooth",
+    });
     const down = (e: PointerEvent) => {
-      if (!box.current?.contains(e.target as Node) && !latest.current.name.trim())
+      if (
+        !box.current?.contains(e.target as Node) &&
+        !latest.current.name.trim()
+      )
         latest.current.onClose();
     };
     // Tras el doble clic que la creó.
-    const t = window.setTimeout(() => document.addEventListener('pointerdown', down, true), 50);
+    const t = window.setTimeout(
+      () => document.addEventListener("pointerdown", down, true),
+      50,
+    );
     return () => {
       window.clearTimeout(t);
-      document.removeEventListener('pointerdown', down, true);
+      document.removeEventListener("pointerdown", down, true);
     };
   }, []);
   const submit = () => {
-    const n = name.replace(/\s+/g, ' ').trim();
+    const n = name.replace(/\s+/g, " ").trim();
     if (!n) return;
     onAdd(n);
-    setName('');
+    setName("");
     input.current?.focus();
   };
   return (
@@ -1710,7 +3547,7 @@ function NewColumn({ onAdd, onClose }: { onAdd: (name: string) => void; onClose:
         aria-label="Nombre de la columna nueva"
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Escape') {
+          if (e.key === "Escape") {
             e.preventDefault();
             e.stopPropagation();
             onClose();
@@ -1718,10 +3555,19 @@ function NewColumn({ onAdd, onClose }: { onAdd: (name: string) => void; onClose:
         }}
       />
       <div className="bd-composer-foot">
-        <button type="submit" className="bd-btn primary" disabled={!name.trim()}>
+        <button
+          type="submit"
+          className="bd-btn primary"
+          disabled={!name.trim()}
+        >
           Añadir columna
         </button>
-        <button type="button" className="bd-icon" aria-label="Cancelar" onClick={onClose}>
+        <button
+          type="button"
+          className="bd-icon"
+          aria-label="Cancelar"
+          onClick={onClose}
+        >
           <X size={17} />
         </button>
       </div>
@@ -1738,7 +3584,7 @@ function Welcome({
   /** Abre la galería de plantillas (con una preseleccionada). */
   onTemplates: (key: string) => void;
 }) {
-  const [name, setName] = useState('');
+  const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const create = (n: string) => {
     if (!n.trim() || busy) return;
@@ -1752,8 +3598,8 @@ function Welcome({
       </span>
       <h2>Organiza lo que tienes entre manos</h2>
       <p>
-        Un tablero reúne columnas y tarjetas: ideas, proyectos, producciones… Empieza en blanco o
-        con una plantilla lista.
+        Un tablero reúne columnas y tarjetas: ideas, proyectos, producciones…
+        Empieza en blanco o con una plantilla lista.
       </p>
       <form
         onSubmit={(e) => {
@@ -1769,7 +3615,11 @@ function Welcome({
           aria-label="Nombre del tablero"
           onChange={(e) => setName(e.target.value)}
         />
-        <button type="submit" className="bd-btn primary" disabled={busy || !name.trim()}>
+        <button
+          type="submit"
+          className="bd-btn primary"
+          disabled={busy || !name.trim()}
+        >
           <Plus size={16} /> Crear en blanco
         </button>
       </form>
@@ -1777,7 +3627,11 @@ function Welcome({
         <small>O empieza con una plantilla</small>
         <div>
           {builtinTemplates.map((t) => (
-            <button type="button" key={t.id} onClick={() => onTemplates('b:' + t.id)}>
+            <button
+              type="button"
+              key={t.id}
+              onClick={() => onTemplates("b:" + t.id)}
+            >
               <i style={{ background: backgroundOf(t.spec.background).css }} />
               {t.name}
             </button>

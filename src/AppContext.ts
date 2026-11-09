@@ -125,6 +125,11 @@ export type AppContextValue = {
   viewEntry: (entry: Entry) => void;
   /** Actualizar cómo vas en un libro o una serie (página, temporada, episodio, terminado). */
   openProgress: (entry: Entry) => void;
+  /**
+   * Ritual de cierre de un libro, una película o una serie terminados: preguntas, test opcional de
+   * la IA y un aprendizaje enlazado con su repaso espaciado.
+   */
+  openRitual: (entry: Entry) => void;
   openChat: () => void;
   /** Tu propia ficha y su lectura de la IA (vacía si aún no la llenas). */
   me: MyRecord;

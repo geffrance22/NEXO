@@ -110,6 +110,15 @@
   opacity: 0.7;
   font-size: 0.83rem;
 }
+.rd-source a {
+  color: inherit;
+  text-decoration: none;
+}
+.rd-source a:hover,
+.rd-source a:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .rd-preview {
   margin-top: 5px;
   line-height: 1.5;
@@ -3273,7 +3282,7 @@
   opacity: 0.55;
 }
 /* El que se está guardando: fondo con un brillo que lo recorre. */
-.rd-sl-item:is(.reading, .saving)::before {
+.rd-sl-item:is(.reading, .translating, .saving)::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -3298,7 +3307,7 @@
   border-radius: 50%;
   background: currentColor;
 }
-.rd-sl-item:is(.reading, .saving) .rd-sl-ico {
+.rd-sl-item:is(.reading, .translating, .saving) .rd-sl-ico {
   color: #355d51;
 }
 .rd-sl-item.done .rd-sl-ico {
@@ -3354,7 +3363,7 @@
   white-space: nowrap;
   color: #9aa394;
 }
-.rd-sl-item:is(.reading, .saving) .rd-sl-state {
+.rd-sl-item:is(.reading, .translating, .saving) .rd-sl-state {
   color: #355d51;
 }
 .rd-sl-item.done .rd-sl-state {
@@ -3410,4 +3419,562 @@
   .rd-sl *::after {
     animation: none !important;
   }
+}
+
+/* ── Guardar enlaces: conservar hipervínculos (interruptor compacto en el pie) ── */
+.reader-dialog .rd-sl-links {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 4px 0 9px;
+  border: 1px solid #e3e8de;
+  border-radius: 999px;
+  background: #fff;
+  color: #7b8576;
+  font-size: 12px;
+  font-weight: 600;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+.reader-dialog .rd-sl-links:hover:not(:disabled) {
+  border-color: #cfd8c9;
+  background: #f6f8f4;
+  color: #4d5a49;
+}
+.reader-dialog .rd-sl-links:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.rd-sl-links i {
+  position: relative;
+  width: 24px;
+  height: 14px;
+  border-radius: 999px;
+  background: #d9dfd4;
+  transition: background 0.18s;
+}
+.rd-sl-links i::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+  transition: transform 0.2s cubic-bezier(0.3, 0.9, 0.3, 1.25);
+}
+.reader-dialog .rd-sl-links[aria-checked='true'],
+.reader-dialog .rd-sl-links[aria-checked='true']:hover:not(:disabled) {
+  border-color: #b9d2c4;
+  background: #eef5f0;
+  color: #2a4c41;
+}
+.rd-sl-links[aria-checked='true'] i {
+  background: #355d51;
+}
+.rd-sl-links[aria-checked='true'] i::after {
+  transform: translateX(10px);
+}
+
+/* ── Ajustes del lector: tamaño, fuente, interlineado, ancho, alineación y fondo ── */
+.readings article {
+  font-family: var(--rd-font, Georgia, serif);
+  font-size: var(--rd-size, 18px);
+  line-height: var(--rd-leading, 1.83);
+  max-width: min(100%, var(--rd-width, 740px));
+  text-align: var(--rd-align, left);
+  transition:
+    font-size 0.18s,
+    line-height 0.18s,
+    max-width 0.22s;
+}
+.readings[data-align='justify'] article {
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+.readings article .rd-f-heading {
+  font-family: inherit;
+}
+.readings > main > h2,
+.readings > main > .rd-source,
+.readings > main > small {
+  max-width: min(100%, var(--rd-width, 740px));
+}
+.readings > main > h2 {
+  font-family: var(--rd-font, Georgia, serif);
+}
+.readings > main {
+  transition:
+    background-color 0.25s,
+    color 0.25s;
+}
+.readings:is([data-paper='sepia'], [data-paper='gray']) > main,
+.readings:is([data-paper='sepia'], [data-paper='gray']) > main .read-tools {
+  background: var(--rd-paper);
+  color: var(--rd-ink);
+}
+.rd-source-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.rd-rs-pop {
+  position: fixed;
+  z-index: 80;
+  display: grid;
+  gap: 10px;
+  width: 268px;
+  padding: 12px;
+  border: 1px solid rgba(30, 45, 35, 0.1);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+  color: var(--text, #1f2a1f);
+  box-shadow:
+    0 18px 44px -18px rgba(20, 35, 25, 0.38),
+    0 2px 8px rgba(20, 35, 25, 0.08);
+  font:
+    13px/1.3 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  transform-origin: top right;
+  animation: rd-rs-in 0.16s ease-out;
+}
+@keyframes rd-rs-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+}
+.rd-rs-pop button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.rd-rs-pop button:focus-visible {
+  outline: 2px solid #568674;
+  outline-offset: 1px;
+}
+.rd-rs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.rd-rs-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(30, 45, 35, 0.6);
+}
+.rd-rs-seg,
+.rd-rs-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: rgba(30, 45, 35, 0.06);
+}
+.rd-rs-seg button,
+.rd-rs-size button {
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 7px;
+  opacity: 0.7;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s,
+    opacity 0.15s,
+    color 0.15s;
+}
+.rd-rs-seg button:hover,
+.rd-rs-size button:hover:not(:disabled) {
+  opacity: 1;
+}
+.rd-rs-seg button.on {
+  background: var(--surface, #fff);
+  box-shadow: 0 1px 3px rgba(20, 35, 25, 0.16);
+  color: #2f5a4c;
+  opacity: 1;
+}
+.rd-rs-size button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.rd-rs-size output {
+  min-width: 26px;
+  text-align: center;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.rd-rs-lines {
+  display: flex;
+  flex-direction: column;
+  width: 15px;
+}
+.rd-rs-lines i {
+  height: 1.6px;
+  border-radius: 1px;
+  background: currentColor;
+}
+.rd-rs-col {
+  display: flex;
+  justify-content: center;
+  width: 20px;
+}
+.rd-rs-col i {
+  height: 12px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.6;
+}
+.rd-rs-paper {
+  display: inline-flex;
+  gap: 8px;
+}
+.rd-rs-pop .rd-rs-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(30, 45, 35, 0.18);
+  transition:
+    box-shadow 0.15s,
+    transform 0.15s;
+}
+.rd-rs-pop .rd-rs-swatch:hover {
+  transform: scale(1.08);
+}
+.rd-rs-pop .rd-rs-swatch.white {
+  background: #fff;
+}
+.rd-rs-pop .rd-rs-swatch.sepia {
+  background: #f6efe0;
+}
+.rd-rs-pop .rd-rs-swatch.gray {
+  background: #eef0ef;
+}
+.rd-rs-pop .rd-rs-swatch.on {
+  box-shadow:
+    inset 0 0 0 1px rgba(30, 45, 35, 0.18),
+    0 0 0 2px var(--surface, #fff),
+    0 0 0 4px #4d7f6e;
+}
+.rd-rs-pop .rd-rs-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  gap: 5px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: rgba(30, 45, 35, 0.55);
+}
+.rd-rs-pop .rd-rs-reset:hover {
+  color: #2f5a4c;
+}
+
+/* ── Hipervínculos dentro del artículo ── */
+.readings article a.rd-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--rd-accent) 50%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.18em;
+  -webkit-user-drag: none;
+  transition:
+    color 0.15s,
+    text-decoration-color 0.15s;
+}
+.readings article a.rd-link:hover {
+  color: var(--rd-accent);
+  text-decoration-color: currentColor;
+}
+.readings article a.rd-link .lit {
+  text-decoration: inherit;
+}
+
+/* ── Resaltados: continuos, se iluminan enteros al pasar el cursor ── */
+.readings article .lit {
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition:
+    filter 0.15s,
+    box-shadow 0.15s;
+}
+.readings article .lit-start {
+  border-start-start-radius: 4px;
+  border-end-start-radius: 4px;
+}
+.readings article .lit-end {
+  border-start-end-radius: 4px;
+  border-end-end-radius: 4px;
+}
+.readings article .lit.hover {
+  filter: brightness(0.94) saturate(1.15);
+}
+.readings article .lit.blue.hover {
+  filter: brightness(1.18);
+}
+.readings article .lit.editing {
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.32);
+}
+.readings article .lit.blue.editing {
+  box-shadow: inset 0 -2px 0 rgba(255, 255, 255, 0.55);
+}
+/* Un punto al final de los que tienen nota. */
+.readings article .lit-end.noted::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin: 0 1px 0 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+  vertical-align: 0.5em;
+}
+
+/* ── Final del artículo: «Mover a leídos» flotante y fijo abajo ── */
+.rd-finish {
+  position: sticky;
+  bottom: 20px;
+  z-index: 5;
+  height: 0;
+  pointer-events: none;
+}
+.rd-finish-pill {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 5px 0 14px;
+  border-radius: 999px;
+  background: #2f3d2a;
+  color: #fff;
+  box-shadow:
+    0 14px 30px -12px rgba(25, 35, 20, 0.6),
+    0 2px 6px rgba(25, 35, 20, 0.18);
+  font:
+    600 13.5px/1 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  white-space: nowrap;
+  pointer-events: auto;
+  transform: translateX(-50%);
+  animation: rd-finish-in 0.34s cubic-bezier(0.2, 0.9, 0.25, 1.15);
+}
+.rd-finish-ico {
+  opacity: 0.65;
+}
+.rd-finish-pill > span {
+  margin-right: 4px;
+}
+.readings .rd-finish-pill button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  color: #fff;
+  transition:
+    background 0.15s,
+    transform 0.15s;
+}
+.readings .rd-finish-pill button:hover {
+  transform: scale(1.06);
+}
+.readings .rd-finish-pill .yes {
+  background: #4f9a5e;
+}
+.readings .rd-finish-pill .yes:hover {
+  background: #5cad6b;
+}
+.readings .rd-finish-pill .no {
+  background: rgba(255, 255, 255, 0.1);
+}
+.readings .rd-finish-pill .no:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+@keyframes rd-finish-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 14px) scale(0.96);
+  }
+}
+
+/* ── Selección de tarjetas: el círculo asoma a la izquierda ── */
+/* La contención va en la tarjeta interior: así el círculo puede salir por el margen. */
+.rd-row {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
+}
+.rd-row > .read-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 116px;
+}
+.rd-row > .read-row .rd-progress {
+  bottom: 0;
+}
+.readings .rd-check {
+  position: absolute;
+  top: 50%;
+  left: -13px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
+  padding: 0;
+  border: 1.5px solid color-mix(in srgb, currentColor 32%, transparent);
+  border-radius: 50%;
+  background: var(--surface, #fff);
+  color: transparent;
+  opacity: 0;
+  transform: translateX(5px) scale(0.7);
+  transition:
+    opacity 0.16s,
+    transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.25),
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.rd-row:hover .rd-check,
+.readings .rd-check:focus-visible,
+.rd-row.selecting .rd-check {
+  opacity: 1;
+  transform: none;
+}
+.readings .rd-check:hover {
+  border-color: var(--rd-accent);
+  color: color-mix(in srgb, var(--rd-accent) 45%, transparent);
+}
+.readings .rd-row.picked .rd-check {
+  border-color: var(--rd-accent);
+  background: var(--rd-accent);
+  color: #fff;
+}
+.readings .rd-row.selecting .read-row {
+  cursor: default;
+  user-select: none;
+}
+.readings .rd-row.picked .read-row,
+.readings .rd-row.picked:hover .read-row {
+  background: color-mix(in srgb, var(--rd-accent) 9%, transparent);
+  border-color: color-mix(in srgb, var(--rd-accent) 28%, transparent);
+}
+@media (hover: none) {
+  .readings .rd-check {
+    opacity: 0.4;
+    transform: none;
+  }
+}
+
+/* Barra de acciones en lote (en el encabezado de la lista) */
+.rd-batch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 4px 0 9px;
+  border-radius: 11px;
+  background: #2f3d2a;
+  color: #fff;
+  animation: rd-batch-in 0.2s ease-out;
+}
+@keyframes rd-batch-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.readings .rd-batch-all {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1.5px solid rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+  color: #fff;
+}
+.readings .rd-batch-all.on {
+  border-color: #fff;
+  background: #fff;
+  color: #2f3d2a;
+}
+.rd-batch-n {
+  min-width: 1.4em;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.rd-batch-acts {
+  display: flex;
+  gap: 1px;
+  margin-left: auto;
+}
+.readings .rd-batch-acts > button,
+.readings .rd-batch > .rd-batch-x {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.82);
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.readings .rd-batch-acts > button:hover:not(:disabled),
+.readings .rd-batch > .rd-batch-x:hover {
+  background: rgba(255, 255, 255, 0.13);
+  color: #fff;
+}
+.readings .rd-batch-acts > button[aria-pressed='true'] {
+  color: #a9dcb3;
+}
+.readings .rd-batch-acts > button.danger:hover:not(:disabled) {
+  background: rgba(255, 110, 90, 0.2);
+  color: #ffb4a6;
+}
+.readings .rd-batch-acts > button:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+.readings .rd-batch > .rd-batch-x {
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0 8px 8px 0;
+}
+.rd-batch-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.reader-dialog .rd-batch-chips button {
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--rd-line);
+  border-radius: 999px;
+  font-size: 12px;
+}
+.reader-dialog .rd-batch-chips button.on {
+  border-color: #72aeb6;
+  background: var(--rd-tint);
 }

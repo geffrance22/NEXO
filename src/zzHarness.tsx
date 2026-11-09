@@ -37,6 +37,7 @@ function Harness() {
     notify: noop,
     viewEntry: (e: Entry) => setModal(e.id),
     openProgress: (e: Entry) => setProgress(e.id),
+    openRitual: noop,
     openImages: noop,
     peekPerson: noop,
     go: noop,

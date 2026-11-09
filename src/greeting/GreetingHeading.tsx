@@ -9,6 +9,7 @@ import {
   CloudRain,
   CloudSnow,
   CloudSun,
+  Columns3,
   Compass,
   MessageCircle,
   Moon,
@@ -45,6 +46,7 @@ const actionIcons: Record<ActionIcon, LucideIcon> = {
   show: Tv,
   person: MessageCircle,
   entry: CalendarCheck,
+  card: Columns3,
 };
 
 /**

@@ -26,8 +26,12 @@ import {
   workIn,
 } from './captureRules';
 import { moods } from '../composer/controls';
-import { addDays, normalizeText, todayInputValue } from './format';
-import { daysBetween } from './people';
+import { guessCategory } from './captureCategories';
+import { suggestConnections } from './captureConnections';
+import { findDate, futureDate, startsWithDate, stripDates } from './captureDates';
+import { markDuplicates } from './captureDuplicates';
+import { contentWords, learnedPerson, readMemory, usuallyDropped } from './captureMemory';
+import { addDays, friendlyDate, money, normalizeText, todayInputValue } from './format';
 import { recognize, type Mention } from './recognize';
 
 // ───────────────────────── Piezas de una experiencia ─────────────────────────
@@ -38,6 +42,10 @@ type Base = {
   on: boolean;
   /** Frase del texto original de la que salió. */
   evidence: string;
+  /** Ya existe en Nexo: empieza apagada y, si es un recuerdo (`id`), se enlaza al episodio. */
+  dup?: { id: string | null; text: string };
+  /** Por qué se propuso o qué conviene revisar («Por su oficio», «Sueles descartar esto»). */
+  hint?: string;
 };
 export type EncounterPiece = Base & {
   kind: 'encuentro';
@@ -57,8 +65,12 @@ export type MoneyPiece = Base & {
   category: string;
   date: string;
   title: string;
-  /** Ya existe un movimiento igual cerca de esa fecha: se enlaza en lugar de duplicarlo. */
-  dupOf?: string;
+  /** Por qué esa categoría («por el lugar», «como la última vez con «rappi»»). */
+  why?: string;
+  /** Lo que se dijo junto al monto: de aquí aprende la categoría si la corriges. */
+  cue?: string;
+  /** No se dijo si lo pagaste o te lo pagaron: se tomó como gasto. */
+  guessed?: boolean;
 };
 export type UpdatePiece = Base & {
   kind: 'novedad';
@@ -175,16 +187,26 @@ export type Piece =
 export type PieceKind = Piece['kind'];
 
 /** Nombre que no está en tu universo: se puede crear al guardar. */
-export type NewPerson = { id: string; name: string; on: boolean };
+export type NewPerson = {
+  id: string;
+  name: string;
+  on: boolean;
+  /** Alguien que ya tienes con un nombre parecido («Andrez» → Andrés Pérez). */
+  like?: string;
+};
 
 export type CapturePlan = {
   text: string;
   /** Cuándo pasó. */
   date: string;
+  /** La expresión de la que salió la fecha («ayer», «el viernes pasado»). */
+  dateFrom?: string;
+  /** En un lote: esta experiencia no se guarda. */
+  off?: boolean;
   pieces: Piece[];
   newPeople: NewPerson[];
   /** Nombres de pila que coinciden con varias personas (la pieza usa la más probable). */
-  ambiguous: { name: string; ids: string[]; chosen: string }[];
+  ambiguous: { name: string; ids: string[]; chosen: string; learned?: boolean }[];
   /** Parentescos del texto («mi mamá», «mi tío Carlos») por resolver o guardar como vínculo. */
   kinLinks: KinLink[];
   episode: { on: boolean; title: string; kind: EpisodeKind };
@@ -237,126 +259,8 @@ export function pieceName(p: Piece) {
 
 // ───────────────────────── Fechas en lenguaje natural ─────────────────────────
 
-const WEEKDAYS: Record<string, number> = {
-  domingo: 0,
-  lunes: 1,
-  martes: 2,
-  miercoles: 3,
-  jueves: 4,
-  viernes: 5,
-  sabado: 6,
-};
-const MONTHS: Record<string, number> = {
-  enero: 1,
-  febrero: 2,
-  marzo: 3,
-  abril: 4,
-  mayo: 5,
-  junio: 6,
-  julio: 7,
-  agosto: 8,
-  septiembre: 9,
-  setiembre: 9,
-  octubre: 10,
-  noviembre: 11,
-  diciembre: 12,
-};
-const weekdayOf = (date: string) => {
-  const [y, m, d] = date.split('-').map(Number);
-  return new Date(y, m - 1, d).getDay();
-};
-const pad = (n: number) => String(n).padStart(2, '0');
-
-/** Fecha explícita: «15 de noviembre», «15/11», «el 15». */
-function explicitDate(t: string, today: string, future: boolean): string | null {
-  const year = Number(today.slice(0, 4));
-  const fix = (y: number, m: number, d: number) => {
-    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
-    let date = `${y}-${pad(m)}-${pad(d)}`;
-    if (future && date < today) date = `${y + 1}-${pad(m)}-${pad(d)}`;
-    if (!future && date > today) date = `${y - 1}-${pad(m)}-${pad(d)}`;
-    return date;
-  };
-  let m = t.match(
-    /\b(\d{1,2}) de (enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)(?: de (\d{4}))?/,
-  );
-  if (m) {
-    const y = m[3] ? Number(m[3]) : year;
-    const d = fix(y, MONTHS[m[2]], Number(m[1]));
-    return m[3] ? `${m[3]}-${pad(MONTHS[m[2]])}-${pad(Number(m[1]))}` : d;
-  }
-  m = t.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
-  if (m) {
-    if (m[3]) {
-      const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
-      return `${y}-${pad(Number(m[2]))}-${pad(Number(m[1]))}`;
-    }
-    return fix(year, Number(m[2]), Number(m[1]));
-  }
-  m = t.match(/\b(?:el|este|para el|antes del) (\d{1,2})\b(?! de)/);
-  if (m) {
-    const month = Number(today.slice(5, 7));
-    const d = Number(m[1]);
-    let date = fix(year, month, d);
-    if (date && future && date < today) date = addMonth(`${year}-${pad(month)}-${pad(d)}`);
-    return date;
-  }
-  return null;
-}
-function addMonth(date: string) {
-  const [y, m, d] = date.split('-').map(Number);
-  return todayInputValue(new Date(y, m, d));
-}
-
-/** Cuándo pasó algo contado en pasado: «ayer», «el viernes», «hace 3 días». */
-export function pastDate(text: string, today = todayInputValue()): string | null {
-  const t = normalizeText(text);
-  if (/\b(anteayer|antier|antes de ayer)\b/.test(t)) return addDays(today, -2);
-  if (/\bayer\b/.test(t)) return addDays(today, -1);
-  if (/\b(hoy|esta manana|esta tarde|esta noche|hace un rato)\b/.test(t)) return today;
-  let m = t.match(/\bhace (\d{1,2}|un|una|dos|tres) (dias?|semanas?)\b/);
-  if (m) {
-    const n = ({ un: 1, una: 1, dos: 2, tres: 3 } as Record<string, number>)[m[1]] ?? Number(m[1]);
-    return addDays(today, -n * (m[2].startsWith('semana') ? 7 : 1));
-  }
-  if (/\bla semana pasada\b/.test(t)) return addDays(today, -7);
-  m = t.match(/\b(?:el|este|el pasado) (lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/);
-  if (m) {
-    const back = (weekdayOf(today) - WEEKDAYS[m[1]] + 7) % 7 || 7;
-    return addDays(today, -back);
-  }
-  return explicitDate(t, today, false);
-}
-
-/** Para cuándo es algo contado en futuro: «el viernes», «mañana», «la próxima semana». */
-export function futureDate(text: string, today = todayInputValue()): string | null {
-  const t = normalizeText(text);
-  if (/\bpasado manana\b/.test(t)) return addDays(today, 2);
-  if (/\bmanana\b/.test(t) && !/\besta manana\b/.test(t)) return addDays(today, 1);
-  if (/\b(hoy|esta tarde|esta noche|ahorita|hoy mismo)\b/.test(t)) return today;
-  let m = t.match(/\ben (\d{1,2}|un|una|dos|tres) (dias?|semanas?)\b/);
-  if (m) {
-    const n = ({ un: 1, una: 1, dos: 2, tres: 3 } as Record<string, number>)[m[1]] ?? Number(m[1]);
-    return addDays(today, n * (m[2].startsWith('semana') ? 7 : 1));
-  }
-  if (/\b(la proxima semana|la otra semana|la semana que viene)\b/.test(t)) {
-    return addDays(today, (1 - weekdayOf(today) + 7) % 7 || 7);
-  }
-  if (/\b(este|el) fin de semana\b/.test(t)) return addDays(today, (6 - weekdayOf(today) + 7) % 7);
-  if (/\bfin de mes\b/.test(t)) {
-    const [y, mo] = today.split('-').map(Number);
-    return todayInputValue(new Date(y, mo, 0));
-  }
-  m = t.match(
-    /\b(?:el|este|el proximo|para el|antes del) (lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/,
-  );
-  if (m) return addDays(today, (WEEKDAYS[m[1]] - weekdayOf(today) + 7) % 7 || 7);
-  return explicitDate(t, today, true);
-}
-
-/** Quita del texto la expresión de fecha («el viernes», «mañana»…) para dejar solo la acción. */
-const DATE_PHRASE =
-  /\s*(?:,\s*)?\b(?:pasado mañana|mañana|hoy(?: mismo)?|esta (?:tarde|noche)|(?:el|este|el próximo|para el|antes del) (?:lunes|martes|miércoles|jueves|viernes|sábado|domingo|\d{1,2})|la (?:próxima|otra) semana|la semana que viene|(?:este|el) fin de semana|en \d{1,2} (?:días?|semanas?)|(?:el )?\d{1,2} de \w+)\b/gi;
+// Viven en `captureDates`: «ayer», «hace 2 semanas», «dentro de 2 meses», «en un año», «15/03»…
+export { futureDate, pastDate } from './captureDates';
 
 // ───────────────────────── Personas y lugares mencionados ─────────────────────────
 
@@ -367,58 +271,142 @@ const NOT_NAMES = new Set(
   (
     'yo el la los las un una mi su tu hoy ayer manana lunes martes miercoles jueves viernes sabado domingo ' +
     'enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre dios ' +
-    'whatsapp instagram zoom meet teams google navidad semana santa'
+    'whatsapp instagram zoom meet teams google navidad semana santa netflix youtube spotify uber ' +
+    'rappi didi pero luego despues entonces tambien ademas'
   ).split(' '),
 );
+/** Tratamientos que van antes del nombre («don Pedro», «la doctora Ruiz»). */
+const HONORIFIC = /^(?:don|doña|dona|señor|senor|señora|senora|doctor|doctora|dr\.?|dra\.?|profe|profesor|profesora)\s+/i;
 
 // ───────────────────────── Reglas ─────────────────────────
 
 const ACTIVITY: [RegExp, string, string][] = [
-  [/\b(almorc|almorzamos|almuerzo)/, 'Comida', 'Almuerzo'],
-  [/\b(cene|cenamos|cena\b)/, 'Comida', 'Cena'],
+  [/\b(almorc|almorzamos|almuerzo|almorzar)/, 'Comida', 'Almuerzo'],
+  [/\b(cene|cenamos|cena\b|cenar)/, 'Comida', 'Cena'],
   [/\b(desayun)/, 'Comida', 'Desayuno'],
-  [/\b(comimos|comida con)/, 'Comida', 'Comida'],
-  [/\b(cafe|tinto)/, 'Café', 'Café'],
-  [/\b(videollamada|zoom|meet\b)/, 'Videollamada', 'Videollamada'],
-  [/\b(llame|llamada|me llamo|hablamos por telefono)/, 'Llamada', 'Llamada'],
-  [/\b(fiesta|celebramos|cumpleanos de)/, 'Fiesta', 'Celebración'],
-  [/\b(visite|me visito|fui a su casa|vino a la casa)/, 'Visita', 'Visita'],
-  [/\b(paseo|caminamos|fuimos a caminar)/, 'Paseo', 'Paseo'],
-  [/\b(viaje|viajamos)/, 'Viaje', 'Viaje'],
-  [/\b(reuni|reunion|trabajamos)/, 'Trabajo', 'Reunión'],
-  [/\b(jugamos|partido|gimnasio|entrenamos)/, 'Deporte', 'Deporte'],
+  [/\b(brunch)/, 'Comida', 'Brunch'],
+  [/\b(comimos|comida con|fuimos a comer|salimos a comer|onces)/, 'Comida', 'Comida'],
+  [/\b(cafe|tinto|cafecito)/, 'Café', 'Café'],
+  [/\b(videollamada|zoom|meet\b|teams\b|facetime)/, 'Videollamada', 'Videollamada'],
+  [/\b(llame|llamada|me llamo|hablamos por telefono|nos llamamos)/, 'Llamada', 'Llamada'],
+  [
+    /\b(fiesta|celebramos|festejamos|cumpleanos de|rumba|rumbeamos|discoteca|bailamos|cervezas|tragos)/,
+    'Fiesta',
+    'Celebración',
+  ],
+  [/\b(visite|me visito|fui a su casa|vino a la casa|vinieron a la casa|nos visitaron)/, 'Visita', 'Visita'],
+  [/\b(paseo|caminamos|fuimos a caminar|caminata|senderismo|fuimos al parque)/, 'Paseo', 'Paseo'],
+  [/\b(viaje|viajamos|nos fuimos de viaje)/, 'Viaje', 'Viaje'],
+  [/\b(reuni|reunion|trabajamos|comite|junta\b)/, 'Trabajo', 'Reunión'],
+  [/\b(jugamos|partido|gimnasio|entrenamos|corrimos|montamos bici|nadamos|futbol|tenis|padel)/, 'Deporte', 'Deporte'],
 ];
 const MEETING =
-  /\b(almorc|almorzamos|cene|cenamos|desayun|comimos|me vi con|nos vimos|vi a|visite|me visito|fui con|fuimos|sali con|salimos|tomamos|tome (?:un )?(?:cafe|tinto)|hable con|hablamos|llame a|me llamo|conversamos|conversé|me reuni|nos reunimos|reunion con|estuve con|estuvimos|celebramos|jugamos|pasamos|conoci a)/;
+  /\b(almorc|almorzamos|cene|cenamos|desayun|comimos|me vi con|nos vimos|vi a|visite|visitamos a|me visito|nos visito|fui con|fuimos|sali con|salimos|tomamos|nos tomamos|tome (?:un )?(?:cafe|tinto)|hable con|hablamos|llame a|me llamo|conversamos|converse|me reuni|nos reunimos|reunion con|estuve con|estuvimos|celebramos|festejamos|jugamos|pasamos|conoci a|me encontre con|nos encontramos|acompane a|recogi a|parchamos|compartimos|cuadramos con|me escribio|nos escribimos)/;
 
+/** Verbos de dinero; con /g para ubicar el más cercano a cada monto. */
 const MONEY_OUT =
-  /\b(pague|pagamos|pago (?:la|el)|gaste|gastamos|costo|costaron|me cobraron|compre|compramos|inverti|le preste|preste|aporte|transferi|consigne|propina|di\b)/;
+  /\b(pague|pagamos|pago (?:la|el|los|las)|gaste|gastamos|costo|costaron|me costo|me cobraron|nos cobraron|salio en|salio por|valio|compre|compramos|inverti|le preste|les preste|preste|aporte|transferi|consigne|abone|cancele|propina|di\b|le di|deje de propina|suscripcion|mensualidad)/g;
 const MONEY_IN =
-  /\b(me pagaron|me pago|recibi|cobre|me dieron|gane|vendi|me devolvio|me devolvieron|me transfirieron|me consignaron|me prestaron)/;
-const AMOUNT =
-  /(\$\s*)?(\d{1,3}(?:[.\s]\d{3})+|\d+(?:,\d+)?)\s*(mil(?:lones?)?|millon(?:es)?|k\b|lucas|barras)?/gi;
+  /\b(me pagaron|me pago|nos pagaron|recibi|recibimos|cobre|me dieron|gane|vendi|vendimos|me devolvio|me devolvieron|me transfirieron|me consignaron|me prestaron|me llego|me entro|me entraron|facture|me giraron)/g;
 
-const CATEGORY_OUT: [RegExp, string][] = [
-  [
-    /\b(almuerz|almorc|comida|cena|cene|desayun|cafe|restaurante|pizza|hamburguesa|mercado|onces)/,
-    'Comida',
-  ],
-  [
-    /\b(taxi|uber|didi|bus|gasolina|peaje|parqueadero|vuelo|tiquete|pasaje|transporte)/,
-    'Transporte',
-  ],
-  [/\b(cine|concierto|bar|fiesta|entrada|boleta|cerveza|trago|juego)/, 'Ocio'],
-  [/\b(medico|farmacia|drogueria|consulta|examen|odontolog|terapia)/, 'Salud'],
-  [/\b(arriendo|servicios|internet|luz|agua|aseo|hogar)/, 'Hogar'],
-  [/\b(curso|libro|universidad|clase|matricula)/, 'Educación'],
-  [/\b(ahorro|ahorre)/, 'Ahorro'],
-];
-const CATEGORY_IN: [RegExp, string][] = [
-  [/\b(salario|sueldo|nomina|quincena)/, 'Salario'],
-  [/\b(vendi|venta)/, 'Ventas'],
-  [/\b(regalo|regalaron)/, 'Regalo'],
-  [/\b(devolvio|devolvieron|reembolso)/, 'Reembolso'],
-];
+/**
+ * Montos: «$48.000», «48 mil», «1,5 millones», «2.5M» no (se confunde con metros), «1'200.000»,
+ * «50k», «20 lucas», «un palo», «COP 30000», «500 pesos». Los espacios no separan miles para
+ * no confundir teléfonos («300 123 4567») con plata.
+ */
+const AMOUNT =
+  /(\$\s*|\bcop\s*)?(\d{1,3}(?:[.'’,]\d{3})+(?!\d)|\d+(?:[.,]\d{1,2})?(?=\s*(?:mil\b|millon|millones|palos?\b|k\b|lucas|barras))|\d+)\s*(millones|millon|mil\b|palos?\b|k\b|lucas\b|barras\b)?(\s*(?:pesos|cop\b|usd|dolares|euros))?/gi;
+const WORD_AMOUNT =
+  /\b(un|una|medio|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|veinte|treinta|cuarenta|cincuenta|cien)\s+(millones|millon|mil|palos?|lucas|barras)\b/g;
+const WORD_NUM: Record<string, number> = {
+  un: 1,
+  una: 1,
+  medio: 0.5,
+  dos: 2,
+  tres: 3,
+  cuatro: 4,
+  cinco: 5,
+  seis: 6,
+  siete: 7,
+  ocho: 8,
+  nueve: 9,
+  diez: 10,
+  veinte: 20,
+  treinta: 30,
+  cuarenta: 40,
+  cincuenta: 50,
+  cien: 100,
+};
+/** Después de un número, palabras que dicen que no es plata («3 personas», «20%»). */
+const NOT_MONEY_AFTER =
+  /^\s*(?:%|personas|gente|dias|horas|minutos|km|kilometros|kilos|anos|veces|libros|paginas|cuotas|meses|semanas|capitulos|episodios|temporadas|estrellas|puntos|grados|am\b|pm\b|de (?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre))/;
+
+const unitValue = (unit: string) => {
+  const u = normalizeText(unit);
+  if (u === 'mil' || u === 'k' || u === 'lucas' || u === 'barras') return 1000;
+  if (u.startsWith('millon') || u.startsWith('palo')) return 1e6;
+  return 1;
+};
+
+type AmountHit = { value: number; start: number; end: number; unit: boolean };
+
+/** Los montos de una frase, con su posición (para leer el contexto de cada uno). */
+function amountsIn(text: string): AmountHit[] {
+  const n = normalizeText(text);
+  const out: AmountHit[] = [];
+  for (const m of n.matchAll(AMOUNT)) {
+    const start = m.index ?? 0;
+    const end = start + m[0].length;
+    const digits = m[2];
+    const unit = m[3] ?? '';
+    const currency = Boolean(m[1] || m[4]);
+    const grouped = /[.'’,]\d{3}$/.test(digits);
+    if (!currency && !unit && !grouped && Number(digits) < 1000) continue;
+    if (/^(19|20)\d{2}$/.test(digits) && !currency && !unit) continue;
+    // Teléfonos, cédulas y otros números largos sin signo de plata.
+    if (!currency && !unit && !grouped && digits.length >= 9) continue;
+    if (NOT_MONEY_AFTER.test(n.slice(end))) continue;
+    // «a las 3», «el 15»: horas y días.
+    if (
+      !currency &&
+      !unit &&
+      !grouped &&
+      /\b(?:a las|las|el|del|al)\s*$/.test(n.slice(Math.max(0, start - 7), start))
+    )
+      continue;
+    const clean = grouped ? digits.replace(/[.'’,]/g, '') : digits.replace(',', '.');
+    const value = Math.round(Number(clean) * (unit ? unitValue(unit) : 1));
+    if (!value || value > 1e11) continue;
+    out.push({ value, start, end, unit: Boolean(unit || currency) });
+  }
+  for (const m of n.matchAll(WORD_AMOUNT)) {
+    const start = m.index ?? 0;
+    if (out.some((a) => start < a.end && start + m[0].length > a.start)) continue;
+    out.push({
+      value: Math.round(WORD_NUM[m[1]] * unitValue(m[2])),
+      start,
+      end: start + m[0].length,
+      unit: true,
+    });
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
+/** Dirección del monto: el verbo de dinero más cercano antes de él (o después, si no hay). */
+function directionAt(n: string, at: number): Direction | null {
+  const verbs: { at: number; end: number; dir: Direction }[] = [];
+  for (const m of n.matchAll(MONEY_IN))
+    verbs.push({ at: m.index ?? 0, end: (m.index ?? 0) + m[0].length, dir: 'ingreso' });
+  for (const m of n.matchAll(MONEY_OUT)) {
+    const s = m.index ?? 0;
+    // «me pagó la cena»: el «pagó la» de adentro no es un gasto.
+    if (verbs.some((v) => v.dir === 'ingreso' && s >= v.at && s < v.end)) continue;
+    verbs.push({ at: s, end: s + m[0].length, dir: 'egreso' });
+  }
+  if (!verbs.length) return null;
+  const before = verbs.filter((v) => v.at <= at).sort((a, b) => b.at - a.at)[0];
+  return (before ?? verbs.sort((a, b) => a.at - b.at)[0]).dir;
+}
 
 const UPDATE_RULES: [RegExp, UpdateKind][] = [
   [
@@ -467,17 +455,17 @@ const capital = (s: string) => {
 function clauses(text: string) {
   const out: { text: string; start: number }[] = [];
   // Un punto entre dígitos es separador de miles («48.000»), no fin de frase.
-  const re = /(?:[^.!?\n]|(?<=\d)\.(?=\d))+[.!?]?/g;
+  const re = /(?:[^.!?;\n]|(?<=\d)\.(?=\d))+[.!?;]?/g;
   for (const m of text.matchAll(re)) {
     const s = m[0];
     const start = m.index ?? 0;
     const norm = normalizeText(s);
     const split = norm.search(
-      /[,;]?\s+(?:y|pero)\s+(?=(?:le |les )?(?:prometi|quede en|me comprometi|tengo que|me va a|quedo en|aprendi|descubri)\b)/,
+      /[,;]?\s+(?:y|pero|y luego|y despues|luego|despues)\s+(?=(?:le |les )?(?:prometi|quede en|me comprometi|tengo que|me va a|quedo en|aprendi|descubri|pague|pagamos|gaste|compre|me pagaron|me pago|le preste|me presto|me prestaron|se me ocurrio)\b)/,
     );
     if (split > 0) {
       out.push({ text: s.slice(0, split), start });
-      const rest = s.slice(split).replace(/^[,;]?\s+(?:y|pero)\s+/i, '');
+      const rest = s.slice(split).replace(/^[,;]?\s+(?:y luego|y despues|y|pero|luego|despues)\s+/i, '');
       out.push({ text: rest, start: start + s.length - rest.length });
     } else out.push({ text: s, start });
   }
@@ -495,10 +483,16 @@ export function proposeCapture(
   text: string,
   ws: Workspace,
   today = todayInputValue(),
+  memory = readMemory(),
 ): CapturePlan {
   const source = text.trim();
   // La fecha de un cumpleaños o la de un enlace no dicen cuándo pasó lo que cuentas.
-  const date = pastDate(source.replace(BIRTHDAY_DATE, ' ').replace(URL_RE, ' '), today) ?? today;
+  const dateHit = findDate(
+    source.replace(BIRTHDAY_DATE, (s) => ' '.repeat(s.length)).replace(URL_RE, (s) => ' '.repeat(s.length)),
+    'past',
+    today,
+  );
+  const date = dateHit?.date ?? today;
   const lastSeen = (id: string) =>
     ws.entries.find((e) => e.person_ids.includes(id))?.created_at ?? '';
   const rec = recognize(source, ws.people, ws.ties ?? [], (id) => Date.parse(lastSeen(id)) || 0);
@@ -539,8 +533,11 @@ export function proposeCapture(
   }
   mentions.sort((a, b) => a.start - b.start);
 
-  const pick = (ids: string[]) =>
+  // Un nombre ambiguo: el que elegiste la última vez para ese nombre; si no, con quien hablaste
+  // más recientemente.
+  const recent = (ids: string[]) =>
     [...ids].sort((a, b) => lastSeen(b).localeCompare(lastSeen(a)))[0];
+  const pickFor = (name: string, ids: string[]) => learnedPerson(name, ids, memory) ?? recent(ids);
   const seenAmbiguous = new Set<string>();
   const ambiguous = mentions
     .filter((m) => m.ids.length > 1 && !m.group)
@@ -548,25 +545,42 @@ export function proposeCapture(
       const k = m.ids.slice().sort().join();
       return !seenAmbiguous.has(k) && seenAmbiguous.add(k);
     })
-    .map((m) => ({ name: m.text, ids: m.ids, chosen: pick(m.ids) }));
+    .map((m) => {
+      const learned = learnedPerson(m.text, m.ids, memory);
+      return { name: m.text, ids: m.ids, chosen: learned ?? recent(m.ids), learned: Boolean(learned) };
+    });
   /** Personas de un tramo: todas si es un grupo («los Gómez»), la más probable si es ambiguo. */
-  const resolved = (m: Mention) => (m.group ? m.ids : m.ids.length > 1 ? [pick(m.ids)] : m.ids);
+  const resolved = (m: Mention) =>
+    m.group ? m.ids : m.ids.length > 1 ? [pickFor(m.text, m.ids)] : m.ids;
   const peopleIn = (start: number, end: number) => [
     ...new Set(mentions.filter((m) => m.start >= start && m.end <= end).flatMap(resolved)),
   ];
   const allPeople = [...new Set(mentions.flatMap(resolved))];
 
-  // Nombres nuevos: «con Mariana», «conocí a Pedro», «el contacto de Andrés».
-  const nameRe =
-    /\b(?:con|conoc[ií] a|vi a|llam[ée] a|present[ée] a|contacto de|n[úu]mero de|tel[ée]fono de|correo de)\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)?)/g;
-  for (const m of source.matchAll(nameRe)) {
-    const name = m[1];
-    const at = (m.index ?? 0) + m[0].length - name.length;
-    if (mentions.some((x) => at >= x.start && at < x.end)) continue;
-    if (NOT_NAMES.has(normalizeText(name.split(' ')[0]))) continue;
-    if (ws.places.some((p) => normalizeText(p.name).startsWith(normalizeText(name)))) continue;
+  // Nombres nuevos: «con Mariana», «conocí a Pedro», «con mi amiga Sofía», «con Laura y Pedro».
+  const NAME = "[A-ZÁÉÍÓÚÑ][a-záéíóúñü'’]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñü'’]+)?";
+  const nameRe = new RegExp(
+    `\\b(?:con|junto a|conoc[ií] a|conocimos a|vi a|llam[ée] a|present[ée] a|me present[óo] a|acompañ[ée] a|recog[ií] a|contacto de|n[úu]mero de|tel[ée]fono de|correo de|donde)\\s+(?:(?:mi|su|tu)\\s+(?:amig[oa]|compañer[oa]|vecin[oa]|colega|jef[ea]|novi[oa]|socio|socia|profe|cliente)\\s+)?((?:don|doña|doctor|doctora|profe)\\s+)?(${NAME})((?:\\s*(?:,|\\by\\b|\\be\\b)\\s*${NAME})*)`,
+    'g',
+  );
+  const addNew = (raw: string, at: number) => {
+    const name = raw.replace(HONORIFIC, '').trim();
+    if (!name || mentions.some((x) => at >= x.start && at < x.end)) return;
+    if (NOT_NAMES.has(normalizeText(name.split(' ')[0]))) return;
+    if (ws.places.some((p) => normalizeText(p.name).startsWith(normalizeText(name)))) return;
     if (!newPeople.some((n) => normalizeText(n.name) === normalizeText(name)))
       newPeople.push({ id: 'new:' + uid(), name, on: true });
+  };
+  for (const m of source.matchAll(nameRe)) {
+    const first = m[2];
+    const firstAt = (m.index ?? 0) + m[0].length - (m[3]?.length ?? 0) - first.length;
+    addNew(first, firstAt);
+    // Los que siguen en la lista («con Laura, Pedro y Ana»).
+    if (m[3]) {
+      const listAt = (m.index ?? 0) + m[0].length - m[3].length;
+      for (const x of m[3].matchAll(new RegExp(NAME, 'g')))
+        addNew(x[0], listAt + (x.index ?? 0));
+    }
   }
   const newIdsIn = (s: string) =>
     newPeople.filter((n) => normalizeText(s).includes(normalizeText(n.name))).map((n) => n.id);
@@ -598,6 +612,11 @@ export function proposeCapture(
 
   // Encuentro: un verbo de encuentro con alguien, o personas en algo contado en pasado.
   const act = ACTIVITY.find(([re]) => re.test(norm));
+  const placeKindNow: PlaceKind | null = placeId
+    ? (ws.places.find((p) => p.id === placeId)?.kind ?? null)
+    : placeName
+      ? guessPlaceKind(placeName, act?.[1])
+      : null;
   const mainPeople = allPeople.length || newPeople.length;
   let mainPerson: string | null = allPeople[0] ?? newPeople[0]?.id ?? null;
   if (mainPeople && MEETING.test(norm)) {
@@ -680,45 +699,50 @@ export function proposeCapture(
     let claimed = false;
     let aboutPerson = false;
 
-    // Dinero
-    const out = MONEY_OUT.test(n);
-    const inn = MONEY_IN.test(n);
-    if (out || inn || /\$/.test(c.text)) {
-      for (const m of c.text.matchAll(AMOUNT)) {
-        const digits = m[2];
-        const unit = (m[3] ?? '').toLowerCase();
-        if (!m[1] && !unit && !/[.\s]\d{3}/.test(digits) && Number(digits) < 1000) continue;
-        if (/^(19|20)\d{2}$/.test(digits) && !m[1] && !unit) continue;
-        let value = Number(digits.replace(/[.\s]/g, '').replace(',', '.'));
-        if (unit === 'mil' || unit === 'k' || unit === 'lucas' || unit === 'barras') value *= 1000;
-        else if (unit.startsWith('millon') || unit.startsWith('millone')) value *= 1e6;
-        value = Math.round(value);
-        if (!value || value > 1e11) continue;
-        const direction: Direction = inn && !out ? 'ingreso' : 'egreso';
-        const cats = direction === 'ingreso' ? CATEGORY_IN : CATEGORY_OUT;
-        const category =
-          cats.find(([re]) => re.test(n))?.[1] ?? cats.find(([re]) => re.test(norm))?.[1] ?? 'Otro';
-        const dup = ws.entries.find(
-          (e) =>
-            e.kind === 'Movimiento' &&
-            e.amount === value &&
-            e.direction === direction &&
-            Math.abs(daysBetween(todayInputValue(new Date(e.created_at)), date)) <= 2,
-        );
+    // Dinero: cada monto con su dirección y su categoría según lo que se dice junto a él.
+    const amounts = amountsIn(c.text);
+    const hasVerb = new RegExp(MONEY_OUT.source).test(n) || new RegExp(MONEY_IN.source).test(n);
+    if (amounts.length && (hasVerb || amounts.some((a) => a.unit))) {
+      amounts.slice(0, 4).forEach((a, i) => {
+        // Lo que se dice junto al monto: lo que sigue («12 mil del taxi») y lo que va antes
+        // desde el monto anterior («el taxi me costó 12 mil»).
+        const before = c.text.slice(i ? amounts[i - 1].end : 0, a.start);
+        const after = c.text
+          .slice(a.end, amounts[i + 1]?.start ?? c.text.length)
+          .split(/[,;]|\s(?:y|e|pero|luego|después|despues)\s/i)[0];
+        const dir = directionAt(n, a.start);
+        const direction: Direction = dir ?? 'egreso';
+        const guess = guessCategory({
+          near: after,
+          local: before,
+          clause: c.text,
+          whole: source,
+          direction,
+          activity: act?.[1],
+          placeKind: placeKindNow,
+          entries: ws.entries,
+          memory,
+        });
         pieces.push({
           id: uid(),
           kind: 'movimiento',
-          on: !dup,
+          on: true,
           evidence: c.text.trim(),
-          amount: value,
+          amount: a.value,
           direction,
-          category,
+          category: guess.category,
+          why: guess.why,
+          cue: contentWords(`${after} ${before}`, 6).join(' '),
+          guessed: !dir,
           date,
-          title: category === 'Otro' ? (direction === 'ingreso' ? 'Ingreso' : 'Egreso') : category,
-          dupOf: dup?.id,
+          title:
+            guess.category === 'Otro'
+              ? direction === 'ingreso'
+                ? 'Ingreso'
+                : 'Egreso'
+              : guess.category,
         });
-        break;
-      }
+      });
     }
 
     // Una pregunta para la próxima vez («tengo que preguntarle a Laura cómo le fue»).
@@ -787,9 +811,16 @@ export function proposeCapture(
             ? 'depende'
             : 'quiero';
       const action = c.text.slice(hit.index + hit[0].length);
-      const title = capital(action.replace(DATE_PHRASE, ' ').replace(/\s{2,}/g, ' '));
+      const title = capital(stripDates(action, today));
       if (title.length >= 3) {
-        const due = futureDate(action, today) ?? '';
+        // La fecha puede ir antes del verbo («El viernes tengo que…»), pero «hoy le prometí» no
+        // dice para cuándo es.
+        const lead = findDate(c.text.slice(0, hit.index), 'future', today);
+        const due =
+          futureDate(action, today) ??
+          (lead && !/^(?:hoy|esta|ahorita|en la)/.test(normalizeText(lead.phrase.trim()))
+            ? lead.date
+            : '');
         const inAction = people.filter((id) =>
           normalizeText(action).includes(nameOfNorm(id, ws, newPeople)),
         );
@@ -960,29 +991,72 @@ export function proposeCapture(
     pieces.push({ id: uid(), kind: 'nota', on: true, evidence: source, text: source });
   }
 
+  // Conexiones por contexto compartido (oficio, empresa, intereses): sugerencias apagadas.
+  pieces.push(
+    ...suggestConnections(pieces, ws, [...allPeople, ...pieces.flatMap(peopleOfPiece)], uid),
+  );
+
+  // Lo que sueles descartar empieza apagado (aprendido de tus capturas anteriores).
+  for (const p of pieces) {
+    if (p.on && p.kind !== 'nota' && usuallyDropped(p.kind, memory)) {
+      p.on = false;
+      p.hint = 'Sueles descartar este tipo de pieza: actívala si la quieres.';
+    }
+  }
+
   const mood = moodIn(scan);
   const first = pieces[0];
-  return {
-    text: source,
-    date,
-    pieces,
-    newPeople,
-    ambiguous,
-    kinLinks,
-    mood,
-    episode: {
-      // Solo si hay algo que las una: un encuentro, una visita o un viaje, una celebración…
-      on:
-        pieces.length >= 2 &&
-        (Boolean(enc) || first.kind === 'visita' || episodeKindFor(norm, false) !== 'otro'),
-      title: (
-        enc?.title ??
-        (first.kind === 'visita' ? first.title : null) ??
-        capital(scan.replace(/\s{2,}/g, ' ').split(/[.!?\n]/)[0] ?? 'Experiencia')
-      ).slice(0, 120),
-      kind: episodeKindFor(norm, Boolean(enc)),
+  return markDuplicates(
+    {
+      text: source,
+      date,
+      dateFrom: dateHit?.phrase.trim(),
+      pieces,
+      newPeople,
+      ambiguous,
+      kinLinks,
+      mood,
+      episode: {
+        // Solo si hay algo que las una: un encuentro, una visita o un viaje, una celebración…
+        on:
+          pieces.length >= 2 &&
+          (Boolean(enc) || first.kind === 'visita' || episodeKindFor(norm, false) !== 'otro'),
+        title: (
+          enc?.title ??
+          (first.kind === 'visita' ? first.title : null) ??
+          capital(scan.replace(/\s{2,}/g, ' ').split(/[.!?\n]/)[0] ?? 'Experiencia')
+        ).slice(0, 120),
+        kind: episodeKindFor(norm, Boolean(enc)),
+      },
     },
-  };
+    ws,
+  );
+}
+
+/** Personas que aparecen en una pieza. */
+export function peopleOfPiece(p: Piece): string[] {
+  switch (p.kind) {
+    case 'encuentro':
+    case 'obra':
+    case 'trabajo':
+      return [
+        ...p.personIds,
+        ...(p.kind === 'obra' && p.recommendedBy ? [p.recommendedBy] : []),
+      ];
+    case 'novedad':
+    case 'intercambio':
+    case 'dato':
+    case 'preguntar':
+      return [p.personId];
+    case 'compromiso':
+      return [...p.peopleIds, ...(p.personId ? [p.personId] : [])];
+    case 'conexion':
+      return [p.a, p.b];
+    case 'enlace':
+      return p.personId ? [p.personId] : [];
+    default:
+      return [];
+  }
 }
 
 /** Qué clase de episodio parece: un viaje, una celebración, un evento, un proyecto… */
@@ -1121,25 +1195,18 @@ export function planFromAi(
         if (!(amount > 0)) break;
         const direction: Direction = p.direction === 'ingreso' ? 'ingreso' : 'egreso';
         const d = isDate(p.date) ? p.date : date;
-        const dup = ws.entries.find(
-          (e) =>
-            e.kind === 'Movimiento' &&
-            e.amount === amount &&
-            e.direction === direction &&
-            Math.abs(daysBetween(todayInputValue(new Date(e.created_at)), d)) <= 2,
-        );
         const category = str(p.category, 40) || 'Otro';
         pieces.push({
           id: uid(),
           kind: 'movimiento',
-          on: !dup,
+          on: true,
           evidence,
           amount,
           direction,
           category,
+          cue: contentWords(evidence, 6).join(' '),
           date: d,
           title: str(p.title, 180) || category,
-          dupOf: dup?.id,
         });
         break;
       }
@@ -1364,21 +1431,228 @@ export function planFromAi(
       pieces.push(l);
   const moodName = normalizeText(str((obj as { mood?: unknown }).mood, 20));
   const mood = moods.find((m) => normalizeText(m.label) === moodName)?.value ?? base.mood;
-  return {
-    ...base,
-    date,
-    pieces,
-    newPeople,
-    mood,
-    episode: {
-      ...base.episode,
-      on:
-        pieces.length >= 2 &&
-        (base.episode.on || pieces.some((p) => p.kind === 'encuentro' || p.kind === 'visita')),
-      title: str(obj.episode_title, 120) || base.episode.title,
+  return markDuplicates(
+    {
+      ...base,
+      date,
+      pieces,
+      newPeople,
+      mood,
+      episode: {
+        ...base.episode,
+        on:
+          pieces.length >= 2 &&
+          (base.episode.on || pieces.some((p) => p.kind === 'encuentro' || p.kind === 'visita')),
+        title: str(obj.episode_title, 120) || base.episode.title,
+      },
     },
-  };
+    ws,
+  );
 }
 
 const LEARN_SOURCES = ['Libro', 'Curso', 'Video', 'Artículo', 'Persona', 'Práctica'];
 const EXCHANGES: ExchangeKind[] = ['favor', 'regalo', 'apoyo', 'tiempo', 'dinero', 'iniciativa'];
+
+// ───────────────────────── Personas en las piezas ─────────────────────────
+
+/** Cambia una persona por otra en todas las piezas (al aclarar un nombre ambiguo). */
+export function swapPerson(plan: CapturePlan, from: string, to: string, name: string): CapturePlan {
+  const sw = (id: string | null) => (id === from ? to : id);
+  const swList = (ids: string[]) => [...new Set(ids.map((id) => sw(id)!))];
+  return {
+    ...plan,
+    ambiguous: plan.ambiguous.map((a) => (a.name === name ? { ...a, chosen: to } : a)),
+    pieces: plan.pieces.map((p) => {
+      switch (p.kind) {
+        case 'encuentro':
+          return { ...p, personIds: swList(p.personIds) };
+        case 'novedad':
+          return { ...p, personId: sw(p.personId)! };
+        case 'compromiso':
+          return { ...p, personId: sw(p.personId), peopleIds: swList(p.peopleIds) };
+        case 'conexion':
+          return { ...p, a: sw(p.a)!, b: sw(p.b)! };
+        case 'obra':
+          return { ...p, personIds: swList(p.personIds), recommendedBy: sw(p.recommendedBy) };
+        case 'trabajo':
+          return { ...p, personIds: swList(p.personIds) };
+        case 'intercambio':
+        case 'dato':
+        case 'preguntar':
+          return { ...p, personId: sw(p.personId)! };
+        case 'enlace':
+          return { ...p, personId: sw(p.personId) };
+        default:
+          return p;
+      }
+    }),
+  };
+}
+
+/** Usa una ficha que ya tienes en lugar de crear la persona nueva («Andrez» → Andrés Pérez). */
+export function adoptExisting(plan: CapturePlan, newId: string, personId: string): CapturePlan {
+  const next = swapPerson(plan, newId, personId, '');
+  return {
+    ...next,
+    newPeople: next.newPeople.filter((n) => n.id !== newId),
+    kinLinks: next.kinLinks.map((k) => (k.personId === newId ? { ...k, personId } : k)),
+  };
+}
+
+// ───────────────────────── Varias experiencias a la vez ─────────────────────────
+
+const BULLET = /^(?:[-•*·]|\d{1,2}[.)])\s+/;
+
+/** Párrafos separados por una línea en blanco. */
+export const paragraphs = (text: string) =>
+  text
+    .trim()
+    .split(/\n[ \t]*\n+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 3);
+
+/**
+ * Parte un texto en varias experiencias cuando se nota que son varias: separadas por «---»,
+ * párrafos que empiezan con su fecha («Ayer…», «El lunes…», «15/11: …»), una lista con viñetas o
+ * una línea por día. Si no, es una sola.
+ */
+export function splitExperiences(text: string, today = todayInputValue()): string[] {
+  const t = text.trim();
+  if (!t) return [];
+  const cut = t
+    .split(/\n[ \t]*(?:-{3,}|\*{3,}|={3,}|_{3,})[ \t]*(?:\n|$)/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 3);
+  if (cut.length > 1) return cut;
+  const paras = paragraphs(t);
+  if (
+    paras.length > 1 &&
+    paras.filter((p) => startsWithDate(p, today)).length >= Math.max(2, paras.length - 1)
+  )
+    return paras;
+  const lines = t
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (lines.length >= 2 && lines.every((l) => BULLET.test(l)))
+    return lines.map((l) => l.replace(BULLET, '')).filter((l) => l.length > 3);
+  if (lines.length >= 2 && lines.every((l) => startsWithDate(l, today))) return lines;
+  return [t];
+}
+
+/**
+ * Propone cada experiencia del lote. La misma persona nueva en varias («conocí a Mariana» y
+ * luego «volví a ver a Mariana») queda como una sola: se crea una vez.
+ */
+export function proposeBatch(texts: string[], ws: Workspace, today = todayInputValue()) {
+  const seen = new Map<string, string>();
+  return texts.map((t) => {
+    let plan = proposeCapture(t, ws, today);
+    for (const n of plan.newPeople) {
+      const key = normalizeText(n.name.trim());
+      const prev = seen.get(key);
+      if (!prev) {
+        seen.set(key, n.id);
+        continue;
+      }
+      plan = swapPerson(plan, n.id, prev, '');
+      plan = {
+        ...plan,
+        newPeople: plan.newPeople.map((x) => (x.id === n.id ? { ...x, id: prev } : x)),
+        kinLinks: plan.kinLinks.map((k) => (k.personId === n.id ? { ...k, personId: prev } : k)),
+      };
+    }
+    return plan;
+  });
+}
+
+// ───────────────────────── Avisos de la vista previa ─────────────────────────
+
+export type PlanNote = { tone: 'warn' | 'info' | 'dup'; text: string };
+
+/**
+ * Lo que conviene saber antes de proponer: de dónde salió la fecha, nombres que pueden ser
+ * varias personas, parentescos sin elegir, personas nuevas parecidas a otras, lo que ya existe,
+ * gastos sin categoría o sin dirección clara y sugerencias de conexión.
+ */
+export function planNotes(plan: CapturePlan, ws: Workspace, today = todayInputValue()) {
+  const notes: PlanNote[] = [];
+  const name = (id: string) => ws.people.find((p) => p.id === id)?.name ?? '';
+  if (plan.dateFrom && plan.date !== today)
+    notes.push({
+      tone: 'info',
+      text: `Fecha: ${friendlyDate(plan.date, today).toLowerCase()} (por «${plan.dateFrom}»).`,
+    });
+  for (const a of plan.ambiguous) {
+    const others = a.ids
+      .filter((id) => id !== a.chosen)
+      .map(name)
+      .filter(Boolean)
+      .join(', ');
+    notes.push({
+      tone: 'warn',
+      text: `«${a.name}» puede ser ${name(a.chosen)} o ${others}. Usaré a ${name(a.chosen).split(' ')[0]} (${a.learned ? 'la elegiste la última vez' : 'la viste más recientemente'}); puedes cambiarlo al revisar.`,
+    });
+  }
+  for (const k of plan.kinLinks)
+    if (!k.personId) notes.push({ tone: 'warn', text: `¿Quién es ${k.label}? Lo eliges al revisar.` });
+  for (const n of plan.newPeople)
+    notes.push(
+      n.like
+        ? { tone: 'warn', text: `«${n.name}» se parece a ${name(n.like)}: ¿es la misma persona?` }
+        : { tone: 'info', text: `Persona nueva: ${n.name}.` },
+    );
+  for (const p of plan.pieces) {
+    if (p.dup) {
+      notes.push({ tone: 'dup', text: p.dup.text });
+      continue;
+    }
+    if (p.kind === 'movimiento') {
+      const what = money(p.amount);
+      if (p.guessed && p.category === 'Otro')
+        notes.push({
+          tone: 'warn',
+          text: `${what}: no dice si lo pagaste o te lo pagaron ni de qué fue. Lo tomé como gasto sin categoría.`,
+        });
+      else if (p.guessed)
+        notes.push({
+          tone: 'warn',
+          text: `${what}: no dice si lo pagaste o te lo pagaron; lo tomé como gasto.`,
+        });
+      else if (p.category === 'Otro')
+        notes.push({ tone: 'warn', text: `${what}: no sé de qué fue; elige la categoría al revisar.` });
+      else if (p.why) notes.push({ tone: 'info', text: `${what} → ${p.category}, ${p.why}.` });
+    } else if (p.kind === 'compromiso' && p.commitment === 'prometi' && !p.personId) {
+      notes.push({ tone: 'warn', text: `No sé a quién le prometiste «${p.title}».` });
+    } else if (p.kind === 'conexion' && p.hint && !p.on) {
+      notes.push({ tone: 'info', text: `Sugerencia: ${p.text} (${p.hint.toLowerCase()}).` });
+    }
+  }
+  return notes;
+}
+
+// ───────────────────────── Aprendizaje ─────────────────────────
+
+/** Lo que se aprende al guardar: comparando lo que Nexo propuso con lo que guardaste. */
+export function captureLessons(initial: CapturePlan | undefined, final: CapturePlan) {
+  const before = new Map((initial?.pieces ?? []).map((p) => [p.id, p]));
+  return {
+    names: final.ambiguous.map((a) => ({ name: a.name, chosen: a.chosen })),
+    cats: final.pieces
+      .filter((p): p is MoneyPiece => p.kind === 'movimiento' && p.on && Boolean(p.cue))
+      .map((p) => {
+        const b = before.get(p.id) as MoneyPiece | undefined;
+        return {
+          words: p.cue!.split(' ').filter(Boolean),
+          category: p.category,
+          corrected: Boolean(b && b.category !== p.category),
+        };
+      }),
+    kinds: final.pieces.flatMap((p) => {
+      const b = before.get(p.id);
+      // Lo que empezó apagado y siguió apagado no dice nada.
+      if (!b || (!b.on && !p.on)) return [];
+      return [{ kind: p.kind, kept: p.on }];
+    }),
+  };
+}

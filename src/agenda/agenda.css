@@ -916,3 +916,54 @@
     animation: none;
   }
 }
+
+/* Palabra del diccionario sin significado: se escribe aquí mismo. */
+.rv-word {
+  display: grid;
+  gap: 6px;
+  margin-top: auto;
+}
+.rv-word textarea {
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 12px;
+  resize: vertical;
+  border: 1px solid #e6e2f3;
+  border-radius: 12px;
+  background: #fbfaff;
+  font:
+    14px/1.5 'DM Sans',
+    sans-serif;
+  color: #27301f;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.rv-word textarea:focus {
+  outline: none;
+  border-color: #a99ae6;
+  box-shadow: 0 0 0 3px rgba(90, 73, 184, 0.12);
+}
+.rv-word-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+.rv-word-foot a,
+.rv-word-foot small {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #6d6596;
+  text-decoration: none;
+}
+.rv-word-foot a:hover {
+  color: #4b3da0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.rv-word-foot small {
+  color: #3f8a4d;
+}

@@ -13,10 +13,7 @@ const headings: Record<Exclude<Page, 'Mi espacio'>, { title: string; text: strin
     title: 'Personas que dejan huella.',
     text: 'Más que contactos. Historias, intereses y momentos compartidos.',
   },
-  Conexiones: {
-    title: 'Todo tiene un hilo.',
-    text: 'Explora los encuentros que acercan a las personas de tu universo.',
-  },
+  Conexiones: { title: 'Conexiones', text: '' },
   Lugares: {
     title: 'Lugares con historia.',
     text: 'Donde pasan las cosas: cafés, casas, viajes y todo lo que viviste en cada uno.',
@@ -42,7 +39,13 @@ const headings: Record<Exclude<Page, 'Mi espacio'>, { title: string; text: strin
 export function PageHeading() {
   const { page, selected, openEntry, openPerson, openPlace } = useApp();
   if (page === 'Mi espacio') return <GreetingHeading />;
-  if (page === 'Lecturas' || page === 'Tableros' || page === 'Notas' || page === 'Libroteca')
+  if (
+    page === 'Lecturas' ||
+    page === 'Tableros' ||
+    page === 'Notas' ||
+    page === 'Libroteca' ||
+    page === 'Conexiones'
+  )
     return null;
 
   // «Nuevo recuerdo» vive en el encabezado de la app; aquí solo queda la acción propia de cada

@@ -1,16 +1,20 @@
-import { useMemo } from 'react';
-import { Archive, ArchiveRestore, Check, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Archive, ArchiveRestore, Check, ChevronDown, Trash2 } from 'lucide-react';
 import { normalizeText, shortDate } from '../lib/format';
 import { CardFace } from './BoardCard';
 import { BOARD_SQL, type BoardCard } from './boardStore';
 
+/** Se pintan de a tantas (con «Ver más»): así miles de archivadas no traban la pantalla. */
+const PAGE = 300;
+
 /**
  * Archivados: las tarjetas que archivaste, de todos tus tableros, en una lista (la más reciente
- * arriba). Al pasar el cursor: desarchivar o eliminar. Un clic abre su ficha.
+ * arriba), sin tope. Al pasar el cursor: desarchivar o eliminar. Un clic abre su ficha.
  */
 export function ArchiveView({
   cards,
   missing,
+  loading = false,
   query,
   isDone,
   linked,
@@ -20,6 +24,8 @@ export function ArchiveView({
 }: {
   cards: BoardCard[] | null;
   missing: boolean;
+  /** Aún llegan más. */
+  loading?: boolean;
   query: string;
   isDone: (c: BoardCard) => boolean;
   linked: (c: BoardCard) => boolean;
@@ -28,6 +34,8 @@ export function ArchiveView({
   onDelete: (c: BoardCard) => void;
 }) {
   const needle = normalizeText(query.trim());
+  const [limit, setLimit] = useState(PAGE);
+  useEffect(() => setLimit(PAGE), [needle]);
   const shown = useMemo(
     () =>
       (cards ?? []).filter(
@@ -39,6 +47,7 @@ export function ArchiveView({
       ),
     [cards, needle],
   );
+  const page = shown.slice(0, limit);
 
   return (
     <div className="bd-archive">
@@ -53,7 +62,7 @@ export function ArchiveView({
               {cards === null
                 ? 'Cargando…'
                 : cards.length
-                  ? `${cards.length} ${cards.length === 1 ? 'tarjeta' : 'tarjetas'} de todos tus tableros`
+                  ? `${cards.length.toLocaleString('es-CO')}${loading ? '+' : ''} ${cards.length === 1 ? 'tarjeta' : 'tarjetas'} de todos tus tableros${loading ? ' · cargando el resto…' : ''}`
                   : 'Lo que archives aparece aquí'}
             </small>
           </div>
@@ -85,8 +94,9 @@ export function ArchiveView({
         ) : !shown.length ? (
           <p className="bd-archive-none">Nada coincide con «{query.trim()}».</p>
         ) : (
+          <>
           <ul className="bd-archive-list">
-            {shown.map((c) => {
+            {page.map((c) => {
               const done = isDone(c);
               return (
                 <li key={c.id} data-flip={'a:' + c.id}>
@@ -139,6 +149,19 @@ export function ArchiveView({
               );
             })}
           </ul>
+          {shown.length > page.length && (
+            <button
+              type="button"
+              className="bd-archive-more"
+              onClick={() => setLimit((n) => n + PAGE)}
+            >
+              <ChevronDown size={15} /> Ver {Math.min(PAGE, shown.length - page.length)} más
+              <small>
+                {page.length.toLocaleString('es-CO')} de {shown.length.toLocaleString('es-CO')}
+              </small>
+            </button>
+          )}
+          </>
         )}
       </div>
     </div>

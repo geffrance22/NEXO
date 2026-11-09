@@ -338,6 +338,11 @@ function chooseKind(
   if (own.hoy === true || birthdays.some((b) => b.en_dias === 0)) w.cumple = 100;
   else if (birthdays.some((b) => typeof b.en_dias === 'number' && b.en_dias <= 2)) w.cumple = 14;
   if (agenda.length) w.recordatorio = 10 + Math.min(10, agenda.length * 3);
+  // Tableros que el usuario eligió para el saludo: lo vencido o lo de hoy pide un recordatorio.
+  const boards = arr(d.tableros);
+  if (boards.some((b) => Number(b.vencidas) > 0 || Number(b.para_hoy) > 0))
+    w.recordatorio = Math.max(w.recordatorio, 12) + 4;
+  else if (boards.some((b) => arr(b.destacadas).length)) w.recordatorio = Math.max(w.recordatorio, 8);
   if (arr(d.series_actuales).length) w.serie = 9;
   if (arr(d.lectura_actual).length) w.libro = 9;
   if (hasSky) w.clima = 9;
@@ -376,6 +381,7 @@ Estilo:
 - Que se note que conoces a la persona: usa de forma natural algo real (el libro que lee y en qué va, la serie, un cumpleaños, algo que vence, el clima, la hora, su ciudad, sus gustos). No lo metas todo: una o dos cosas bastan.
 - Lee el ambiente del mundo: si los titulares se sienten pesados, baja el humor y sé más sereno (nunca frívolo con tragedias ni con cifras de víctimas); si hay algo ligero o bueno, puedes celebrarlo. Si hablas de una noticia, que sea solo de los titulares recibidos y sin añadir detalles que no estén.
 - No inventes: ni datos del usuario, ni del clima, ni de personas, ni del mundo. Si un dato no está, no lo menciones. La agenda es para recordarla con cariño, no para regañar.
+- "tableros" son solo los tableros que el usuario eligió compartir para este saludo (no todos los que tiene). Puedes mencionar una tarjeta concreta de "destacadas" (lo vencido, lo de hoy, lo prioritario o resaltado) por su título y su tablero, sin listar varias.
 - Consejos de vida cotidiana (descanso, foco, hidratación, moverse, orden, relaciones); nunca diagnósticos, dosis ni asesoría legal o financiera concreta.
 - Respeta el género del usuario si se indica (p. ej. "bienvenido" o "bienvenida"); si no, usa formas neutras.
 - Varía: no repitas el arranque, la idea ni la estructura de "saludos_recientes_a_evitar".

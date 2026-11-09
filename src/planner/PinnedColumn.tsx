@@ -3,9 +3,11 @@ import { ArrowUpRight, Calendar, Check, CheckSquare } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { supabase } from '../backend';
 import { friendlyDate } from '../lib/format';
+import { queueTrigger } from './boardFeed';
 import { isRepeat, nextDue } from './boardRepeat';
 import { dueState, isDivider, toneOf } from './boardTheme';
 import { aimBoard } from './boardView';
+import { plainMarks } from './cardMarks';
 import type { Check as CheckItem } from './shared';
 import './pinned.css';
 
@@ -136,6 +138,7 @@ export function PinnedColumnCard() {
     }
     if (task && (task.status === 'completado') !== next) toggleEntry(task);
     if (!extras) return;
+    queueTrigger({ card: c.id, list: col.id, trigger: next ? 'done' : 'undone' });
     setCards((v) => v.map((x) => (x.id === c.id ? { ...x, done: next } : x)));
     void supabase
       .from('board_cards')
@@ -194,7 +197,7 @@ export function PinnedColumnCard() {
                 title="Abrir la tarjeta en Tableros"
                 onClick={() => toBoard(c.id)}
               >
-                <strong>{c.title}</strong>
+                <strong>{plainMarks(c.title)}</strong>
                 {(due || c.checks.length > 0) && (
                   <small>
                     {due && (

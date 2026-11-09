@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../AppContext';
 import type { MyRecord, Workspace } from '../data';
 import { todayInputValue } from '../lib/format';
+import { greetingCards, useBoardFeed, type FeedCard } from '../planner/boardFeed';
 import { useDismissed } from '../relations/dismissed';
 import { askGreeting } from './api';
 import { buildGreetingInput, nameOf } from './context';
@@ -10,7 +11,8 @@ import { localGreeting, salutation } from './local';
 import {
   isFresh,
   isUsable,
-  lifetime,
+  KEY,
+  LIFETIME,
   pause,
   pausedUntil,
   pushHistory,
@@ -34,27 +36,54 @@ export type GreetingView = {
   part: Part;
 };
 
-type Source = { workspace: Workspace; me: MyRecord; skip: ReadonlySet<string> };
+type Source = {
+  workspace: Workspace;
+  me: MyRecord;
+  skip: ReadonlySet<string>;
+  /** Solo las tarjetas de los tableros con «En el saludo de Mi espacio». */
+  cards: readonly FeedCard[];
+};
 
 /** Tras un fallo no se insiste durante este tiempo. */
 const RETRY_AFTER = 3 * 60_000;
 /** Si la IA tarda más que esto, se muestra el saludo de respaldo mientras sigue llegando. */
 const SLOW_AFTER = 3500;
 const NO_FACTS: LocalFacts = { myBirthday: false };
+/** Sin tocar el ratón, el teclado ni la pantalla durante este tiempo, se entiende que no estás. */
+const AWAY_AFTER = 10 * 60_000;
+const ACTIVITY = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'] as const;
+
+/**
+ * Con varias pestañas abiertas solo una pide el saludo: las demás esperan su turno y, al entrar,
+ * encuentran el recién guardado. Sin `navigator.locks` (navegadores viejos) se pide sin más.
+ */
+function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  return locks ? locks.request('nexo-greeting', fn) : fn();
+}
 
 // Una sola petición a la vez, aunque haya varios componentes (o el modo estricto de React) pidiendo.
-let inflight: { key: string; promise: Promise<Stored> } | null = null;
+let inflight: { key: string; promise: Promise<Stored | null> } | null = null;
 
-function generate(uid: string, read: () => Source): Promise<Stored> {
+/**
+ * Trae el saludo vigente: el que otra pestaña acaba de guardar o uno nuevo de la IA. Devuelve
+ * `null` si la función está en pausa tras un fallo.
+ */
+function generate(uid: string, read: () => Source): Promise<Stored | null> {
   const when = new Date();
   const day = todayInputValue(when);
   const part = partOf(when);
   const key = `${uid}|${day}|${part}`;
   if (inflight?.key === key) return inflight.promise;
 
-  const promise = (async () => {
-    const { workspace, me, skip } = read();
-    const input = buildGreetingInput(workspace, me, skip, when);
+  const promise = exclusive(async () => {
+    // Puede que otra pestaña lo haya pedido mientras esperábamos.
+    const saved = readStored(uid);
+    if (saved && isFresh(saved, day, part)) return saved;
+    if (pausedUntil() > Date.now()) return null;
+
+    const { workspace, me, skip, cards } = read();
+    const input = buildGreetingInput(workspace, me, skip, when, cards);
     const res = await askGreeting({
       digest: input.digest,
       ahora: {
@@ -76,7 +105,7 @@ function generate(uid: string, read: () => Source): Promise<Stored> {
     const stored: Stored = {
       uid,
       at,
-      exp: at + lifetime(),
+      exp: at + LIFETIME,
       day,
       part,
       name: input.name,
@@ -86,7 +115,7 @@ function generate(uid: string, read: () => Source): Promise<Stored> {
     writeStored(stored);
     pushHistory(res.greeting);
     return stored;
-  })();
+  });
 
   inflight = { key, promise };
   const done = () => {
@@ -97,14 +126,21 @@ function generate(uid: string, read: () => Source): Promise<Stored> {
 }
 
 /**
- * El saludo de Mi espacio. Si hay uno de la IA vigente (10 a 15 minutos), se muestra al instante.
- * Si no, aparece el saludo con tu nombre y el mensaje llega en cuanto la IA responde; si tarda o
- * falla, se queda uno de respaldo. Cuando el actual vence, se pide otro sin que tengas que hacer
- * nada.
+ * El saludo de Mi espacio. Si hay uno de la IA vigente (15 minutos), se muestra al instante. Si no,
+ * aparece el saludo con tu nombre y el mensaje llega en cuanto la IA responde; si tarda o falla, se
+ * queda uno de respaldo.
+ *
+ * Solo se pide uno nuevo cuando el actual venció y estás ahí: con la pestaña a la vista y habiendo
+ * usado la página en los últimos minutos. Si te fuiste, se espera a que vuelvas (al regresar a la
+ * pestaña o al mover el ratón) y entonces se pide uno. Todas las pestañas comparten el mismo saludo.
  */
 export function useGreeting(): GreetingView {
-  const { workspace, me, user, dataReady } = useApp();
+  const { workspace, me, user, dataReady: appReady } = useApp();
   const skip = useDismissed();
+  const feed = useBoardFeed();
+  const cards = useMemo(() => greetingCards(feed.cards), [feed.cards]);
+  // También esperan las tarjetas de tus tableros (si no, el saludo saldría sin ellas).
+  const dataReady = appReady && feed.ready;
   const uid = user.id;
 
   const [stored, setStored] = useState<Stored | null>(() => readStored(uid));
@@ -114,8 +150,8 @@ export function useGreeting(): GreetingView {
   const [seed] = useState(() => Math.random());
 
   // Lo último que hay en pantalla, para que `refresh` no dependa de cada cambio.
-  const source = useRef<Source>({ workspace, me, skip });
-  source.current = { workspace, me, skip };
+  const source = useRef<Source>({ workspace, me, skip, cards });
+  source.current = { workspace, me, skip, cards };
   const ready = useRef(dataReady);
   ready.current = dataReady;
   const current = useRef(stored);
@@ -128,17 +164,26 @@ export function useGreeting(): GreetingView {
     };
   }, []);
 
+  // Cuándo usaste la página por última vez y si quedó un saludo pendiente mientras no estabas.
+  const lastSeen = useRef(Date.now());
+  const due = useRef(false);
+
   const refresh = useCallback(async () => {
-    // Hace falta tener cargados tus datos (si no, el resumen saldría vacío) y la pestaña a la vista.
-    if (!ready.current || document.hidden) return;
     const t = new Date();
     const have = current.current;
     if (have && isFresh(have, todayInputValue(t), partOf(t), t.getTime())) return;
+    // Hace falta tener cargados tus datos (si no, el resumen saldría vacío) y que estés ahí.
+    if (!ready.current) return;
+    if (document.hidden || t.getTime() - lastSeen.current > AWAY_AFTER) {
+      due.current = true;
+      return;
+    }
+    due.current = false;
     if (pausedUntil() > t.getTime()) return;
     setPending(true);
     try {
       const next = await generate(uid, () => source.current);
-      if (alive.current) setStored(next);
+      if (next && alive.current) setStored(next);
     } catch {
       pause(RETRY_AFTER);
     } finally {
@@ -157,6 +202,8 @@ export function useGreeting(): GreetingView {
   // Al volver a la pestaña.
   useEffect(() => {
     const wake = () => {
+      if (document.hidden) return;
+      lastSeen.current = Date.now();
       setClock(Date.now());
       void refresh();
     };
@@ -168,7 +215,36 @@ export function useGreeting(): GreetingView {
     };
   }, [refresh]);
 
-  // Y, si la página sigue abierta, cuando se cumple el tiempo del saludo actual.
+  // Al volver a usar la página tras un rato sin tocarla, si el saludo venció mientras tanto.
+  useEffect(() => {
+    const seen = () => {
+      lastSeen.current = Date.now();
+      if (!due.current) return;
+      due.current = false;
+      setClock(Date.now());
+      void refresh();
+    };
+    for (const type of ACTIVITY) window.addEventListener(type, seen, { passive: true });
+    return () => {
+      for (const type of ACTIVITY) window.removeEventListener(type, seen);
+    };
+  }, [refresh]);
+
+  // Si otra pestaña trae un saludo nuevo, se usa ese en vez de pedir otro.
+  useEffect(() => {
+    const sync = (e: StorageEvent) => {
+      if (e.key !== KEY) return;
+      const next = readStored(uid);
+      if (next && next.at > (current.current?.at ?? 0)) {
+        setStored(next);
+        setClock(Date.now());
+      }
+    };
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
+  }, [uid]);
+
+  // Y, si sigues ahí, cuando se cumple el tiempo del saludo actual.
   useEffect(() => {
     if (!stored) return;
     const id = window.setTimeout(
@@ -198,9 +274,9 @@ export function useGreeting(): GreetingView {
   const facts = useMemo(
     () =>
       phase === 'local' && dataReady
-        ? buildGreetingInput(workspace, me, skip, new Date(clock)).facts
+        ? buildGreetingInput(workspace, me, skip, new Date(clock), cards).facts
         : NO_FACTS,
-    [phase, dataReady, workspace, me, skip, clock],
+    [phase, dataReady, workspace, me, skip, clock, cards],
   );
 
   const n = Math.floor(seed * 1000);

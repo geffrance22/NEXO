@@ -32,7 +32,7 @@ const digits = (s?: string) => {
 };
 
 /** Distancia de edición (para «Andres» y «Andrés Felipe» no, pero sí «Jhonatan» y «Jonathan»). */
-function distance(a: string, b: string, max: number) {
+export function distance(a: string, b: string, max: number) {
   if (Math.abs(a.length - b.length) > max) return max + 1;
   let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
   for (let i = 1; i <= a.length; i++) {

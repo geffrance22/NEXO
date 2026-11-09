@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { supabase } from '../backend';
-import { Highlighter, Sparkles, StickyNote } from 'lucide-react';
+import { useEffect, useRef, useState } from "react";
+import { supabase } from "../backend";
+import { Highlighter, Sparkles, StickyNote } from "lucide-react";
 
 type MarkGroup = {
   id: string;
@@ -19,10 +19,13 @@ const MAX_ROWS = 6000;
 
 const when = (iso: string) => {
   const days = Math.floor((Date.now() - Date.parse(iso)) / 86400000);
-  if (days <= 0) return 'hoy';
-  if (days === 1) return 'ayer';
+  if (days <= 0) return "hoy";
+  if (days === 1) return "ayer";
   if (days < 7) return `hace ${days} días`;
-  return new Date(iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+  return new Date(iso).toLocaleDateString("es-CO", {
+    day: "numeric",
+    month: "short",
+  });
 };
 
 /**
@@ -42,13 +45,13 @@ export function MarkGroups({
   open: (readingId: string) => void;
 }) {
   const [groups, setGroups] = useState<MarkGroup[] | null>(null);
-  const [err, fail] = useState('');
+  const [err, fail] = useState("");
 
   useEffect(() => {
     let live = true;
     const t = setTimeout(
       async () => {
-        fail('');
+        fail("");
         const rows: {
           reading_id: string;
           title: string;
@@ -58,14 +61,18 @@ export function MarkGroups({
         }[] = [];
         for (let from = 0; from < MAX_ROWS; from += PAGE) {
           let q = supabase
-            .from('reading_annotations')
-            .select('reading_id,title,edited_at,quote,note')
-            .order('edited_at', { ascending: false })
-            .order('id')
+            .from("reading_annotations")
+            .select("reading_id,title,edited_at,quote,note")
+            .order("edited_at", { ascending: false })
+            .order("id")
             .range(from, from + PAGE - 1);
           if (query.trim()) {
-            const value = '"%' + query.trim().replace(/["\\]/g, '') + '%"';
-            q = q.or(['title', 'quote', 'note'].map((k) => k + '.ilike.' + value).join(','));
+            const value = '"%' + query.trim().replace(/["\\]/g, "") + '%"';
+            q = q.or(
+              ["title", "quote", "note"]
+                .map((k) => k + ".ilike." + value)
+                .join(","),
+            );
           }
           const { data, error } = await q;
           if (!live) return;
@@ -80,7 +87,8 @@ export function MarkGroups({
         // es su adelanto y su fecha.
         const map = new Map<string, MarkGroup>();
         for (const r of rows) {
-          const ai = r.note.startsWith('✦ ') || r.note.includes('\n\n✦ ') ? 1 : 0;
+          const ai =
+            r.note.startsWith("✦ ") || r.note.includes("\n\n✦ ") ? 1 : 0;
           const g = map.get(r.reading_id);
           if (g) {
             g.count++;
@@ -94,7 +102,7 @@ export function MarkGroups({
               notes: r.note.trim() ? 1 : 0,
               ai,
               last: r.edited_at,
-              preview: (r.quote ?? '').replace(/\s+/g, ' ').trim(),
+              preview: (r.quote ?? "").replace(/\s+/g, " ").trim(),
             });
         }
         setGroups([...map.values()]);
@@ -120,8 +128,8 @@ export function MarkGroups({
     return (
       <p className="rd-mg-empty">
         {query.trim()
-          ? 'Ninguna anotación coincide.'
-          : 'Aún no tienes anotaciones. Resalta algo en un artículo.'}
+          ? "Ninguna anotación coincide."
+          : "Aún no tienes anotaciones. Resalta algo en un artículo."}
       </p>
     );
 
@@ -129,15 +137,15 @@ export function MarkGroups({
   return (
     <div className="rd-mg">
       <small className="rd-mg-total">
-        {total} {total === 1 ? 'anotación' : 'anotaciones'}
-        {query.trim() ? ' coinciden' : ''} en {groups.length}{' '}
-        {groups.length === 1 ? 'artículo' : 'artículos'}
+        {total} {total === 1 ? "anotación" : "anotaciones"}
+        {query.trim() ? " coinciden" : ""} en {groups.length}{" "}
+        {groups.length === 1 ? "artículo" : "artículos"}
       </small>
       {groups.map((g) => (
         <button
           type="button"
           key={g.id}
-          className={'rd-mg-row' + (current === g.id ? ' current' : '')}
+          className={"rd-mg-row" + (current === g.id ? " current" : "")}
           aria-current={current === g.id || undefined}
           onClick={() => open(g.id)}
         >
@@ -147,7 +155,9 @@ export function MarkGroups({
               <Highlighter size={11} /> {g.count}
             </b>
           </span>
-          {g.preview && <span className="rd-mg-preview">«{g.preview.slice(0, 140)}»</span>}
+          {g.preview && (
+            <span className="rd-mg-preview">«{g.preview.slice(0, 140)}»</span>
+          )}
           <span className="rd-mg-meta">
             <span>{when(g.last)}</span>
             {g.notes > 0 && (
@@ -178,8 +188,8 @@ export function useResume(
   saved.current = onSaved;
   useEffect(() => {
     if (!id || !enabled) return;
-    const pane = document.querySelector<HTMLElement>('.readings>main'),
-      article = pane?.querySelector('article');
+    const pane = document.querySelector<HTMLElement>(".readings>main"),
+      article = pane?.querySelector("article");
     if (!pane || !article) return;
     let last = offset,
       timer = 0;
@@ -187,25 +197,42 @@ export function useResume(
       clearTimeout(timer);
       if (last !== offset)
         void supabase
-          .from('readings')
+          .from("readings")
           .update({ resume_at: last, last_read: new Date().toISOString() })
-          .eq('id', id!)
+          .eq("id", id!)
           .then(({ error }) => {
             if (error) onError(error.message);
             else saved.current?.(last);
           });
     }
-    const nodes = Array.from(article.querySelectorAll<HTMLElement>('[data-offset]'));
+    // Los fragmentos cambian al resaltar (o al cambiar los ajustes del lector): se vuelven a
+    // leer cuando el artículo cambia, no en cada paso del scroll.
+    let nodes = Array.from(
+      article.querySelectorAll<HTMLElement>("[data-offset]"),
+    );
+    let stale = false;
+    const watch = new MutationObserver(() => {
+      stale = true;
+    });
+    watch.observe(article, { childList: true, subtree: true });
     const top = () =>
       pane.getBoundingClientRect().top +
-      (pane.querySelector('.read-tools')?.getBoundingClientRect().height || 0) +
+      (pane.querySelector(".read-tools")?.getBoundingClientRect().height || 0) +
       6;
 
     if (offset > 0) {
-      const match = [...nodes].reverse().find((n) => Number(n.dataset.offset) <= offset);
+      const match = [...nodes]
+        .reverse()
+        .find((n) => Number(n.dataset.offset) <= offset);
       if (match) pane.scrollTop += match.getBoundingClientRect().top - top();
     }
     function scroll() {
+      if (stale) {
+        stale = false;
+        nodes = Array.from(
+          article!.querySelectorAll<HTMLElement>("[data-offset]"),
+        );
+      }
       // Se mide una vez por evento, no en cada paso de la búsqueda.
       const edge = top();
       let lo = 0,
@@ -215,13 +242,15 @@ export function useResume(
         if (nodes[mid].getBoundingClientRect().bottom <= edge) lo = mid + 1;
         else hi = mid;
       }
-      last = pane!.scrollTop < 4 ? 0 : Number(nodes[lo]?.dataset.offset ?? last);
+      last =
+        pane!.scrollTop < 4 ? 0 : Number(nodes[lo]?.dataset.offset ?? last);
       clearTimeout(timer);
       timer = window.setTimeout(save, 750);
     }
-    pane.addEventListener('scroll', scroll, { passive: true });
+    pane.addEventListener("scroll", scroll, { passive: true });
     return () => {
-      pane.removeEventListener('scroll', scroll);
+      watch.disconnect();
+      pane.removeEventListener("scroll", scroll);
       if (timer) save();
     };
   }, [id, enabled]);

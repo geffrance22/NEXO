@@ -1,83 +1,75 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import {
   ArrowLeft,
   ArrowRight,
-  Banknote,
-  BookMarked,
-  Briefcase,
   Check,
   ChevronDown,
-  Clapperboard,
-  Contact,
-  Gift,
-  GraduationCap,
+  CircleHelp,
+  Copy,
+  Info,
   Layers,
-  Lightbulb,
-  Link2,
-  ListChecks,
   LoaderCircle,
-  MapPin,
-  MessageCircleQuestion,
   Network,
-  PenLine,
   Quote,
-  Smile,
   Sparkles,
   UserPlus,
-  Users,
-  Wand2,
   X,
-  type LucideIcon,
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { captureWithAssistant } from '../assistant';
 import { Sheet } from '../components/Sheet';
-import type { CommitmentKind, EpisodeKind, UpdateKind } from '../data';
+import type { CommitmentKind, Episode, EpisodeKind, UpdateKind } from '../data';
 import {
-  proposeCapture,
+  adoptExisting,
+  captureLessons,
+  paragraphs,
   planFromAi,
+  planNotes,
   pieceName,
+  proposeBatch,
+  splitExperiences,
+  swapPerson,
   type CapturePlan,
   type KinLink,
   type Piece,
-  type PieceKind,
 } from '../lib/capture';
+import { learnFromCapture } from '../lib/captureMemory';
 import { exchangeKinds } from '../lib/people';
-import { placeKindList, placeKinds } from '../lib/places';
 import { MoodPicker, Stars, moods } from '../composer/controls';
-import type { ExchangeKind, PlaceKind } from '../data';
+import type { ExchangeKind } from '../data';
 import { cueOptions } from '../lib/recognize';
 import { genderOf } from '../lib/gender';
 import { ME, kinCall, tiesOf } from '../lib/relations';
 import { commitmentKindList, commitmentKinds } from '../lib/commitments';
 import { episodeKindList, episodeKinds } from '../lib/episodes';
-import { errorMessage, friendlyDate, money, thousands, todayInputValue } from '../lib/format';
+import { errorMessage, thousands, todayInputValue } from '../lib/format';
 import { updateKindList, updateKinds } from '../lib/updates';
 import { expenseCategories, incomeCategories } from '../composer/logic';
-import { saveCapture } from './saveCapture';
+import { Avatar } from '../people/Avatar';
+import { CaptureHelp } from './CaptureHelp';
+import { metaOf } from './meta';
+import {
+  CapturePeople,
+  PeopleField,
+  PersonField,
+  PickDialog,
+  PlaceField,
+  personCounts,
+  personItems,
+  type PersonOpt,
+} from './Pickers';
+import { newShared, peopleOf, saveCapture } from './saveCapture';
 import './capture.css';
 
-type PieceMeta = { icon: LucideIcon; color: string; soft: string };
-const pieceIcons: Record<PieceKind, PieceMeta> = {
-  encuentro: { icon: Users, color: '#8a6fa8', soft: '#f0e9f6' },
-  movimiento: { icon: Banknote, color: '#c0674a', soft: '#f9e9e2' },
-  novedad: { icon: Sparkles, color: '#6b62b5', soft: '#eeebfa' },
-  compromiso: { icon: ListChecks, color: '#c4705a', soft: '#f9e8e2' },
-  conexion: { icon: Network, color: '#3c9186', soft: '#dff2ef' },
-  aprendizaje: { icon: GraduationCap, color: '#3c9186', soft: '#dff2ef' },
-  nota: { icon: PenLine, color: '#5f8247', soft: '#eaf1e0' },
-  obra: { icon: Clapperboard, color: '#6b75b8', soft: '#e9ebf8' },
-  idea: { icon: Lightbulb, color: '#c48a2a', soft: '#fbf1dc' },
-  trabajo: { icon: Briefcase, color: '#4d7b9d', soft: '#e3eef6' },
-  intercambio: { icon: Gift, color: '#c25683', soft: '#f8e5ee' },
-  dato: { icon: Contact, color: '#9a6b45', soft: '#f5ebe1' },
-  preguntar: { icon: MessageCircleQuestion, color: '#6b62b5', soft: '#eeebfa' },
-  visita: { icon: MapPin, color: '#3c9186', soft: '#dff2ef' },
-  enlace: { icon: Link2, color: '#5f8247', soft: '#eaf1e0' },
-};
-const bookMeta: PieceMeta = { icon: BookMarked, color: '#b08843', soft: '#f8f0dd' };
-const metaOf = (p: Piece) =>
-  p.kind === 'obra' && p.media === 'Libro' ? bookMeta : pieceIcons[p.kind];
 const platforms = ['Cine', 'Netflix', 'Prime Video', 'Disney+', 'Max', 'Apple TV', 'YouTube'];
 const learnSources = ['Libro', 'Curso', 'Video', 'Artículo', 'Persona', 'Práctica'];
 const factFields = [
@@ -99,23 +91,15 @@ const activities = [
   'Trabajo',
   'Deporte',
 ];
-/** Ejemplos que muestran todo lo que entiende (se alternan). */
-const EXAMPLES = [
-  'Ayer almorcé con Laura en Café Norte. Pagué 48.000. Está buscando trabajo y le prometí enviarle el contacto de Andrés el viernes.',
-  'Anoche vimos «Dune: Parte dos» con Pedro en Netflix, buenísima. Me recomendó leer «El problema de los tres cuerpos».',
-  'Se me ocurrió montar una tienda online de plantas. Tengo que preguntarle a Sofía cómo le fue con su emprendimiento.',
-  'Hoy entregué la propuesta al cliente, falta enviar la factura. Laura me ayudó con el diseño; le encanta el café de especialidad.',
-  'Fui al Jardín Botánico, la pasé muy tranquila. Terminé de leer «Hábitos atómicos» y aprendí que los sistemas pesan más que las metas.',
-];
-const EXAMPLE = EXAMPLES[0];
-/** Lo que Nexo sabe reconocer, para el texto de ayuda. */
-const UNDERSTANDS =
-  'Encuentros, gastos, libros, películas y series, ideas, trabajo, aprendizajes, regalos y favores, gustos y cumpleaños de tu gente, preguntas pendientes, lugares, enlaces y cómo te sentiste.';
+/** Avisos visibles antes de «Ver más». */
+const NOTES_SHOWN = 3;
 
 /**
  * Captura una experiencia en texto libre y deja que Nexo proponga sus piezas: el encuentro, el
  * gasto, la novedad, el compromiso, la conexión… Antes de guardar puedes corregir o excluir cada
- * una. Todas quedan enlazadas entre sí (en un episodio) y al texto original.
+ * una. Todas quedan enlazadas entre sí (en un episodio) y al texto original. Si el texto cuenta
+ * varias experiencias (separadas por «---», párrafos con su fecha o una lista), se proponen y se
+ * guardan por separado.
  */
 export function CaptureDialog({
   initialText = '',
@@ -129,35 +113,91 @@ export function CaptureDialog({
   const app = useApp();
   const { workspace, confirm, notify, go } = app;
   const [text, setText] = useState(initialText);
-  const [plan, setPlan] = useState<CapturePlan | null>(null);
+  const [plans, setPlans] = useState<CapturePlan[] | null>(null);
+  const [at, setAt] = useState(0);
   const [busy, setBusy] = useState<'ai' | 'save' | null>(null);
   const [showSource, setShowSource] = useState(false);
+  const [help, setHelp] = useState(false);
+  /** Experiencias ya afinadas con IA (para no gastar otra consulta sin querer). */
+  const [refined, setRefined] = useState<Set<number>>(new Set());
+  /** Separar en varias experiencias: null = lo decide Nexo. */
+  const [split, setSplit] = useState<boolean | null>(null);
+  const [allNotes, setAllNotes] = useState(false);
+  /** Lo que Nexo propuso al principio (para aprender de lo que corriges). */
+  const initial = useRef<CapturePlan[]>([]);
   const area = useRef<HTMLTextAreaElement>(null);
+  const plan = plans?.[Math.min(at, plans.length - 1)] ?? null;
 
   useEffect(() => {
-    const t = window.setTimeout(() => area.current?.focus(), 60);
+    if (plans) return;
+    const t = window.setTimeout(() => {
+      const el = area.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    }, 60);
     return () => window.clearTimeout(t);
-  }, []);
+  }, [plans]);
 
-  // Vista previa en vivo de lo que Nexo encontraría (y el ánimo, si lo dijiste).
-  const draft = useMemo(
-    () => (text.trim().length > 8 ? proposeCapture(text, workspace) : null),
-    [text, workspace],
+  // El campo crece con el texto (hasta un tope; luego hace scroll).
+  useLayoutEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const max = 280;
+    el.style.height = `${Math.min(el.scrollHeight + 2, max)}px`;
+    el.style.overflowY = el.scrollHeight + 2 > max ? 'auto' : 'hidden';
+  }, [text, plans]);
+
+  const partsOf = (t: string) => {
+    if (split === false) return [t.trim()];
+    const auto = splitExperiences(t);
+    if (split === true) return auto.length > 1 ? auto : paragraphs(t);
+    return auto;
+  };
+
+  // Vista previa en vivo (con un respiro mientras escribes): piezas, avisos y ánimo.
+  const deferred = useDeferredValue(text);
+  const autoParts = useMemo(() => splitExperiences(deferred), [deferred]);
+  const canSplit = autoParts.length > 1 || paragraphs(deferred).length > 1;
+  const drafts = useMemo(
+    () => (deferred.trim().length > 8 ? proposeBatch(partsOf(deferred), workspace) : []),
+    // partsOf solo depende de `split`.
+    [deferred, workspace, split],
   );
-  const preview = draft?.pieces ?? [];
-  const previewMood = draft?.mood ? moods.find((m) => m.value === draft.mood) : undefined;
-  const [example, setExample] = useState(0);
+  const preview = drafts.flatMap((d) => d.pieces);
+  const notes = drafts.flatMap((d, i) =>
+    planNotes(d, workspace).map((n) => ({
+      ...n,
+      text: drafts.length > 1 ? `${i + 1}. ${n.text}` : n.text,
+    })),
+  );
+  const previewMood =
+    drafts.length === 1 && drafts[0].mood
+      ? moods.find((m) => m.value === drafts[0].mood)
+      : undefined;
 
+  const buildPlans = () => {
+    const next = proposeBatch(partsOf(text), workspace);
+    // Las personas desde las que se abrió la captura van en el encuentro.
+    if (preset.length)
+      for (const p of next) {
+        const enc = p.pieces.find((x) => x.kind === 'encuentro');
+        if (enc) enc.personIds = [...new Set([...preset, ...enc.personIds])];
+      }
+    initial.current = next;
+    return next;
+  };
   const propose = () => {
     if (!text.trim()) return;
-    const next = proposeCapture(text, workspace);
-    // Las personas desde las que se abrió la captura van en el encuentro.
-    if (preset.length) {
-      const enc = next.pieces.find((p) => p.kind === 'encuentro');
-      if (enc) enc.personIds = [...new Set([...preset, ...enc.personIds])];
-    }
-    setPlan(next);
+    setPlans(buildPlans());
+    setRefined(new Set());
+    setAt(0);
   };
+
+  /** Cambia la experiencia que estás revisando. */
+  const setPlan = (fn: (p: CapturePlan | null) => CapturePlan | null) =>
+    setPlans((ps) => ps && ps.map((p, i) => (i === at ? (fn(p) ?? p) : p)));
 
   /** «tu mamá», «tu jefe»… de cada persona vinculada contigo. */
   const myKin = useMemo(() => {
@@ -171,9 +211,19 @@ export function CaptureDialog({
 
   const refine = async () => {
     if (!text.trim() || busy) return;
+    let list = plans;
+    let index = at;
+    if (!list) {
+      list = buildPlans();
+      index = 0;
+      setPlans(list);
+      setAt(0);
+      setRefined(new Set());
+    }
+    const base = list[index];
     setBusy('ai');
     try {
-      const raw = await captureWithAssistant(text, {
+      const raw = await captureWithAssistant(base.text, {
         today: todayInputValue(),
         people: workspace.people.slice(0, 400).map((p) => ({
           id: p.id,
@@ -184,10 +234,11 @@ export function CaptureDialog({
         })),
         places: workspace.places.slice(0, 200).map((p) => ({ id: p.id, name: p.name })),
       });
-      setPlan(planFromAi(raw, plan ?? proposeCapture(text, workspace), workspace));
+      const next = planFromAi(raw, base, workspace);
+      setPlans((ps) => (ps ?? list).map((p, i) => (i === index ? next : p)));
+      setRefined((s) => new Set(s).add(index));
     } catch (e) {
       notify(errorMessage(e));
-      if (!plan) propose();
     } finally {
       setBusy(null);
     }
@@ -199,23 +250,48 @@ export function CaptureDialog({
         ? { ...p, pieces: p.pieces.map((x) => (x.id === id ? ({ ...x, ...patch } as Piece) : x)) }
         : p,
     );
-  const active = plan?.pieces.filter((p) => p.on) ?? [];
+  const toSave = (plans ?? []).filter((p) => !p.off && p.pieces.some((x) => x.on));
+  const totalOn = toSave.reduce((s, p) => s + p.pieces.filter((x) => x.on).length, 0);
 
   const save = async () => {
-    if (!plan || !active.length || busy) return;
+    if (!plans || !toSave.length || busy) return;
     setBusy('save');
-    const { episode, count, people, ties } = await saveCapture(plan, app);
-    setBusy(null);
-    if (!count && !episode && !people && !ties) return;
+    const shared = newShared();
+    let count = 0;
+    let people = 0;
+    let ties = 0;
+    const episodes: Episode[] = [];
+    try {
+      for (const p of toSave) {
+        // Aprende de lo que corregiste (solo en este navegador, con tope de tamaño).
+        learnFromCapture(captureLessons(initial.current[plans.indexOf(p)], p));
+        const r = await saveCapture(p, app, shared);
+        count += r.count;
+        people += r.people;
+        ties += r.ties;
+        if (r.episode) episodes.push(r.episode);
+      }
+    } catch (e) {
+      notify(errorMessage(e));
+      return;
+    } finally {
+      setBusy(null);
+    }
+    if (!count && !episodes.length && !people && !ties) return;
     const fresh = people
       ? ` · ${people} ${people === 1 ? 'persona nueva' : 'personas nuevas'}`
       : '';
     const linked = ties ? ` · ${ties} ${ties === 1 ? 'vínculo' : 'vínculos'}` : '';
+    const pieces = `${count} ${count === 1 ? 'pieza' : 'piezas'}`;
     notify(
-      `Experiencia guardada: ${count} ${count === 1 ? 'pieza' : 'piezas'}${episode ? ` en «${episode.title}»` : ''}${fresh}${linked}.`,
-      episode
-        ? { label: 'Ver episodio', icon: 'open', run: () => go('Episodios', episode) }
-        : undefined,
+      toSave.length > 1
+        ? `${toSave.length} experiencias guardadas: ${pieces}${episodes.length ? ` en ${episodes.length} ${episodes.length === 1 ? 'episodio' : 'episodios'}` : ''}${fresh}${linked}.`
+        : `Experiencia guardada: ${pieces}${episodes[0] ? ` en «${episodes[0].title}»` : ''}${fresh}${linked}.`,
+      episodes.length === 1
+        ? { label: 'Ver episodio', icon: 'open', run: () => go('Episodios', episodes[0]) }
+        : episodes.length > 1
+          ? { label: 'Ver episodios', icon: 'open', run: () => go('Episodios') }
+          : undefined,
     );
     onClose();
   };
@@ -237,226 +313,359 @@ export function CaptureDialog({
 
   // Personas que se pueden elegir en las piezas: las tuyas, las nuevas del texto y los
   // parentescos aún sin elegir («tu mamá»).
-  const options = [
-    ...workspace.people.map((p) => ({ id: p.id, name: p.name })),
-    ...(plan?.newPeople.filter((n) => n.on).map((n) => ({ id: n.id, name: `${n.name} (nueva)` })) ??
-      []),
-    ...(plan?.kinLinks
-      .filter((k) => !k.personId)
-      .map((k) => ({ id: k.id, name: `${k.label} (por elegir)` })) ?? []),
-  ].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  const newPeople = plan?.newPeople;
+  const kinLinks = plan?.kinLinks;
+  const options = useMemo<PersonOpt[]>(
+    () => [
+      ...workspace.people.map((p) => ({ id: p.id, name: p.name, person: p })),
+      ...(newPeople ?? [])
+        .filter((n) => n.on)
+        .map((n) => ({ id: n.id, name: n.name, note: 'Nueva · se crea al guardar' })),
+      ...(kinLinks ?? [])
+        .filter((k) => !k.personId)
+        .map((k) => ({ id: k.id, name: k.label, note: 'Parentesco por elegir' })),
+    ],
+    [workspace.people, newPeople, kinLinks],
+  );
+  const counts = useMemo(() => personCounts(workspace.entries), [workspace.entries]);
+  const items = useMemo(() => personItems(options, counts), [options, counts]);
+  const inText = useMemo(
+    () =>
+      plan
+        ? [
+            ...new Set([
+              ...preset,
+              ...plan.pieces.flatMap(peopleOf),
+              ...plan.newPeople.map((n) => n.id),
+              ...plan.kinLinks.map((k) => k.personId ?? k.id),
+            ]),
+          ].filter(Boolean)
+        : [],
+    [plan, preset],
+  );
+  const addPerson = (name: string) => {
+    const id = 'new:' + crypto.randomUUID();
+    setPlan((p) => p && { ...p, newPeople: [...p.newPeople, { id, name, on: true }] });
+    return id;
+  };
+  const peopleCtx = useMemo(
+    () => ({ options, items, inText, addPerson }),
+    // addPerson solo depende de `at`.
+    [options, items, inText, at],
+  );
   const nameOf = (id: string | null) => options.find((o) => o.id === id)?.name ?? '';
+  const personOf = (id: string) => workspace.people.find((p) => p.id === id);
+  const shownNotes = allNotes ? notes : notes.slice(0, NOTES_SHOWN);
+  const showMood =
+    plan?.pieces.some(
+      (p) => p.on && (p.kind === 'encuentro' || p.kind === 'visita' || p.kind === 'nota'),
+    ) ?? false;
+  const asks =
+    (plan?.ambiguous.length ?? 0) + (plan?.kinLinks.length ?? 0) + (plan?.newPeople.length ?? 0);
+  const aiDone = plan ? refined.has(at) : false;
 
   return (
-    <Sheet label="Capturar una experiencia" size="lg" onRequestClose={requestClose}>
-      <div
-        className="xp"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            if (plan) void save();
-            else propose();
-          }
-        }}
-      >
-        <header className="xp-head">
-          <span className="xp-chip">
-            <Wand2 size={16} /> Capturar experiencia
-          </span>
-          <button type="button" className="cp-close" aria-label="Cerrar" onClick={requestClose}>
-            <X size={20} />
-          </button>
-        </header>
+    <Sheet
+      label="Capturar una experiencia"
+      size="lg"
+      className="xp-sheet"
+      yieldTo=".xp-help-backdrop, .xp-pk-backdrop"
+      onRequestClose={requestClose}
+    >
+      <CapturePeople.Provider value={peopleCtx}>
+        <div
+          className="xp"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              if (plans) void save();
+              else propose();
+            }
+          }}
+        >
+          <header className="xp-head">
+            {plans ? (
+              <button
+                type="button"
+                className="xp-icon"
+                aria-label="Volver al texto"
+                title="Volver al texto"
+                onClick={() => setPlans(null)}
+              >
+                <ArrowLeft size={18} />
+              </button>
+            ) : null}
+            <h2>{plans ? 'Revisa y guarda' : 'Nueva experiencia'}</h2>
+            <button
+              type="button"
+              className="xp-icon"
+              aria-label="Cómo funciona"
+              title="Cómo funciona"
+              onClick={() => setHelp(true)}
+            >
+              <CircleHelp size={18} />
+            </button>
+            <button type="button" className="xp-icon" aria-label="Cerrar" onClick={requestClose}>
+              <X size={18} />
+            </button>
+          </header>
 
-        {!plan ? (
-          <div className="xp-write">
-            <h2>¿Qué pasó?</h2>
-            <p>Cuéntalo como te salga. Nexo propone las piezas y tú decides qué guardar.</p>
-            <textarea
-              ref={area}
-              rows={6}
-              maxLength={4000}
-              value={text}
-              placeholder={`Por ejemplo: «${EXAMPLE}»`}
-              onChange={(e) => setText(e.target.value)}
-            />
-            <div className="xp-preview" aria-live="polite">
-              {preview.length ? (
-                <>
-                  <span>Nexo encontró</span>
-                  {preview.map((p) => {
-                    const m = metaOf(p);
-                    return (
-                      <i key={p.id} style={{ '--c': m.color, '--s': m.soft } as CSSProperties}>
-                        <m.icon size={12} /> {pieceName(p)}
-                      </i>
-                    );
-                  })}
-                  {previewMood && (
-                    <i style={{ '--c': '#a8721d', '--s': '#fbf1dc' } as CSSProperties}>
-                      {previewMood.emoji} {previewMood.label}
+          {!plan ? (
+            <div className="xp-write">
+              <textarea
+                ref={area}
+                className="xp-area"
+                rows={2}
+                maxLength={12000}
+                value={text}
+                placeholder="¿Qué pasó? Cuéntalo como te salga…"
+                aria-label="Qué pasó"
+                onChange={(e) => setText(e.target.value)}
+              />
+              <div className="xp-detected" aria-live="polite">
+                {preview.map((p) => {
+                  const m = metaOf(p);
+                  return (
+                    <i
+                      key={p.id}
+                      className={p.on ? '' : 'off'}
+                      title={p.dup?.text ?? p.hint ?? p.evidence}
+                      style={{ '--c': m.color, '--s': m.soft } as CSSProperties}
+                    >
+                      <m.icon size={12} /> {pieceName(p)}
                     </i>
+                  );
+                })}
+                {previewMood && (
+                  <i style={{ '--c': '#a8721d', '--s': '#fbf1dc' } as CSSProperties}>
+                    {previewMood.emoji} {previewMood.label}
+                  </i>
+                )}
+              </div>
+              {canSplit && deferred.trim().length > 8 && (
+                <label className="xp-split">
+                  <input
+                    type="checkbox"
+                    checked={drafts.length > 1}
+                    onChange={(e) => setSplit(e.target.checked)}
+                  />
+                  <Layers size={14} />
+                  {drafts.length > 1
+                    ? `${drafts.length} experiencias, se guardan por separado`
+                    : 'Separar en varias experiencias'}
+                </label>
+              )}
+              {notes.length > 0 && (
+                <ul className="xp-feedback" aria-live="polite">
+                  {shownNotes.map((n, i) => (
+                    <li key={i} className={n.tone}>
+                      {n.tone === 'dup' ? (
+                        <Copy size={13} />
+                      ) : n.tone === 'warn' ? (
+                        <CircleHelp size={13} />
+                      ) : (
+                        <Info size={13} />
+                      )}
+                      <span>{n.text}</span>
+                    </li>
+                  ))}
+                  {notes.length > NOTES_SHOWN && (
+                    <li className="more">
+                      <button type="button" onClick={() => setAllNotes((v) => !v)}>
+                        {allNotes ? 'Ver menos' : `${notes.length - NOTES_SHOWN} más`}
+                      </button>
+                    </li>
                   )}
-                </>
-              ) : (
-                <button
-                  type="button"
-                  className="ps-link"
-                  onClick={() => {
-                    setText(EXAMPLES[example % EXAMPLES.length]);
-                    setExample((n) => n + 1);
-                  }}
-                >
-                  {example ? 'Otro ejemplo' : 'Probar con un ejemplo'}
-                </button>
+                </ul>
               )}
             </div>
-            {!text.trim() && <p className="xp-understands">{UNDERSTANDS}</p>}
-          </div>
-        ) : (
-          <div className="xp-review">
-            <EpisodeToggle plan={plan} setPlan={setPlan} disabled={app.experiencesMissing} />
-
-            {active.some(
-              (p) => p.kind === 'encuentro' || p.kind === 'visita' || p.kind === 'nota',
-            ) && (
-              <div className="xp-mood">
-                <span className="xp-mood-head">
-                  <Smile size={15} /> ¿Cómo te sentiste?
-                  {plan.mood !== null && draft?.mood === plan.mood && (
-                    <small>Lo noté en tu texto</small>
-                  )}
-                </span>
-                <MoodPicker
-                  value={plan.mood ?? undefined}
-                  onChange={(m) => setPlan((p) => p && { ...p, mood: m ?? null })}
-                  label="Cómo te sentiste"
-                />
-              </div>
-            )}
-
-            {plan.ambiguous.map((a) => (
-              <div className="xp-notice" key={a.name}>
-                <span>«{a.name}» puede ser varias personas. ¿Cuál es?</span>
-                <select
-                  value={a.chosen}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setPlan((p) => p && swapPerson(p, a.chosen, next, a.name));
-                  }}
-                >
-                  {a.ids.map((id) => (
-                    <option key={id} value={id}>
-                      {workspace.people.find((p) => p.id === id)?.name}
-                    </option>
+          ) : (
+            <div className="xp-review">
+              {plans && plans.length > 1 && (
+                <nav className="xp-batch" aria-label="Experiencias">
+                  {plans.map((p, i) => (
+                    <button
+                      type="button"
+                      key={i}
+                      className={(i === at ? 'on' : '') + (p.off ? ' skip' : '')}
+                      onClick={() => setAt(i)}
+                      title={p.text}
+                    >
+                      <b>{i + 1}</b>
+                      <span>{p.episode.title || p.text.slice(0, 40)}</span>
+                      <small>{p.off ? 'Omitida' : p.pieces.filter((x) => x.on).length}</small>
+                    </button>
                   ))}
-                </select>
-              </div>
-            ))}
+                  <label className="xp-check xp-batch-skip">
+                    <input
+                      type="checkbox"
+                      checked={!plan.off}
+                      onChange={(e) => setPlan((p) => p && { ...p, off: !e.target.checked })}
+                    />
+                    Guardar esta
+                  </label>
+                </nav>
+              )}
 
-            {plan.kinLinks.map((k) => (
-              <KinLinkRow key={k.id} link={k} plan={plan} setPlan={setPlan} />
-            ))}
+              <EpisodeToggle plan={plan} setPlan={setPlan} disabled={app.experiencesMissing} />
 
-            {plan.newPeople.map((n) => (
-              <label className="xp-newperson" key={n.id}>
-                <input
-                  type="checkbox"
-                  checked={n.on}
-                  onChange={(e) =>
-                    setPlan(
-                      (p) =>
-                        p && {
-                          ...p,
-                          newPeople: p.newPeople.map((x) =>
-                            x.id === n.id ? { ...x, on: e.target.checked } : x,
-                          ),
-                        },
-                    )
-                  }
-                />
-                <UserPlus size={15} />
-                <span>Persona nueva:</span>
-                <input
-                  className="xp-inline"
-                  value={n.name}
-                  maxLength={120}
-                  onChange={(e) =>
-                    setPlan(
-                      (p) =>
-                        p && {
-                          ...p,
-                          newPeople: p.newPeople.map((x) =>
-                            x.id === n.id ? { ...x, name: e.target.value } : x,
-                          ),
-                        },
-                    )
-                  }
-                />
-                <small>{n.on ? 'Se añadirá a tu universo' : 'No se creará'}</small>
-              </label>
-            ))}
-
-            <div className="xp-pieces">
-              {plan.pieces.map((p) => (
-                <PieceCard key={p.id} piece={p} onToggle={(on) => setPiece(p.id, { on })}>
-                  <PieceFields
-                    piece={p}
-                    set={(patch) => setPiece(p.id, patch)}
-                    options={options}
-                    nameOf={nameOf}
+              {showMood && (
+                <div className="xp-mood">
+                  <MoodPicker
+                    value={plan.mood ?? undefined}
+                    onChange={(m) => setPlan((p) => p && { ...p, mood: m ?? null })}
+                    label="Cómo te sentiste"
                   />
-                </PieceCard>
-              ))}
+                </div>
+              )}
+
+              {asks > 0 && (
+                <div className="xp-asks">
+                  {plan.ambiguous.map((a) => (
+                    <div className="xp-ask" key={a.name}>
+                      <span className="xp-ask-text">
+                        ¿Qué <b>{a.name}</b>?
+                      </span>
+                      <div className="xp-ask-opts">
+                        {a.ids.map((id) => {
+                          const p = personOf(id);
+                          if (!p) return null;
+                          return (
+                            <button
+                              type="button"
+                              key={id}
+                              className={'xp-opt' + (a.chosen === id ? ' on' : '')}
+                              onClick={() =>
+                                a.chosen !== id &&
+                                setPlan((pl) => pl && swapPerson(pl, a.chosen, id, a.name))
+                              }
+                            >
+                              <Avatar person={p} size={20} /> {p.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+
+                  {plan.kinLinks.map((k) => (
+                    <KinLinkRow key={k.id} link={k} plan={plan} setPlan={setPlan} />
+                  ))}
+
+                  {plan.newPeople.map((n) => (
+                    <div key={n.id} className={'xp-ask' + (n.on ? '' : ' muted')}>
+                      <label className="xp-check" title={n.on ? 'Se creará' : 'No se creará'}>
+                        <input
+                          type="checkbox"
+                          checked={n.on}
+                          onChange={(e) =>
+                            setPlan(
+                              (p) =>
+                                p && {
+                                  ...p,
+                                  newPeople: p.newPeople.map((x) =>
+                                    x.id === n.id ? { ...x, on: e.target.checked } : x,
+                                  ),
+                                },
+                            )
+                          }
+                        />
+                      </label>
+                      <UserPlus size={15} className="xp-ask-icon" />
+                      <input
+                        className="xp-inline"
+                        value={n.name}
+                        maxLength={120}
+                        aria-label="Nombre de la persona nueva"
+                        onChange={(e) =>
+                          setPlan(
+                            (p) =>
+                              p && {
+                                ...p,
+                                newPeople: p.newPeople.map((x) =>
+                                  x.id === n.id ? { ...x, name: e.target.value } : x,
+                                ),
+                              },
+                          )
+                        }
+                      />
+                      <small className="xp-tag">Nueva</small>
+                      {n.like && personOf(n.like) && (
+                        <button
+                          type="button"
+                          className="xp-opt"
+                          title="Usar la ficha que ya tienes"
+                          onClick={() => setPlan((p) => p && adoptExisting(p, n.id, n.like!))}
+                        >
+                          <Avatar person={personOf(n.like)!} size={20} /> ¿Es{' '}
+                          {personOf(n.like)!.name}?
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="xp-pieces">
+                {plan.pieces.map((p) => (
+                  <PieceCard key={p.id} piece={p} onToggle={(on) => setPiece(p.id, { on })}>
+                    <PieceFields piece={p} set={(patch) => setPiece(p.id, patch)} nameOf={nameOf} />
+                  </PieceCard>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                className="xp-source-toggle"
+                aria-expanded={showSource}
+                onClick={() => setShowSource((v) => !v)}
+              >
+                <Quote size={13} /> Texto original
+                <ChevronDown size={14} className={showSource ? 'open' : ''} />
+              </button>
+              {showSource && <blockquote className="xp-source">{plan.text}</blockquote>}
             </div>
+          )}
 
+          <footer className="xp-foot">
+            <span className="xp-keys" aria-hidden="true">
+              <kbd>Ctrl</kbd>
+              <kbd>Enter</kbd>
+            </span>
             <button
               type="button"
-              className="xp-source-toggle"
-              onClick={() => setShowSource((v) => !v)}
+              className={'xp-ai' + (busy === 'ai' ? ' busy' : '') + (aiDone ? ' done' : '')}
+              disabled={!text.trim() || Boolean(busy)}
+              onClick={() => void refine()}
+              aria-label="Afinar con IA"
+              data-tip={aiDone ? 'Afinado con IA · otra vez' : 'Afinar con IA'}
             >
-              <Quote size={13} /> Texto original{' '}
-              <ChevronDown size={14} className={showSource ? 'open' : ''} />
+              {busy === 'ai' ? <LoaderCircle className="spin" size={18} /> : <Sparkles size={18} />}
             </button>
-            {showSource && <blockquote className="xp-source">{plan.text}</blockquote>}
-          </div>
-        )}
-
-        <footer className="cp-foot">
-          {plan ? (
-            <button type="button" className="cp-btn ghost" onClick={() => setPlan(null)}>
-              <ArrowLeft size={15} /> Editar texto
-            </button>
-          ) : (
-            <span className="cp-status">Ctrl + Enter para proponer</span>
-          )}
-          <button
-            type="button"
-            className="cp-btn ghost xp-ai"
-            disabled={!text.trim() || Boolean(busy)}
-            onClick={() => void refine()}
-            title="Usa la IA para entender textos más complejos (consume una consulta)"
-          >
-            {busy === 'ai' ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}{' '}
-            Afinar con IA
-          </button>
-          {plan ? (
-            <button
-              type="button"
-              className="cp-btn cta"
-              disabled={!active.length || Boolean(busy)}
-              onClick={() => void save()}
-            >
-              {busy === 'save' ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}{' '}
-              Guardar {active.length} {active.length === 1 ? 'pieza' : 'piezas'}
-            </button>
-          ) : (
-            <button type="button" className="cp-btn cta" disabled={!text.trim()} onClick={propose}>
-              Proponer piezas <ArrowRight size={16} />
-            </button>
-          )}
-        </footer>
-      </div>
+            {plans ? (
+              <button
+                type="button"
+                className="cp-btn cta"
+                disabled={!totalOn || Boolean(busy)}
+                onClick={() => void save()}
+              >
+                {busy === 'save' ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}
+                Guardar {totalOn > 0 && <span className="xp-count">{totalOn}</span>}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="cp-btn cta"
+                disabled={!text.trim() || Boolean(busy)}
+                onClick={propose}
+              >
+                Continuar <ArrowRight size={16} />
+              </button>
+            )}
+          </footer>
+        </div>
+      </CapturePeople.Provider>
+      {help && <CaptureHelp onClose={() => setHelp(false)} />}
     </Sheet>
   );
 }
@@ -475,41 +684,49 @@ function KinLinkRow({
   setPlan: (fn: (p: CapturePlan | null) => CapturePlan | null) => void;
 }) {
   const { workspace } = useApp();
-  const [typing, setTyping] = useState(false);
-  const [changing, setChanging] = useState(false);
-  const [name, setName] = useState('');
-  const cue = {
-    key: link.id,
-    start: 0,
-    end: 0,
-    label: link.label,
-    kind: link.kind,
-    gender: link.gender,
-    owner: link.owner,
-    plural: false,
-    status: 'unknown' as const,
-    ids: [],
-  };
-  const options = useMemo(
-    () => cueOptions(cue, workspace.people, workspace.ties),
+  const [open, setOpen] = useState(false);
+  const counts = useMemo(() => personCounts(workspace.entries), [workspace.entries]);
+  const ranked = useMemo(() => {
+    const cue = {
+      key: link.id,
+      start: 0,
+      end: 0,
+      label: link.label,
+      kind: link.kind,
+      gender: link.gender,
+      owner: link.owner,
+      plural: false,
+      status: 'unknown' as const,
+      ids: [],
+    };
+    return cueOptions(cue, workspace.people, workspace.ties);
     // Solo cambia si cambia la gente o el parentesco.
-    [workspace.people, workspace.ties, link.kind, link.gender, link.owner],
-  );
+  }, [workspace.people, workspace.ties, link.id, link.label, link.kind, link.gender, link.owner]);
+  const items = useMemo(() => {
+    const byId = new Map(workspace.people.map((p) => [p.id, p]));
+    const order = new Map(ranked.map((id, i) => [id, i]));
+    return personItems(
+      ranked.flatMap((id) => {
+        const p = byId.get(id);
+        return p ? [{ id, name: p.name, person: p }] : [];
+      }),
+      counts,
+    ).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  }, [ranked, workspace.people, counts]);
+
   const patch = (p: CapturePlan, changes: Partial<KinLink>): CapturePlan => ({
     ...p,
     kinLinks: p.kinLinks.map((x) => (x.id === link.id ? { ...x, ...changes } : x)),
   });
   /** Elegir a alguien: reemplaza el comodín en las piezas por esa persona. */
-  const choose = (to: string) => {
+  const choose = (to: string) =>
     setPlan((p) => {
       if (!p) return p;
       const from = link.personId ?? link.id;
       const next = from === to ? p : swapPerson(p, from, to, '');
       return patch(next, { personId: to, save: true });
     });
-    setChanging(false);
-  };
-  const createNew = () => {
+  const createNew = (name: string) => {
     const n = name.trim();
     if (!n) return;
     const id = 'new:' + crypto.randomUUID();
@@ -521,116 +738,57 @@ function KinLinkRow({
         save: true,
       });
     });
-    setTyping(false);
-    setChanging(false);
   };
 
-  const chosen =
-    link.personId &&
-    (workspace.people.find((p) => p.id === link.personId)?.name ??
-      plan.newPeople.find((n) => n.id === link.personId)?.name);
+  const chosen = link.personId ? workspace.people.find((p) => p.id === link.personId) : undefined;
+  const chosenName =
+    chosen?.name ?? plan.newPeople.find((n) => n.id === link.personId)?.name ?? '';
 
   return (
-    <div className={'xp-kin' + (link.personId && !changing ? ' done' : '')}>
-      <Network size={15} />
-      {link.personId && !changing && !typing ? (
-        <label className="xp-kin-save">
-          <input
-            type="checkbox"
-            checked={link.save}
-            onChange={(e) => setPlan((p) => p && patch(p, { save: e.target.checked }))}
-          />
-          <span>
-            Guardar a <b>{chosen?.split(' ')[0] ?? '¿?'}</b> como {link.label}
-          </span>
-          <button type="button" className="ps-link" onClick={() => setChanging(true)}>
+    <div className={'xp-ask' + (link.personId ? '' : ' pending')}>
+      <Network size={15} className="xp-ask-icon" />
+      {link.personId ? (
+        <>
+          <label className="xp-check">
+            <input
+              type="checkbox"
+              checked={link.save}
+              onChange={(e) => setPlan((p) => p && patch(p, { save: e.target.checked }))}
+            />
+            <span>
+              <b>{chosenName.split(' ')[0] || '¿?'}</b> es {link.label}
+            </span>
+          </label>
+          <button type="button" className="xp-link-btn" onClick={() => setOpen(true)}>
             Cambiar
           </button>
-        </label>
-      ) : typing ? (
-        <form
-          className="xp-kin-new"
-          onSubmit={(e) => {
-            e.preventDefault();
-            createNew();
-          }}
-        >
-          <span>Nombre de {link.label}:</span>
-          <input
-            autoFocus
-            className="xp-inline"
-            maxLength={120}
-            value={name}
-            placeholder="Nombre completo"
-            onChange={(e) => setName(e.target.value)}
-          />
-          <button type="submit" className="ps-link" disabled={!name.trim()}>
-            Añadir
-          </button>
-          <button type="button" className="ps-link" onClick={() => setTyping(false)}>
-            Cancelar
-          </button>
-        </form>
+        </>
       ) : (
         <>
-          <span>
+          <span className="xp-ask-text">
             ¿Quién es <b>{link.label}</b>?
           </span>
-          <select
-            value=""
-            aria-label={`Quién es ${link.label}`}
-            onChange={(e) => {
-              if (e.target.value === '+new') setTyping(true);
-              else if (e.target.value) choose(e.target.value);
-            }}
-          >
-            <option value="">Elegir…</option>
-            <option value="+new">+ Persona nueva…</option>
-            {options.map((id) => (
-              <option key={id} value={id}>
-                {workspace.people.find((p) => p.id === id)?.name}
-              </option>
-            ))}
-          </select>
-          <small>Se recordará para la próxima vez.</small>
+          <button type="button" className="xp-opt primary" onClick={() => setOpen(true)}>
+            Elegir
+          </button>
         </>
+      )}
+      {open && (
+        <PickDialog
+          title={`¿Quién es ${link.label}?`}
+          placeholder="Busca o escribe un nombre nuevo…"
+          items={items}
+          selected={link.personId ? [link.personId] : []}
+          pinned={ranked.slice(0, 6)}
+          pinnedLabel="Más probable"
+          onToggle={choose}
+          onCreate={createNew}
+          createHint="Persona nueva, se crea al guardar"
+          onClose={() => setOpen(false)}
+        />
       )}
     </div>
   );
-}
-
-/** Cambia una persona por otra en todas las piezas (al aclarar un nombre ambiguo). */
-function swapPerson(plan: CapturePlan, from: string, to: string, name: string): CapturePlan {
-  const sw = (id: string | null) => (id === from ? to : id);
-  const swList = (ids: string[]) => [...new Set(ids.map((id) => sw(id)!))];
-  return {
-    ...plan,
-    ambiguous: plan.ambiguous.map((a) => (a.name === name ? { ...a, chosen: to } : a)),
-    pieces: plan.pieces.map((p) => {
-      switch (p.kind) {
-        case 'encuentro':
-          return { ...p, personIds: swList(p.personIds) };
-        case 'novedad':
-          return { ...p, personId: sw(p.personId)! };
-        case 'compromiso':
-          return { ...p, personId: sw(p.personId), peopleIds: swList(p.peopleIds) };
-        case 'conexion':
-          return { ...p, a: sw(p.a)!, b: sw(p.b)! };
-        case 'obra':
-          return { ...p, personIds: swList(p.personIds), recommendedBy: sw(p.recommendedBy) };
-        case 'trabajo':
-          return { ...p, personIds: swList(p.personIds) };
-        case 'intercambio':
-        case 'dato':
-        case 'preguntar':
-          return { ...p, personId: sw(p.personId)! };
-        case 'enlace':
-          return { ...p, personId: sw(p.personId) };
-        default:
-          return p;
-      }
-    }),
-  };
 }
 
 function EpisodeToggle({
@@ -644,29 +802,46 @@ function EpisodeToggle({
 }) {
   const ep = plan.episode;
   const m = episodeKinds[ep.kind];
+  const on = ep.on && !disabled;
   const set = (patch: Partial<CapturePlan['episode']>) =>
     setPlan((p) => p && { ...p, episode: { ...p.episode, ...patch } });
   return (
     <div
-      className={'xp-episode' + (ep.on && !disabled ? ' on' : '')}
+      className={'xp-episode' + (on ? ' on' : '')}
       style={{ '--c': m.color, '--s': m.soft } as CSSProperties}
     >
-      <label className="xp-episode-head">
-        <input
-          type="checkbox"
-          checked={ep.on && !disabled}
-          disabled={disabled}
-          onChange={(e) => set({ on: e.target.checked })}
-        />
-        <Layers size={16} />
-        <span>
-          <strong>Agrupar en un episodio</strong>
-          <small>
-            {disabled
+      <div className="xp-episode-head">
+        <label
+          className="xp-switch"
+          title={
+            disabled
               ? 'Necesita la migración 008. Las piezas se guardan igual, sueltas.'
-              : 'Reúne todas las piezas y conserva el texto original.'}
-          </small>
-        </span>
+              : on
+                ? 'No agrupar'
+                : 'Agrupar en un episodio'
+          }
+        >
+          <input
+            type="checkbox"
+            checked={on}
+            disabled={disabled}
+            aria-label="Agrupar en un episodio"
+            onChange={(e) => set({ on: e.target.checked })}
+          />
+          <i />
+        </label>
+        {on ? (
+          <input
+            className="xp-title"
+            value={ep.title}
+            maxLength={120}
+            placeholder="Nombre del episodio"
+            onChange={(e) => set({ title: e.target.value })}
+            aria-label="Nombre del episodio"
+          />
+        ) : (
+          <span className="xp-episode-off">{disabled ? 'Piezas sueltas' : 'Sin episodio'}</span>
+        )}
         <input
           type="date"
           className="xp-date"
@@ -694,31 +869,24 @@ function EpisodeToggle({
           aria-label="Cuándo pasó"
           title="Cuándo pasó"
         />
-      </label>
-      {ep.on && !disabled && (
-        <div className="xp-episode-body">
-          <input
-            className="xp-title"
-            value={ep.title}
-            maxLength={120}
-            onChange={(e) => set({ title: e.target.value })}
-            aria-label="Nombre del episodio"
-          />
-          <div className="xp-kinds">
-            {episodeKindList.map((k) => {
-              const km = episodeKinds[k];
-              return (
-                <button
-                  type="button"
-                  key={k}
-                  className={ep.kind === k ? 'on' : ''}
-                  onClick={() => set({ kind: k as EpisodeKind })}
-                >
-                  <km.icon size={13} /> {km.label}
-                </button>
-              );
-            })}
-          </div>
+      </div>
+      {on && (
+        <div className="xp-kinds" role="radiogroup" aria-label="Tipo de episodio">
+          {episodeKindList.map((k) => {
+            const km = episodeKinds[k];
+            return (
+              <button
+                type="button"
+                key={k}
+                role="radio"
+                aria-checked={ep.kind === k}
+                className={ep.kind === k ? 'on' : ''}
+                onClick={() => set({ kind: k as EpisodeKind })}
+              >
+                <km.icon size={13} /> {km.label}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -741,146 +909,132 @@ function PieceCard({
       style={{ '--c': m.color, '--s': m.soft } as CSSProperties}
     >
       <header>
-        <label className="xp-switch" title={piece.on ? 'Excluir esta pieza' : 'Incluir esta pieza'}>
-          <input type="checkbox" checked={piece.on} onChange={(e) => onToggle(e.target.checked)} />
-          <i />
-        </label>
         <span className="xp-piece-icon">
           <m.icon size={15} />
         </span>
-        <strong>{pieceName(piece)}</strong>
-        {piece.evidence && (
-          <small className="xp-evidence" title={piece.evidence}>
-            «{piece.evidence}»
-          </small>
-        )}
+        <span className="xp-piece-name">
+          <strong>{pieceName(piece)}</strong>
+          {piece.evidence && <small title={piece.evidence}>«{piece.evidence}»</small>}
+        </span>
+        <label className="xp-switch" title={piece.on ? 'No guardar' : 'Guardar'}>
+          <input
+            type="checkbox"
+            checked={piece.on}
+            aria-label={`Guardar ${pieceName(piece)}`}
+            onChange={(e) => onToggle(e.target.checked)}
+          />
+          <i />
+        </label>
       </header>
       {piece.on && <div className="xp-piece-body">{children}</div>}
-      {!piece.on && piece.kind === 'movimiento' && piece.dupOf && (
+      {piece.dup && (
         <p className="xp-dup">
-          Ya estaba registrado: se enlazará al episodio en lugar de duplicarlo.
+          {piece.dup.text}
+          {!piece.on && (piece.dup.id ? ' Se enlazará al episodio.' : '')}
         </p>
       )}
+      {!piece.dup && piece.hint && <p className="xp-dup xp-hintline">{piece.hint}</p>}
     </section>
   );
 }
 
-type Opt = { id: string; name: string };
-
-function PeoplePick({
-  ids,
-  onChange,
+/** Segmentos («Gasto | Ingreso»). */
+function Seg<T extends string>({
+  value,
   options,
+  onChange,
+  label,
 }: {
-  ids: string[];
-  onChange: (ids: string[]) => void;
-  options: Opt[];
+  value: T;
+  options: readonly (readonly [T, string])[];
+  onChange: (v: T) => void;
+  label: string;
 }) {
   return (
-    <div className="xp-people">
-      {ids.map((id) => (
-        <span key={id}>
-          {options.find((o) => o.id === id)?.name ?? '¿?'}
-          <button
-            type="button"
-            aria-label="Quitar"
-            onClick={() => onChange(ids.filter((x) => x !== id))}
-          >
-            <X size={11} />
-          </button>
-        </span>
+    <div className="xp-seg" role="radiogroup" aria-label={label}>
+      {options.map(([v, text]) => (
+        <button
+          type="button"
+          key={v}
+          role="radio"
+          aria-checked={value === v}
+          className={value === v ? 'on' : ''}
+          onClick={() => onChange(v)}
+        >
+          {text}
+        </button>
       ))}
-      <select
-        value=""
-        aria-label="Añadir persona"
-        onChange={(e) => e.target.value && onChange([...new Set([...ids, e.target.value])])}
-      >
-        <option value="">+ Persona</option>
-        {options
-          .filter((o) => !ids.includes(o.id))
-          .map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-      </select>
     </div>
+  );
+}
+
+function DateInput({
+  value,
+  onChange,
+  label,
+  optional = false,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  label: string;
+  optional?: boolean;
+}) {
+  return (
+    <input
+      type="date"
+      className={'xp-date' + (optional && !value ? ' empty' : '')}
+      value={value}
+      max="2100-12-31"
+      onChange={(e) => onChange(e.target.value)}
+      aria-label={label}
+      title={label}
+    />
   );
 }
 
 function PieceFields({
   piece: p,
   set,
-  options,
   nameOf,
 }: {
   piece: Piece;
   set: (patch: Partial<Piece>) => void;
-  options: Opt[];
   nameOf: (id: string | null) => string;
 }) {
-  const { workspace } = useApp();
   switch (p.kind) {
     case 'encuentro':
       return (
         <div className="xp-grid">
           <input
-            className="xp-wide"
+            className="xp-wide xp-strong"
             value={p.title}
             maxLength={180}
             onChange={(e) => set({ title: e.target.value })}
             aria-label="Título"
           />
-          <PeoplePick
-            ids={p.personIds}
-            options={options}
-            onChange={(personIds) => set({ personIds })}
-          />
+          <PeopleField ids={p.personIds} onChange={(personIds) => set({ personIds })} />
           <div className="xp-row">
+            <PlaceField
+              placeId={p.placeId}
+              placeName={p.placeName}
+              placeKind={p.placeKind}
+              onChange={(patch) => set(patch)}
+            />
             <select
-              value={p.placeId ?? (p.placeName ? 'new' : '')}
-              aria-label="Lugar"
-              onChange={(e) =>
-                e.target.value === 'new'
-                  ? set({ placeId: null })
-                  : set({
-                      placeId: e.target.value || null,
-                      placeName: e.target.value ? '' : p.placeName,
-                    })
-              }
-            >
-              <option value="">Sin lugar</option>
-              {p.placeName && <option value="new">Nuevo: {p.placeName}</option>}
-              {workspace.places.map((pl) => (
-                <option key={pl.id} value={pl.id}>
-                  {pl.name}
-                </option>
-              ))}
-            </select>
-            {!p.placeId && (
-              <input
-                className="xp-inline"
-                placeholder="Lugar nuevo (opcional)"
-                value={p.placeName}
-                maxLength={120}
-                onChange={(e) => set({ placeName: e.target.value })}
-              />
-            )}
-            <select
+              className="xp-select"
               value={p.activity}
               onChange={(e) => set({ activity: e.target.value })}
               aria-label="Qué hicieron"
             >
               <option value="">Actividad</option>
-              {activities.map((a) => (
+              {[...new Set([...(p.activity ? [p.activity] : []), ...activities])].map((a) => (
                 <option key={a}>{a}</option>
               ))}
             </select>
-            <input
-              type="date"
+            <DateInput
               value={p.date}
-              onChange={(e) => set({ date: e.target.value || p.date })}
-              aria-label="Fecha"
+              onChange={(v) => set({ date: v || p.date })}
+              label="Fecha"
             />
           </div>
         </div>
@@ -888,48 +1042,44 @@ function PieceFields({
     case 'movimiento': {
       const cats = p.direction === 'ingreso' ? incomeCategories : expenseCategories;
       return (
-        <div className="xp-row">
-          <div className="xp-seg">
-            {(['egreso', 'ingreso'] as const).map((d) => (
-              <button
-                type="button"
-                key={d}
-                className={p.direction === d ? 'on' : ''}
-                onClick={() => set({ direction: d })}
-              >
-                {d === 'egreso' ? 'Gasto' : 'Ingreso'}
-              </button>
-            ))}
-          </div>
-          <label className="xp-money">
-            $
-            <input
-              inputMode="numeric"
-              value={thousands(p.amount)}
-              onChange={(e) => set({ amount: Number(e.target.value.replace(/\D/g, '')) || 0 })}
-              aria-label="Monto"
+        <div className="xp-grid">
+          <div className="xp-row">
+            <Seg
+              value={p.direction}
+              label="Tipo"
+              options={[
+                ['egreso', 'Gasto'],
+                ['ingreso', 'Ingreso'],
+              ]}
+              onChange={(direction) => set({ direction })}
             />
-          </label>
-          <select
-            value={p.category}
-            onChange={(e) => set({ category: e.target.value, title: e.target.value })}
-            aria-label="Categoría"
-          >
-            {[...new Set([p.category, ...cats])].map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-          <input
-            type="date"
-            value={p.date}
-            onChange={(e) => set({ date: e.target.value || p.date })}
-            aria-label="Fecha"
-          />
-          {p.dupOf && (
-            <small className="xp-warn">
-              Hay un movimiento de {money(p.amount)} cerca de esa fecha: ¿es el mismo?
-            </small>
-          )}
+            <label className="xp-money">
+              $
+              <input
+                inputMode="numeric"
+                value={thousands(p.amount)}
+                onChange={(e) => set({ amount: Number(e.target.value.replace(/\D/g, '')) || 0 })}
+                aria-label="Monto"
+              />
+            </label>
+            <select
+              className="xp-select"
+              value={p.category}
+              title={p.why && p.category !== 'Otro' ? `${p.category} ${p.why}` : undefined}
+              onChange={(e) => set({ category: e.target.value, title: e.target.value })}
+              aria-label="Categoría"
+            >
+              {[...new Set([p.category, ...cats])].map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+            <DateInput
+              value={p.date}
+              onChange={(v) => set({ date: v || p.date })}
+              label="Fecha"
+            />
+          </div>
+          {p.guessed && <small className="xp-warn">¿Lo pagaste o te lo pagaron? Revísalo.</small>}
         </div>
       );
     }
@@ -937,18 +1087,13 @@ function PieceFields({
       return (
         <div className="xp-grid">
           <div className="xp-row">
-            <select
+            <PersonField
               value={p.personId}
-              onChange={(e) => set({ personId: e.target.value })}
-              aria-label="De quién"
-            >
-              {options.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
+              label="¿De quién?"
+              onChange={(id) => id && set({ personId: id })}
+            />
             <select
+              className="xp-select"
               value={p.updateKind}
               onChange={(e) => set({ updateKind: e.target.value as UpdateKind })}
               aria-label="Tipo de novedad"
@@ -973,46 +1118,33 @@ function PieceFields({
       const cm = commitmentKinds[p.commitment];
       return (
         <div className="xp-grid">
-          <div className="xp-seg wide">
-            {commitmentKindList.map((k) => (
-              <button
-                type="button"
-                key={k}
-                className={p.commitment === k ? 'on' : ''}
-                onClick={() => set({ commitment: k as CommitmentKind })}
-              >
-                {commitmentKinds[k].short}
-              </button>
-            ))}
-          </div>
+          <Seg
+            value={p.commitment}
+            label="Tipo de compromiso"
+            options={commitmentKindList.map((k) => [k, commitmentKinds[k].short] as const)}
+            onChange={(k) => set({ commitment: k as CommitmentKind })}
+          />
           <input
-            className="xp-wide"
+            className="xp-wide xp-strong"
             value={p.title}
             maxLength={180}
             onChange={(e) => set({ title: e.target.value })}
             aria-label="Qué"
           />
           <div className="xp-row">
-            <span className="xp-label">{cm.who}</span>
-            <select
-              value={p.personId ?? ''}
-              onChange={(e) => set({ personId: e.target.value || null })}
-              aria-label={cm.who}
-            >
-              <option value="">Nadie en particular</option>
-              {options.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-            <input
-              type="date"
-              value={p.due}
-              onChange={(e) => set({ due: e.target.value })}
-              aria-label="Para cuándo"
+            <PersonField
+              value={p.personId}
+              label={cm.who}
+              placeholder={cm.who}
+              optional
+              onChange={(id) => set({ personId: id })}
             />
-            <small className="xp-hint">{p.due ? friendlyDate(p.due) : 'Sin fecha'}</small>
+            <DateInput
+              value={p.due}
+              onChange={(due) => set({ due })}
+              label="Para cuándo"
+              optional
+            />
           </div>
         </div>
       );
@@ -1021,8 +1153,7 @@ function PieceFields({
       return (
         <div className="xp-grid">
           <small className="xp-hint">
-            Entre {nameOf(p.a) || '¿?'} y {nameOf(p.b) || '¿?'} · se guarda como nota en las dos
-            fichas. Tú decides si contactar.
+            {nameOf(p.a) || '¿?'} ↔ {nameOf(p.b) || '¿?'}
           </small>
           <input
             className="xp-wide"
@@ -1037,28 +1168,28 @@ function PieceFields({
       return (
         <div className="xp-grid">
           <input
-            className="xp-wide"
+            className="xp-wide xp-strong"
             value={p.title}
             maxLength={180}
             onChange={(e) => set({ title: e.target.value })}
             aria-label="Qué aprendiste"
           />
           <div className="xp-row">
-            <span className="xp-label">De</span>
             <select
+              className="xp-select"
               value={p.source}
               onChange={(e) => set({ source: e.target.value })}
               aria-label="Fuente"
             >
-              {learnSources.map((s) => (
+              {[...new Set([...(p.source ? [p.source] : []), ...learnSources])].map((s) => (
                 <option key={s}>{s}</option>
               ))}
             </select>
             <input
-              className="xp-inline"
+              className="xp-inline xp-grow"
               value={p.sourceName}
               maxLength={120}
-              placeholder="Título, curso o quién (opcional)"
+              placeholder="Título o quién"
               onChange={(e) => set({ sourceName: e.target.value })}
               aria-label="Nombre de la fuente"
             />
@@ -1080,36 +1211,33 @@ function PieceFields({
       const book = p.media === 'Libro';
       const states = book
         ? ([
-            ['quiero', 'Quiero leerlo'],
+            ['quiero', 'Por leer'],
             ['curso', 'Leyendo'],
             ['listo', 'Terminado'],
           ] as const)
         : ([
-            ['quiero', 'Quiero verla'],
-            ['curso', 'Viéndola'],
+            ['quiero', 'Por ver'],
+            ['curso', 'Viendo'],
             ['listo', 'Vista'],
           ] as const);
       return (
         <div className="xp-grid">
           <div className="xp-row">
-            <div className="xp-seg">
-              {(['Película', 'Libro'] as const).map((m) => (
-                <button
-                  type="button"
-                  key={m}
-                  className={p.media === m ? 'on' : ''}
-                  onClick={() =>
-                    set(
-                      m === 'Libro'
-                        ? { media: m, platform: '', series: false }
-                        : { media: m, author: '' },
-                    )
-                  }
-                >
-                  {m === 'Libro' ? 'Libro' : 'Película o serie'}
-                </button>
-              ))}
-            </div>
+            <Seg
+              value={p.media}
+              label="Tipo"
+              options={[
+                ['Película', 'Película o serie'],
+                ['Libro', 'Libro'],
+              ]}
+              onChange={(m) =>
+                set(
+                  m === 'Libro'
+                    ? { media: m, platform: '', series: false }
+                    : { media: m, author: '' },
+                )
+              }
+            />
             {!book && (
               <label className="xp-check">
                 <input
@@ -1117,7 +1245,7 @@ function PieceFields({
                   checked={p.series}
                   onChange={(e) => set({ series: e.target.checked })}
                 />
-                Es una serie
+                Serie
               </label>
             )}
           </div>
@@ -1135,12 +1263,13 @@ function PieceFields({
                 className="xp-inline"
                 value={p.author}
                 maxLength={120}
-                placeholder="Autor (opcional)"
+                placeholder="Autor"
                 onChange={(e) => set({ author: e.target.value })}
                 aria-label="Autor"
               />
             ) : (
               <select
+                className="xp-select"
                 value={p.platform}
                 onChange={(e) => set({ platform: e.target.value })}
                 aria-label="Dónde"
@@ -1151,48 +1280,32 @@ function PieceFields({
                 ))}
               </select>
             )}
-            <div className="xp-seg">
-              {states.map(([v, label]) => (
-                <button
-                  type="button"
-                  key={v}
-                  className={p.status === v ? 'on' : ''}
-                  onClick={() => set({ status: v, ...(v === 'quiero' && { rating: 0 }) })}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {p.status !== 'quiero' && (
-            <div className="xp-row">
-              <span className="xp-label">Tu calificación</span>
+            <Seg
+              value={p.status}
+              label="Estado"
+              options={states}
+              onChange={(v) => set({ status: v, ...(v === 'quiero' && { rating: 0 }) })}
+            />
+            {p.status !== 'quiero' && (
               <Stars
                 value={p.rating}
                 size={18}
                 label="Calificación"
                 onChange={(rating) => set({ rating })}
               />
-            </div>
-          )}
+            )}
+          </div>
           <div className="xp-row">
-            <span className="xp-label">{book ? 'Te lo recomendó' : 'Te la recomendó'}</span>
-            <select
-              value={p.recommendedBy ?? ''}
-              onChange={(e) => set({ recommendedBy: e.target.value || null })}
-              aria-label="Quién te la recomendó"
-            >
-              <option value="">Nadie</option>
-              {options.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-            <span className="xp-label">Con</span>
-            <PeoplePick
+            <PersonField
+              value={p.recommendedBy}
+              label={book ? '¿Quién te lo recomendó?' : '¿Quién te la recomendó?'}
+              placeholder="Recomendada por…"
+              optional
+              onChange={(id) => set({ recommendedBy: id })}
+            />
+            <PeopleField
               ids={p.personIds}
-              options={options}
+              label="¿Con quién?"
               onChange={(personIds) => set({ personIds })}
             />
           </div>
@@ -1203,135 +1316,100 @@ function PieceFields({
       return (
         <div className="xp-grid">
           <input
-            className="xp-wide"
+            className="xp-wide xp-strong"
             value={p.title}
             maxLength={180}
             onChange={(e) => set({ title: e.target.value })}
             aria-label="La idea"
           />
-          <div className="xp-row">
-            <span className="xp-label">Guardar como</span>
-            <div className="xp-seg">
-              {(
-                [
-                  ['nota', 'Idea suelta'],
-                  ['trabajo', 'Proyecto en etapa de idea'],
-                ] as const
-              ).map(([v, label]) => (
-                <button
-                  type="button"
-                  key={v}
-                  className={p.as === v ? 'on' : ''}
-                  onClick={() => set({ as: v })}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <Seg
+            value={p.as}
+            label="Guardar como"
+            options={[
+              ['nota', 'Idea suelta'],
+              ['trabajo', 'Proyecto'],
+            ]}
+            onChange={(as) => set({ as })}
+          />
         </div>
       );
     case 'trabajo':
       return (
         <div className="xp-grid">
           <input
-            className="xp-wide"
+            className="xp-wide xp-strong"
             value={p.title}
             maxLength={180}
             onChange={(e) => set({ title: e.target.value })}
             aria-label="Qué hiciste"
           />
           <div className="xp-row">
-            <div className="xp-seg">
-              {(
-                [
-                  ['idea', 'Idea'],
-                  ['curso', 'En curso'],
-                  ['pausa', 'En pausa'],
-                  ['listo', 'Listo'],
-                ] as const
-              ).map(([v, label]) => (
-                <button
-                  type="button"
-                  key={v}
-                  className={p.stage === v ? 'on' : ''}
-                  onClick={() => set({ stage: v })}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <input
-              type="date"
+            <Seg
+              value={p.stage}
+              label="Etapa"
+              options={[
+                ['idea', 'Idea'],
+                ['curso', 'En curso'],
+                ['pausa', 'En pausa'],
+                ['listo', 'Listo'],
+              ]}
+              onChange={(stage) => set({ stage })}
+            />
+            <DateInput
               value={p.due}
-              onChange={(e) => set({ due: e.target.value })}
-              aria-label="Fecha límite"
-              title="Fecha límite (opcional)"
+              onChange={(due) => set({ due })}
+              label="Fecha límite"
+              optional
             />
           </div>
           <input
             className="xp-wide"
             value={p.nextStep}
             maxLength={180}
-            placeholder="Siguiente paso (opcional)"
+            placeholder="Siguiente paso"
             onChange={(e) => set({ nextStep: e.target.value })}
             aria-label="Siguiente paso"
           />
-          <PeoplePick
-            ids={p.personIds}
-            options={options}
-            onChange={(personIds) => set({ personIds })}
-          />
+          <PeopleField ids={p.personIds} onChange={(personIds) => set({ personIds })} />
         </div>
       );
     case 'intercambio':
       return (
-        <div className="xp-row">
-          <div className="xp-seg">
-            {(
-              [
+        <div className="xp-grid">
+          <div className="xp-row">
+            <Seg
+              value={p.dir}
+              label="Dirección"
+              options={[
                 ['recibir', 'Recibiste'],
                 ['dar', 'Diste'],
-              ] as const
-            ).map(([v, label]) => (
-              <button
-                type="button"
-                key={v}
-                className={p.dir === v ? 'on' : ''}
-                onClick={() => set({ dir: v })}
-              >
-                {label}
-              </button>
-            ))}
+              ]}
+              onChange={(dir) => set({ dir })}
+            />
+            <select
+              className="xp-select"
+              value={p.exchange}
+              onChange={(e) => set({ exchange: e.target.value as ExchangeKind })}
+              aria-label="Qué"
+            >
+              {(Object.keys(exchangeKinds) as ExchangeKind[]).map((k) => (
+                <option key={k} value={k}>
+                  {exchangeKinds[k]}
+                </option>
+              ))}
+            </select>
+            <span className="xp-label">{p.dir === 'dar' ? 'a' : 'de'}</span>
+            <PersonField
+              value={p.personId}
+              label={p.dir === 'dar' ? '¿A quién?' : '¿De quién?'}
+              onChange={(id) => id && set({ personId: id })}
+            />
           </div>
-          <select
-            value={p.exchange}
-            onChange={(e) => set({ exchange: e.target.value as ExchangeKind })}
-            aria-label="Qué"
-          >
-            {(Object.keys(exchangeKinds) as ExchangeKind[]).map((k) => (
-              <option key={k} value={k}>
-                {exchangeKinds[k]}
-              </option>
-            ))}
-          </select>
-          <span className="xp-label">{p.dir === 'dar' ? 'a' : 'de'}</span>
-          <select
-            value={p.personId}
-            onChange={(e) => set({ personId: e.target.value })}
-            aria-label="Persona"
-          >
-            {options.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
           <input
-            className="xp-inline"
+            className="xp-wide"
             value={p.note}
             maxLength={120}
-            placeholder="Qué fue (opcional)"
+            placeholder="Qué fue"
             onChange={(e) => set({ note: e.target.value })}
             aria-label="Detalle"
           />
@@ -1341,18 +1419,13 @@ function PieceFields({
       const year = todayInputValue().slice(0, 4);
       return (
         <div className="xp-row">
-          <select
+          <PersonField
             value={p.personId}
-            onChange={(e) => set({ personId: e.target.value })}
-            aria-label="De quién"
-          >
-            {options.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
+            label="¿De quién?"
+            onChange={(id) => id && set({ personId: id })}
+          />
           <select
+            className="xp-select"
             value={p.field}
             onChange={(e) =>
               set({
@@ -1373,21 +1446,20 @@ function PieceFields({
               className="xp-inline xp-short"
               value={p.label}
               maxLength={40}
-              placeholder="Dato (p. ej. Alergia)"
+              placeholder="Dato"
               onChange={(e) => set({ label: e.target.value })}
               aria-label="Nombre del dato"
             />
           )}
           {p.field === 'birthday' ? (
-            <input
-              type="date"
+            <DateInput
               value={/^\d{2}-\d{2}$/.test(p.value) ? `${year}-${p.value}` : ''}
-              onChange={(e) => set({ value: e.target.value.slice(5) })}
-              aria-label="Día del cumpleaños"
+              onChange={(v) => set({ value: v.slice(5) })}
+              label="Día del cumpleaños"
             />
           ) : (
             <input
-              className="xp-inline"
+              className="xp-inline xp-grow"
               value={p.value}
               maxLength={80}
               onChange={(e) => set({ value: e.target.value })}
@@ -1400,20 +1472,11 @@ function PieceFields({
     case 'preguntar':
       return (
         <div className="xp-grid">
-          <div className="xp-row">
-            <span className="xp-label">La próxima vez que veas a</span>
-            <select
-              value={p.personId}
-              onChange={(e) => set({ personId: e.target.value })}
-              aria-label="A quién"
-            >
-              {options.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <PersonField
+            value={p.personId}
+            label="¿A quién?"
+            onChange={(id) => id && set({ personId: id })}
+          />
           <input
             className="xp-wide"
             value={p.text}
@@ -1427,60 +1490,23 @@ function PieceFields({
       return (
         <div className="xp-grid">
           <input
-            className="xp-wide"
+            className="xp-wide xp-strong"
             value={p.title}
             maxLength={180}
             onChange={(e) => set({ title: e.target.value })}
             aria-label="Título"
           />
           <div className="xp-row">
-            <select
-              value={p.placeId ?? (p.placeName ? 'new' : '')}
-              aria-label="Lugar"
-              onChange={(e) =>
-                e.target.value === 'new'
-                  ? set({ placeId: null })
-                  : set({
-                      placeId: e.target.value || null,
-                      placeName: e.target.value ? '' : p.placeName,
-                    })
-              }
-            >
-              <option value="">Sin lugar</option>
-              {p.placeName && <option value="new">Nuevo: {p.placeName}</option>}
-              {workspace.places.map((pl) => (
-                <option key={pl.id} value={pl.id}>
-                  {pl.name}
-                </option>
-              ))}
-            </select>
-            {!p.placeId && (
-              <>
-                <input
-                  className="xp-inline"
-                  placeholder="Lugar nuevo"
-                  value={p.placeName}
-                  maxLength={120}
-                  onChange={(e) => set({ placeName: e.target.value })}
-                />
-                <select
-                  value={p.placeKind}
-                  onChange={(e) => set({ placeKind: e.target.value as PlaceKind })}
-                  aria-label="Tipo de lugar"
-                >
-                  {placeKindList.map((k) => (
-                    <option key={k} value={k}>
-                      {placeKinds[k].label}
-                    </option>
-                  ))}
-                </select>
-              </>
-            )}
-            <input
-              type="date"
+            <PlaceField
+              placeId={p.placeId}
+              placeName={p.placeName}
+              placeKind={p.placeKind}
+              onChange={(patch) => set(patch)}
+            />
+            <DateInput
               value={p.date}
-              onChange={(e) => set({ date: e.target.value || p.date })}
-              aria-label="Fecha"
+              onChange={(v) => set({ date: v || p.date })}
+              label="Fecha"
             />
           </div>
         </div>
@@ -1492,42 +1518,23 @@ function PieceFields({
             {p.url}
           </a>
           <div className="xp-row">
-            <div className="xp-seg">
-              {(
-                [
-                  ['lecturas', 'Guardar en Lecturas'],
-                  ['nota', 'Como nota'],
-                ] as const
-              ).map(([v, label]) => (
-                <button
-                  type="button"
-                  key={v}
-                  className={p.save === v ? 'on' : ''}
-                  onClick={() => set({ save: v })}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <span className="xp-label">Te lo pasó</span>
-            <select
-              value={p.personId ?? ''}
-              onChange={(e) => set({ personId: e.target.value || null })}
-              aria-label="Quién te lo pasó"
-            >
-              <option value="">Nadie</option>
-              {options.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
+            <Seg
+              value={p.save}
+              label="Guardar en"
+              options={[
+                ['lecturas', 'Lecturas'],
+                ['nota', 'Nota'],
+              ]}
+              onChange={(save) => set({ save })}
+            />
+            <PersonField
+              value={p.personId}
+              label="¿Quién te lo pasó?"
+              placeholder="Te lo pasó…"
+              optional
+              onChange={(id) => set({ personId: id })}
+            />
           </div>
-          <small className="xp-hint">
-            {p.save === 'lecturas'
-              ? 'Se captura el texto del artículo para leerlo en Lecturas (si no se puede, queda como nota).'
-              : 'Queda como nota «Para leer» con el enlace.'}
-          </small>
         </div>
       );
   }

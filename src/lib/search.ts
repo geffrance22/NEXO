@@ -1,4 +1,5 @@
 import type { Entry, Episode, Group, Person, Place, Tie, Workspace } from '../data';
+import type { FeedCard } from '../planner/boardFeed';
 import { kindLabel } from './entries';
 import { episodeKindOf } from './episodes';
 import { normalizeText } from './format';
@@ -16,7 +17,8 @@ export type SearchHit =
   /** `a` es null cuando el vínculo parte de «Tú». */
   | { type: 'tie'; tie: Tie; a: Person | null; b: Person }
   | { type: 'group'; group: Group }
-  | { type: 'episode'; episode: Episode };
+  | { type: 'episode'; episode: Episode }
+  | { type: 'card'; card: FeedCard };
 
 export type SearchGroup = { label: string; hits: SearchHit[] };
 
@@ -39,8 +41,12 @@ function match<T>(
   return found.sort((x, y) => Number(inName(y)) - Number(inName(x)));
 }
 
-/** Busca en todo el espacio, sin distinguir mayúsculas ni tildes, y agrupa por tipo. */
-export function searchWorkspace(workspace: Workspace, query: string): SearchGroup[] {
+/** Busca en todo el espacio (también en las tarjetas de tus tableros), sin distinguir mayúsculas ni tildes, y agrupa por tipo. */
+export function searchWorkspace(
+  workspace: Workspace,
+  query: string,
+  cards: readonly FeedCard[] = [],
+): SearchGroup[] {
   const words = normalizeText(query).split(/\s+/).filter(Boolean);
   if (!words.length) return [];
 
@@ -99,10 +105,31 @@ export function searchWorkspace(workspace: Workspace, query: string): SearchGrou
     (ep) => ep.title,
   ).map((episode): SearchHit => ({ type: 'episode', episode }));
 
+  // Tarjetas: las que coinciden por título primero; las completadas, al final.
+  const boardCards = match(
+    [...cards],
+    words,
+    (c) =>
+      normalizeText(
+        [
+          c.title,
+          c.body,
+          ...c.tags,
+          c.board_name,
+          c.list_name,
+          ...c.checks.map((x) => x.text),
+        ].join(' '),
+      ),
+    (c) => c.title,
+  )
+    .sort((a, b) => Number(a.done) - Number(b.done))
+    .map((card): SearchHit => ({ type: 'card', card }));
+
   return [
     { label: 'Personas', hits: people },
     { label: 'Episodios', hits: episodes },
     { label: 'Recuerdos', hits: entries },
+    { label: 'Tarjetas de tableros', hits: boardCards },
     { label: 'Lugares', hits: places },
     { label: 'Vínculos y grupos', hits: [...ties, ...groups] },
   ]

@@ -1,20 +1,29 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { createPortal } from 'react-dom';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowRight,
+  BookA,
   BookOpen,
   Brain,
   Check,
   Clock,
   Eye,
+  Globe,
   LoaderCircle,
   Sparkles,
   X,
-} from 'lucide-react';
-import { useApp } from '../AppContext';
-import { Sheet } from '../components/Sheet';
-import { todayInputValue } from '../lib/format';
-import { AiText } from '../readings/AiText';
+} from "lucide-react";
+import { useApp } from "../AppContext";
+import { Sheet } from "../components/Sheet";
+import { todayInputValue } from "../lib/format";
+import { AiText } from "../readings/AiText";
 import {
   DAILY_REVIEWS,
   dueReviews,
@@ -22,21 +31,25 @@ import {
   schedule,
   type Grade,
   type ReviewItem,
-} from '../readings/review';
+} from "../readings/review";
 import {
   cardFaces,
   fromHighlight,
+  fromLearning,
   fromQuote,
+  fromWord,
   interleave,
   rateCard,
   type ReviewCard,
-} from '../review/cards';
-import { Connect } from '../review/Connect';
-import { modeOf, planSession, type Mode } from '../review/links';
-import { dueQuotes } from '../review/quotes';
+} from "../review/cards";
+import { Connect } from "../review/Connect";
+import { dueLearnings } from "../review/learnings";
+import { modeOf, planSession, type Mode } from "../review/links";
+import { dueQuotes } from "../review/quotes";
+import { dueWords, saveWordNote, type DueWord } from "../review/words";
 
-const SNOOZE = 'nexo-review-snooze';
-const look = { color: '#5a49b8', soft: '#eeebfa' };
+const SNOOZE = "nexo-review-snooze";
+const look = { color: "#5a49b8", soft: "#eeebfa" };
 
 /**
  * Tarjeta de la agenda: «Repasa N ideas de tus lecturas y libros». Aparece cuando hay resaltados
@@ -44,57 +57,99 @@ const look = { color: '#5a49b8', soft: '#eeebfa' };
  */
 export function ReviewAgendaCard() {
   const { workspace } = useApp();
-  const [marks, setMarks] = useState<{ items: ReviewItem[]; total: number } | null>(null);
+  const [marks, setMarks] = useState<{
+    items: ReviewItem[];
+    total: number;
+  } | null>(null);
+  // Palabras del diccionario (sin la migración 202611090003 no hay).
+  const [words, setWords] = useState<{ items: DueWord[]; total: number }>({
+    items: [],
+    total: 0,
+  });
   // Las tarjetas de esta sesión: se fijan al abrir, aunque lo de debajo cambie mientras repasas.
   const [session, setSession] = useState<ReviewCard[] | null>(null);
-  const [snoozed, setSnoozed] = useState(() => localStorage.getItem(SNOOZE) === todayInputValue());
+  const [snoozed, setSnoozed] = useState(
+    () => localStorage.getItem(SNOOZE) === todayInputValue(),
+  );
 
   const load = useCallback(() => {
     // Sin la migración de Lecturas igual puede haber citas de libros que repasar.
     void dueReviews().then((r) => setMarks(r ?? { items: [], total: 0 }));
+    void dueWords(DAILY_REVIEWS).then((r) =>
+      setWords(r ?? { items: [], total: 0 }),
+    );
   }, []);
   useEffect(load, [load]);
 
-  const quotes = useMemo(() => dueQuotes(workspace.entries), [workspace.entries]);
+  const quotes = useMemo(
+    () => dueQuotes(workspace.entries),
+    [workspace.entries],
+  );
+  const learnings = useMemo(
+    () => dueLearnings(workspace.entries),
+    [workspace.entries],
+  );
   const cards = useMemo(
     () =>
       marks
         ? interleave(
+            learnings.map(fromLearning),
             marks.items.map(fromHighlight),
+            words.items.map(fromWord),
             [...quotes.due, ...quotes.fresh].map(fromQuote),
           ).slice(0, DAILY_REVIEWS)
         : [],
-    [marks, quotes],
+    [marks, words, quotes, learnings],
   );
-  const total = (marks?.total ?? 0) + quotes.due.length + quotes.fresh.length;
+  const total =
+    (marks?.total ?? 0) +
+    words.total +
+    quotes.due.length +
+    quotes.fresh.length +
+    learnings.length;
 
   const showCard = cards.length > 0 && !snoozed;
   if (!showCard && !session) return null;
 
   const n = cards.length;
   const titles = [...new Set(cards.map((c) => c.from.title))];
-  const books = cards.some((c) => c.source === 'cita');
-  const articles = cards.some((c) => c.source === 'resaltado');
+  const books = cards.some((c) => c.source === "cita");
+  const articles = cards.some((c) => c.source === "resaltado");
+  const learned = cards.some((c) => c.source === "aprendizaje");
+  const dictionary = cards.some((c) => c.source === "palabra");
+  const sources = [
+    articles && "tus lecturas",
+    books && "tus libros",
+    learned && "tus aprendizajes",
+    dictionary && "tu diccionario",
+  ].filter(Boolean) as string[];
   const where =
-    books && articles ? 'de tus lecturas y libros' : books ? 'de tus libros' : 'de tus lecturas';
+    "de " +
+    (sources.length > 1
+      ? sources.slice(0, -1).join(", ") + " y " + sources[sources.length - 1]
+      : sources[0]);
 
   return (
     <>
       {showCard && (
-        <div className="ag-card" style={{ '--c': look.color, '--s': look.soft } as CSSProperties}>
+        <div
+          className="ag-card"
+          style={{ "--c": look.color, "--s": look.soft } as CSSProperties}
+        >
           <span className="ag-icon">
             <Brain size={17} />
           </span>
           <div className="ag-main">
             <strong>
-              Repasa {n} {n === 1 ? 'idea' : 'ideas'} {where}
+              Repasa {n} {n === 1 ? "idea" : "ideas"} {where}
             </strong>
             <p>
               De «{titles[0]}»
               {titles.length > 1
-                ? ` y ${titles.length - 1} ${titles.length === 2 ? 'fuente' : 'fuentes'} más`
-                : ''}
-              . Dos minutos para que no se te olviden y, si se da, para darles uso.
+                ? ` y ${titles.length - 1} ${titles.length === 2 ? "fuente" : "fuentes"} más`
+                : ""}
+              . Dos minutos para que no se te olviden y, si se da, para darles
+              uso.
             </p>
             <div className="ag-why" title="Por qué aparece">
               <i>Repaso espaciado</i>
@@ -102,7 +157,11 @@ export function ReviewAgendaCard() {
             </div>
           </div>
           <div className="ag-actions">
-            <button type="button" className="ag-primary" onClick={() => setSession(cards)}>
+            <button
+              type="button"
+              className="ag-primary"
+              onClick={() => setSession(cards)}
+            >
               Repasar <ArrowRight size={13} />
             </button>
             <div className="ag-minor">
@@ -139,15 +198,15 @@ export function ReviewAgendaCard() {
 type GradeOption = { id: Grade; label: string; key: string };
 /** Tarjetas con respuesta: lo piensas, lo ves y dices cómo te fue. */
 const recallGrades: GradeOption[] = [
-  { id: 'otra', label: 'Otra vez', key: '1' },
-  { id: 'bien', label: 'Lo recordaba', key: '2' },
-  { id: 'facil', label: 'Fácil', key: '3' },
+  { id: "otra", label: "Otra vez", key: "1" },
+  { id: "bien", label: "Lo recordaba", key: "2" },
+  { id: "facil", label: "Fácil", key: "3" },
 ];
 /** Citas y resaltados sin respuesta: se leen y dices qué tanto te sirven. */
 const reflectGrades: GradeOption[] = [
-  { id: 'otra', label: 'Pronto', key: '1' },
-  { id: 'bien', label: 'Me sirve', key: '2' },
-  { id: 'facil', label: 'Ya la tengo', key: '3' },
+  { id: "otra", label: "Pronto", key: "1" },
+  { id: "bien", label: "Me sirve", key: "2" },
+  { id: "facil", label: "Ya la tengo", key: "3" },
 ];
 
 /**
@@ -155,7 +214,13 @@ const reflectGrades: GradeOption[] = [
  * siempre es solo repasar, pero cuando el momento se da la idea se cruza con algo tuyo (un
  * proyecto, una persona…) y se le puede sacar una idea.
  */
-function ReviewDialog({ cards, onClose }: { cards: ReviewCard[]; onClose: () => void }) {
+function ReviewDialog({
+  cards,
+  onClose,
+}: {
+  cards: ReviewCard[];
+  onClose: () => void;
+}) {
   const { go, notify, workspace, patchEntry, viewEntry } = useApp();
   // Qué tarjetas traen algo más que repasar se decide una vez, al abrir.
   const [plans] = useState(() => planSession(cards, workspace));
@@ -176,12 +241,12 @@ function ReviewDialog({ cards, onClose }: { cards: ReviewCard[]; onClose: () => 
   const revealed = shown || !hasBack;
   const options = hasBack ? recallGrades : reflectGrades;
   const mode: Mode = !plan
-    ? 'recordar'
-    : plan.mode !== 'recordar'
+    ? "recordar"
+    : plan.mode !== "recordar"
       ? plan.mode
       : asked === index
         ? modeOf(plan.links)
-        : 'recordar';
+        : "recordar";
 
   const grade = async (g: Grade) => {
     if (!card || busy) return;
@@ -192,7 +257,7 @@ function ReviewDialog({ cards, onClose }: { cards: ReviewCard[]; onClose: () => 
       setIndex((i) => i + 1);
       setShown(false);
     } catch (e) {
-      notify(e instanceof Error ? e.message : 'No se pudo guardar el repaso.');
+      notify(e instanceof Error ? e.message : "No se pudo guardar el repaso.");
     } finally {
       setBusy(false);
     }
@@ -201,8 +266,8 @@ function ReviewDialog({ cards, onClose }: { cards: ReviewCard[]; onClose: () => 
   // Atajos: espacio para ver la respuesta; 1, 2, 3 para calificar.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!card || (e.target as HTMLElement).closest('input, textarea')) return;
-      if (e.key === ' ' && !revealed) {
+      if (!card || (e.target as HTMLElement).closest("input, textarea")) return;
+      if (e.key === " " && !revealed) {
         e.preventDefault();
         setShown(true);
       } else if (revealed) {
@@ -210,37 +275,57 @@ function ReviewDialog({ cards, onClose }: { cards: ReviewCard[]; onClose: () => 
         if (g) void grade(g.id);
       }
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
   });
 
   const extra =
     ideas > 0
-      ? ` Y guardaste ${ideas} ${ideas === 1 ? 'idea nueva' : 'ideas nuevas'} en tus proyectos.`
-      : '';
+      ? ` Y guardaste ${ideas} ${ideas === 1 ? "idea nueva" : "ideas nuevas"} en tus proyectos.`
+      : "";
 
   const openSource = () => {
     if (!card) return;
     onClose();
-    if (card.source === 'resaltado') go('Lecturas', { id: card.from.id });
+    if (card.source === "resaltado") go("Lecturas", { id: card.from.id });
+    else if (card.source === "palabra")
+      go("Lecturas", card.from.id ? { id: card.from.id } : null);
+    else if (card.source === "aprendizaje")
+      viewEntry(card.origin ?? card.entry);
     else viewEntry(card.book);
   };
 
   return (
-    <Sheet label="Repaso de tus ideas" size="md" className="rv" onRequestClose={onClose}>
+    <Sheet
+      label="Repaso de tus ideas"
+      size="md"
+      className="rv"
+      onRequestClose={onClose}
+    >
       <div className="rv-wrap">
         <header className="rv-head">
           <span className="rv-chip">
             <Brain size={14} /> Repaso
           </span>
           {card && (
-            <span className="rv-progress" aria-label={`Tarjeta ${index + 1} de ${cards.length}`}>
+            <span
+              className="rv-progress"
+              aria-label={`Tarjeta ${index + 1} de ${cards.length}`}
+            >
               {cards.map((_, i) => (
-                <i key={i} className={i < index ? 'done' : i === index ? 'now' : ''} />
+                <i
+                  key={i}
+                  className={i < index ? "done" : i === index ? "now" : ""}
+                />
               ))}
             </span>
           )}
-          <button type="button" className="cp-close" aria-label="Cerrar" onClick={onClose}>
+          <button
+            type="button"
+            className="cp-close"
+            aria-label="Cerrar"
+            onClick={onClose}
+          >
             <X size={20} />
           </button>
         </header>
@@ -251,17 +336,32 @@ function ReviewDialog({ cards, onClose }: { cards: ReviewCard[]; onClose: () => 
               <button
                 type="button"
                 className="rv-source"
-                title={card.source === 'cita' ? 'Abrir el libro' : 'Abrir el artículo'}
+                title={
+                  card.source === "resaltado" ||
+                  (card.source === "palabra" && card.from.id)
+                    ? "Abrir el artículo"
+                    : card.source === "palabra"
+                      ? "Abrir Lecturas"
+                      : card.source === "cita" || card.origin?.kind === "Libro"
+                        ? "Abrir el libro"
+                        : card.origin
+                          ? "Abrir la ficha"
+                          : "Abrir el aprendizaje"
+                }
                 onClick={openSource}
               >
-                <BookOpen size={13} />
+                {card.source === "palabra" ? (
+                  <BookA size={13} />
+                ) : (
+                  <BookOpen size={13} />
+                )}
                 <span>
                   {card.from.title}
-                  {card.from.author ? ` · ${card.from.author}` : ''}
+                  {card.from.author ? ` · ${card.from.author}` : ""}
                 </span>
               </button>
-              <div className={'rv-card ' + f.kind}>
-                {f.kind === 'pregunta' ? (
+              <div className={"rv-card " + f.kind}>
+                {f.kind === "pregunta" ? (
                   <>
                     <h3>{f.front}</h3>
                     {f.quote && <blockquote>«{f.quote}»</blockquote>}
@@ -272,19 +372,38 @@ function ReviewDialog({ cards, onClose }: { cards: ReviewCard[]; onClose: () => 
                 {hasBack &&
                   (shown ? (
                     <div className="rv-back">
-                      <small>{f.kind === 'pregunta' ? 'Respuesta' : 'Tu nota'}</small>
+                      <small>
+                        {card.source === "aprendizaje"
+                          ? "Lo que escribiste"
+                          : card.source === "palabra"
+                            ? "Lo que significa"
+                            : f.kind === "pregunta"
+                              ? "Respuesta"
+                              : "Tu nota"}
+                      </small>
                       <AiText text={f.back} />
                     </div>
                   ) : (
-                    <button type="button" className="rv-reveal" onClick={() => setShown(true)}>
-                      <Eye size={15} />{' '}
-                      {f.kind === 'pregunta' ? 'Piénsalo y mira la respuesta' : 'Ver tu nota'}
+                    <button
+                      type="button"
+                      className="rv-reveal"
+                      onClick={() => setShown(true)}
+                    >
+                      <Eye size={15} />{" "}
+                      {card.source === "palabra"
+                        ? "Piénsalo y mira lo que anotaste"
+                        : f.kind === "pregunta"
+                          ? "Piénsalo y mira la respuesta"
+                          : "Ver tu nota"}
                       <kbd>Espacio</kbd>
                     </button>
                   ))}
+                {card.source === "palabra" && !hasBack && (
+                  <WordMeaning key={card.id} word={card.word} />
+                )}
               </div>
 
-              {revealed && mode !== 'recordar' && (
+              {revealed && mode !== "recordar" && (
                 <Connect
                   key={card.id}
                   card={card}
@@ -294,14 +413,18 @@ function ReviewDialog({ cards, onClose }: { cards: ReviewCard[]; onClose: () => 
                   onSaved={() => setIdeas((n) => n + 1)}
                 />
               )}
-              {revealed && mode === 'recordar' && (
-                <button type="button" className="rv-idea" onClick={() => setAsked(index)}>
+              {revealed && mode === "recordar" && (
+                <button
+                  type="button"
+                  className="rv-idea"
+                  onClick={() => setAsked(index)}
+                >
                   <Sparkles size={13} /> Sacarle una idea
                 </button>
               )}
             </div>
 
-            <footer className={'rv-grades' + (revealed ? '' : ' wait')}>
+            <footer className={"rv-grades" + (revealed ? "" : " wait")}>
               {options.map((g) => (
                 <button
                   type="button"
@@ -318,9 +441,13 @@ function ReviewDialog({ cards, onClose }: { cards: ReviewCard[]; onClose: () => 
                 type="button"
                 className="rv-never"
                 disabled={busy}
-                onClick={() => void grade('nunca')}
+                onClick={() => void grade("nunca")}
               >
-                {busy ? <LoaderCircle className="spin" size={13} /> : 'No repasar más'}
+                {busy ? (
+                  <LoaderCircle className="spin" size={13} />
+                ) : (
+                  "No repasar más"
+                )}
               </button>
             </footer>
           </div>
@@ -331,8 +458,8 @@ function ReviewDialog({ cards, onClose }: { cards: ReviewCard[]; onClose: () => 
             </span>
             <h3>Listo por hoy</h3>
             <p>
-              Repasaste {done} {done === 1 ? 'idea' : 'ideas'}.{extra} Volverán justo cuando estén
-              por olvidarse.
+              Repasaste {done} {done === 1 ? "idea" : "ideas"}.{extra} Volverán
+              justo cuando estén por olvidarse.
             </p>
             <button type="button" className="pp-btn dark" onClick={onClose}>
               Volver
@@ -341,5 +468,57 @@ function ReviewDialog({ cards, onClose }: { cards: ReviewCard[]; onClose: () => 
         )}
       </div>
     </Sheet>
+  );
+}
+
+/**
+ * Palabra del diccionario sin significado anotado: se puede escribir aquí mismo (se guarda al
+ * salir del campo) o buscar en la web.
+ */
+function WordMeaning({ word }: { word: DueWord }) {
+  const { notify } = useApp();
+  const [text, setText] = useState("");
+  const [saved, setSaved] = useState("");
+  const save = async () => {
+    const value = text.trim();
+    if (!value || value === saved) return;
+    try {
+      await saveWordNote(word, value);
+      setSaved(value);
+    } catch (e) {
+      notify(
+        e instanceof Error ? e.message : "No se pudo guardar el significado.",
+      );
+    }
+  };
+  return (
+    <div className="rv-word">
+      <textarea
+        rows={2}
+        maxLength={4000}
+        value={text}
+        placeholder="Qué significa, con tus palabras…"
+        aria-label={`Qué significa «${word.term}»`}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => void save()}
+      />
+      <span className="rv-word-foot">
+        <a
+          href={
+            "https://www.google.com/search?q=" +
+            encodeURIComponent(`qué es ${word.term}`)
+          }
+          target="_blank"
+          rel="noreferrer"
+        >
+          <Globe size={12} /> Buscar en la web
+        </a>
+        {saved && saved === text.trim() && (
+          <small>
+            <Check size={12} /> Guardado en tu diccionario
+          </small>
+        )}
+      </span>
+    </div>
   );
 }

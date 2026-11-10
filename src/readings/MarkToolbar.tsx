@@ -14,6 +14,7 @@ import {
   BookmarkPlus,
   Check,
   Copy,
+  Layers,
   LoaderCircle,
   RotateCcw,
   Sparkles,
@@ -37,6 +38,22 @@ export function boxOfRange(r: Range): Box | null {
   const first = lines[0] ?? all;
   const last = lines[lines.length - 1] ?? all;
   return { top: first.top, bottom: last.bottom, left: all.left, right: all.right };
+}
+
+/** Color del resaltado con su significado (el tooltip lo explica). */
+export type Swatch = { label: string; name: string; hint: string };
+
+/** Tooltip de la barra: título y, debajo, una línea que lo explica. */
+function Tip({ title, hint, dot }: { title: string; hint?: string; dot?: string }) {
+  return (
+    <span className="rd-tip" role="tooltip" aria-hidden="true">
+      <b>
+        {dot && <i className={'rd-tip-dot lit ' + dot} />}
+        {title}
+      </b>
+      {hint && <small>{hint}</small>}
+    </span>
+  );
 }
 
 /** Atajos para preguntar sin escribir. */
@@ -100,9 +117,10 @@ export function MarkToolbar({
   shareHint = 0,
   onWord,
   wordSaved = false,
+  onCard,
 }: {
   box: Box;
-  palette: Record<string, string>;
+  palette: Record<string, Swatch>;
   color: string;
   editing: boolean;
   busy: boolean;
@@ -131,6 +149,8 @@ export function MarkToolbar({
   onWord?: () => void;
   /** Ya está en el diccionario. */
   wordSaved?: boolean;
+  /** Convierte el fragmento en una flashcard (de huecos o de pregunta). */
+  onCard?: () => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ x: number; y: number; side: 'top' | 'bottom'; arrow: number }>();
@@ -224,20 +244,20 @@ export function MarkToolbar({
     >
       <div className="rd-mt-row">
         <div className="rd-mt-colors">
-          {Object.entries(palette).map(([key, label]) => {
+          {Object.entries(palette).map(([key, sw]) => {
             const on = editing && color === key;
             return (
               <button
                 type="button"
                 key={key}
                 className={'rd-mt-swatch lit ' + key + (on ? ' on' : '')}
-                title={label}
-                aria-label={`Resaltar en ${label.toLowerCase()}`}
+                aria-label={`Resaltar como ${sw.label.toLowerCase()} (${sw.name.toLowerCase()}): ${sw.hint.toLowerCase()}`}
                 aria-pressed={editing ? on : undefined}
                 disabled={busy}
                 onClick={() => onPick(key)}
               >
                 {on && <Check size={12} strokeWidth={3} />}
+                <Tip title={sw.label} hint={on ? `${sw.hint} · actual` : sw.hint} dot={key} />
               </button>
             );
           })}
@@ -246,62 +266,81 @@ export function MarkToolbar({
         <button
           type="button"
           className={'rd-mt-btn ai' + (askOpen ? ' on' : '')}
-          title="Preguntar a la IA sobre esto"
           aria-label="Preguntar a la IA"
           aria-expanded={askOpen}
           onClick={onToggleAsk}
         >
           <Sparkles size={15} />
+          <Tip title="Preguntar a la IA" hint="Explicar, resumir o traducir" />
         </button>
         <button
           type="button"
           className={'rd-mt-btn' + (noteOpen ? ' on' : '')}
-          title="Añadir una nota"
           aria-label="Nota"
           aria-expanded={noteOpen}
           onClick={onToggleNote}
         >
           <StickyNote size={15} />
+          <Tip title={note.trim() ? 'Editar la nota' : 'Añadir una nota'} hint="Por qué te importa" />
         </button>
         {onWord && (
           <button
             type="button"
             className={'rd-mt-btn word' + (wordSaved ? ' saved' : '')}
-            title={
-              wordSaved
-                ? 'Ya está en tu diccionario (toca para quitarla)'
-                : 'Añadir al diccionario de palabras por aprender'
-            }
             aria-label={wordSaved ? 'Quitar del diccionario' : 'Añadir al diccionario'}
             aria-pressed={wordSaved}
             onClick={onWord}
           >
             {wordSaved ? <BookCheck size={15} /> : <BookA size={15} />}
+            <Tip
+              title={wordSaved ? 'En tu diccionario' : 'Añadir al diccionario'}
+              hint={wordSaved ? 'Toca para quitarla' : 'Con su definición, para aprenderla'}
+            />
+          </button>
+        )}
+        {onCard && (
+          <button
+            type="button"
+            className="rd-mt-btn"
+            aria-label="Crear flashcard"
+            onClick={onCard}
+          >
+            <Layers size={15} />
+            <Tip title="Crear flashcard" hint="Entra a tu repaso" />
           </button>
         )}
         {sharePanel && (
           <button
             type="button"
             className={'rd-mt-btn people' + (shareOpen ? ' on' : '')}
-            title="¿A quién le sirve esto?"
             aria-label="Compartir con alguien"
             aria-expanded={shareOpen}
             onClick={onToggleShare}
           >
             <UserRound size={15} />
             {shareHint > 0 && !shareOpen && <i className="rd-mt-dot" aria-hidden="true" />}
+            <Tip
+              title="¿A quién le sirve?"
+              hint={
+                shareHint > 0
+                  ? shareHint === 1
+                    ? 'A 1 persona le puede interesar'
+                    : `A ${shareHint} personas les puede interesar`
+                  : 'Compártelo con alguien'
+              }
+            />
           </button>
         )}
         {onDelete && (
           <button
             type="button"
             className="rd-mt-btn danger"
-            title="Quitar el resaltado"
             aria-label="Quitar el resaltado"
             disabled={busy}
             onClick={onDelete}
           >
             <Trash2 size={15} />
+            <Tip title="Quitar el resaltado" hint="También su nota" />
           </button>
         )}
       </div>

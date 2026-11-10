@@ -198,7 +198,7 @@ function FollowCard() {
 function CaptureCard() {
   const { openCapture, openChat, openWeekly } = useApp();
   return (
-    <section className="hc cap">
+    <section className="hc hcap">
       <h3>
         <Wand2 size={16} /> ¿Qué pasó?
       </h3>

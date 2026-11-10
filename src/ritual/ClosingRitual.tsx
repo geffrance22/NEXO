@@ -20,11 +20,11 @@ import { closingQuiz, type QuizQuestion } from '../assistant';
 import { AutoTextarea } from '../composer/controls';
 import { Sheet } from '../components/Sheet';
 import type { Entry, Ritual, RitualAnswer, RitualQuizItem } from '../data';
-import { errorMessage, friendlyDate, normalizeText, todayInputValue } from '../lib/format';
+import { addDays, errorMessage, friendlyDate, normalizeText, todayInputValue } from '../lib/format';
 import { entryImages } from '../lib/moviePosters';
 import { toneOf } from '../library/shelf';
 import { Avatar } from '../people/Avatar';
-import { inDays, schedule } from '../readings/review';
+import { inDays, schedule, type Memory } from '../readings/review';
 import { answered, firstReview, learningInput, learningParts, quizConfidence } from './learning';
 import {
   mediumOf,
@@ -57,15 +57,16 @@ const depths = [
   { n: 3, label: 'Completo', hint: '3 preguntas · 4 min' },
 ] as const;
 
-/** Los próximos repasos si lo vas recordando: mañana, en 3 días, en 7… */
+/** Los próximos repasos si lo vas recordando: mañana, en 3 días, en 10… (FSRS). */
 const reviewPlan = (() => {
-  const out: string[] = [];
-  let step = 0;
-  let days: number | null = 1;
-  out.push(inDays(days));
+  const out: string[] = [inDays(1)];
+  let today = addDays(todayInputValue(), 1);
+  let memory: Memory = { step: 0 };
   for (let i = 0; i < 3; i++) {
-    ({ step, days } = schedule(step, 'bien'));
-    out.push(inDays(days));
+    const next = schedule(memory, 'bien', today);
+    out.push(inDays(next.days));
+    memory = { step: next.step, s: next.s, d: next.d, last: today };
+    today = addDays(today, next.days ?? 1);
   }
   return out;
 })();

@@ -6,6 +6,8 @@ import type { Entry } from '../data';
 import { isOpenTask } from '../lib/commitments';
 import { normalizeText, todayInputValue } from '../lib/format';
 import { Cuadernos } from '../cuadernos/Cuadernos';
+import { Capturas } from '../capturas/Capturas';
+import { useCapturas } from '../capturas/useCapturas';
 import { NotebookView } from '../cuadernos/NotebookView';
 import { useCuadernos } from '../cuadernos/useCuadernos';
 import { Diary } from '../diary/Diary';
@@ -96,6 +98,8 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
   const [creating, setCreating] = useState(false);
   const readings = useReadingShelf();
   const notebooks = useCuadernos();
+  const capturas = useCapturas();
+  const [uploadTick, setUploadTick] = useState(0);
   const notes = useNotes(section === 'Libroteca');
   const liveNotes = useMemo(
     () => (notes.notes ?? []).filter((n) => !n.archived && !n.vaulted),
@@ -161,7 +165,9 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
           ? liveNotes.length
           : id === 'cuadernos'
             ? (notebooks.list?.length ?? 0)
-            : (lists.get(id)?.length ?? 0);
+            : id === 'capturas'
+              ? (capturas.shots?.length ?? 0)
+              : (lists.get(id)?.length ?? 0);
 
   // Lo que dice el encabezado: cifras, no frases.
   const today = todayInputValue();
@@ -210,7 +216,9 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
         ? { label: 'Nueva nota', run: () => setComposeTick((t) => t + 1) }
         : tab === 'cuadernos'
           ? { label: 'Nuevo cuaderno', run: () => setCreating(true) }
-          : entryTab
+          : tab === 'capturas'
+            ? { label: 'Subir capturas', run: () => setUploadTick((t) => t + 1) }
+            : entryTab
             ? {
                 label:
                   tab === 'libros' && shelf === 'estanteria'
@@ -260,8 +268,8 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
   );
 
   let content;
-  // Notas y Cuadernos traen sus propios esqueletos.
-  const skeleton = booting && tab !== 'lienzo' && tab !== 'cuadernos';
+  // Notas, Cuadernos y CAPTURAS traen sus propios esqueletos.
+  const skeleton = booting && tab !== 'lienzo' && tab !== 'cuadernos' && tab !== 'capturas';
   if (skeleton) {
     content =
       tab === 'inicio' ? (
@@ -342,6 +350,14 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
     );
   } else if (tab === 'cuadernos') {
     content = <Cuadernos query={deferredQuery} creating={creating} setCreating={setCreating} />;
+  } else if (tab === 'capturas') {
+    content = (
+      <Capturas
+        query={deferredQuery}
+        uploadTick={uploadTick}
+        onUploadHandled={() => setUploadTick(0)}
+      />
+    );
   } else if (tab === 'notas') {
     content = <Diary entries={lists.get('notas') ?? []} matches={matches} query={deferredQuery} />;
   } else if (entryTab) {
@@ -416,7 +432,9 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
           ? 'Buscar en tus notas'
           : tab === 'cuadernos'
             ? 'Buscar cuadernos'
-            : tab === 'notas'
+            : tab === 'capturas'
+              ? 'Buscar en CAPTURAS'
+              : tab === 'notas'
               ? 'Buscar en tu diario'
               : `Buscar en ${label}`;
 
@@ -472,7 +490,9 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
               ? notes.notes !== null
               : t.id === 'cuadernos'
                 ? notebooks.list != null
-                : true);
+                : t.id === 'capturas'
+                  ? capturas.shots != null
+                  : true);
           return (
             <span key={t.id} className="lt-tab-wrap">
               {t.divider && <span className="lt-tabs-div" aria-hidden="true" />}

@@ -82,7 +82,7 @@ export function learningParts(
 }
 
 /** El primer repaso: el primer intervalo del repaso espaciado (mañana). */
-export const firstReview = () => addDays(todayInputValue(), schedule(0, 'otra').days ?? 1);
+export const firstReview = () => addDays(todayInputValue(), schedule({ step: 0 }, 'otra').days ?? 1);
 
 /** El aprendizaje nuevo, listo para `createEntry`. */
 export function learningInput(

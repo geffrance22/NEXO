@@ -82,7 +82,7 @@ export function formats(source: string): Format[] {
 }
 
 /** Tramos que no se leen (marcas de formato e imágenes), ordenados. */
-function hiddenOf(source: string) {
+export function hiddenOf(source: string) {
   const e = entry(source);
   if (!e.hidden) {
     const hidden = e.rules.filter((f) => f.kind === "hidden");

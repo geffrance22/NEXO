@@ -183,3 +183,120 @@
 .fc-card.off {
   opacity: 0.6;
 }
+
+/* Editor de una tarjeta (pregunta y respuesta o huecos) */
+.reader-dialog.fc-editor > div {
+  width: min(560px, 100%);
+}
+.fc-editor form {
+  display: grid;
+  gap: 12px;
+}
+.fc-editor label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+.fc-editor textarea {
+  font-weight: 400;
+  line-height: 1.5;
+  resize: vertical;
+}
+.fc-kinds {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: color-mix(in srgb, #5a49b8 7%, transparent);
+}
+.reader-dialog .fc-kinds button {
+  gap: 6px;
+  padding: 8px;
+  border-radius: 9px;
+  font-size: 0.84rem;
+  font-weight: 650;
+  color: color-mix(in srgb, currentColor 70%, transparent);
+}
+.reader-dialog .fc-kinds button.on {
+  background: var(--surface, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  color: #5a49b8;
+}
+.fc-cloze-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: -4px;
+}
+.fc-cloze-row small {
+  flex: 1;
+  min-width: 160px;
+  font-size: 0.76rem;
+  opacity: 0.65;
+}
+.fc-preview {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, #5a49b8 6%, transparent);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.fc-preview > span {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5a49b8;
+}
+.fc-preview p {
+  margin: 0 0 6px;
+}
+.fc-preview .rd-ai-text p {
+  margin: 0;
+}
+.fc-editor label.fc-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+.fc-editor label.fc-check input {
+  width: auto;
+}
+
+/* Lista: tipo de tarjeta y subrayados */
+.fc-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 650;
+  color: var(--dc-accent);
+}
+.fc-hl {
+  align-items: flex-start;
+}
+.fc-hl .dc-main {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+}
+.fc-hl q {
+  font:
+    1rem/1.5 Georgia,
+    serif;
+  quotes: none;
+}
+.fc-hl .fc-hl-note {
+  font-size: 0.84rem;
+  opacity: 0.75;
+  white-space: pre-wrap;
+}
+.fc-hl .dc-acts {
+  flex-direction: column;
+  align-items: stretch;
+}

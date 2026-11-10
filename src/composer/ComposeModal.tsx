@@ -68,6 +68,7 @@ import type { ViewProps } from "./views/shared";
 import { WorkView } from "./views/WorkView";
 import { NoteEditor, fresh } from "../planner/NoteEditor";
 import { SaveLink } from "../readings/SaveLink";
+import { CaptureForm } from "../capturas/CaptureForm";
 import { movieInfo, exactMovie, lookup, normal } from "../lib/moviePosters";
 import { isSeries } from "../lib/entries";
 import "./composer.css";
@@ -208,7 +209,9 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
   const [stage, setStage] = useState<"pick" | "write">(
     init.kind || init.entry ? "write" : "pick",
   );
-  const [shortcut, setShortcut] = useState<"idea" | "link" | null>(null);
+  const [shortcut, setShortcut] = useState<"idea" | "link" | "capture" | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   // Al volver al selector desde un formulario, se marca el tipo que estabas usando.
@@ -574,6 +577,7 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
         saved={() => saved("idea")}
       />
     );
+  if (shortcut === "capture") return <CaptureForm onClose={onClose} />;
   if (shortcut === "link")
     return (
       <SaveLink

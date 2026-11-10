@@ -896,3 +896,48 @@
     padding: 0 16px;
   }
 }
+
+/* Etimología de Wiktionary (fuente verificable) o aviso de que la escribió la IA */
+.df-source {
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, #3f8a4d 8%, transparent);
+  font-size: 0.86rem;
+}
+.df-source summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #3f7a49;
+  cursor: pointer;
+}
+.df-source p {
+  margin: 6px 0 4px;
+  white-space: pre-wrap;
+}
+.df-source a,
+.df-unverified a {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: inherit;
+}
+.df-source small {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+.df-unverified {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.76rem;
+  color: #9a6a12;
+}

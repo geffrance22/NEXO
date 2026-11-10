@@ -9,16 +9,20 @@ import { rateLearning, type DueLearning } from "./learnings";
 import { rateQuote, type DueQuote } from "./quotes";
 import { rateWord, type DueWord } from "./words";
 import { rateFlashcard, type DueFlashcard } from "./flashcards";
+import { memoryOf, type Memory } from "./fsrs";
+import { flashFaces } from "../readings/cloze";
 
 /**
  * Una tarjeta del repaso: un resaltado de un artículo (viene de Lecturas), una cita de un libro,
  * un aprendizaje (p. ej. el que dejó el cierre de un libro o una película) o una palabra del
- * diccionario. Todas se programan igual (1, 3, 7, 16… días), pero se guardan en sitios distintos.
+ * diccionario. Todas se programan igual (FSRS, ver `fsrs.ts`), pero se guardan en sitios distintos.
  */
 type Base = {
   id: string;
   /** Cuántas veces seguidas la recordaste. */
   step: number;
+  /** Su memoria (FSRS): con ella se calcula cuándo vuelve según cómo te vaya. */
+  memory: Memory;
   quote: string;
   /** De dónde viene: el artículo, el libro o la obra del aprendizaje. */
   from: { id: string; title: string; author?: string };
@@ -34,6 +38,7 @@ export const fromFlashcard = (c: DueFlashcard): ReviewCard => ({
   id: "f:" + c.id,
   source: "flashcard",
   step: c.review_step,
+  memory: memoryOf(c),
   quote: c.front,
   from: { id: c.reading_id ?? "", title: c.source || "Tus flashcards" },
   card: c,
@@ -43,6 +48,7 @@ export const fromWord = (w: DueWord): ReviewCard => ({
   id: "w:" + w.id,
   source: "palabra",
   step: w.review_step,
+  memory: memoryOf(w),
   quote: w.context || w.term,
   from: { id: w.reading_id ?? "", title: w.source || "Tu diccionario" },
   word: w,
@@ -52,6 +58,7 @@ export const fromHighlight = (item: ReviewItem): ReviewCard => ({
   id: "h:" + item.id,
   source: "resaltado",
   step: item.review_step,
+  memory: memoryOf(item),
   quote: item.quote,
   from: { id: item.reading_id, title: item.title },
   item,
@@ -61,6 +68,7 @@ export const fromQuote = (q: DueQuote): ReviewCard => ({
   id: "q:" + q.id,
   source: "cita",
   step: q.step,
+  memory: q.memory,
   quote: q.text,
   from: { id: q.book.id, title: q.book.title, author: q.book.details.author },
   book: q.book,
@@ -71,6 +79,7 @@ export const fromLearning = (l: DueLearning): ReviewCard => ({
   id: "a:" + l.entry.id,
   source: "aprendizaje",
   step: l.step,
+  memory: l.memory,
   quote: l.entry.body,
   from: l.source
     ? {
@@ -99,13 +108,10 @@ export function interleave<T>(...lists: T[][]) {
  */
 export function cardFaces(card: ReviewCard) {
   if (card.source === "resaltado") return faces(card.item);
-  if (card.source === "flashcard")
-    return {
-      front: card.card.front,
-      kind: "pregunta" as const,
-      back: card.card.back,
-      quote: "",
-    };
+  if (card.source === "flashcard") {
+    const f = flashFaces(card.card);
+    return { front: f.front, kind: "pregunta" as const, back: f.back, quote: "" };
+  }
   if (card.source === "palabra")
     return {
       front: `¿Qué significa «${card.word.term}»?`,
@@ -142,8 +148,13 @@ export async function rateCard(
   if (card.source === "aprendizaje") {
     const entry =
       deps.entries.find((e) => e.id === card.entry.id) ?? card.entry;
-    return rateLearning(card.step, grade, entry, deps.patch);
+    return rateLearning(card.memory, grade, entry, deps.patch);
   }
   const book = deps.entries.find((e) => e.id === card.book.id) ?? card.book;
-  return rateQuote(card, grade, book, deps.patch);
+  return rateQuote(
+    { key: card.key, memory: card.memory },
+    grade,
+    book,
+    deps.patch,
+  );
 }

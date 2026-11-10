@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, RotateCcw, Shuffle, X } from "lucide-react";
 import type { Flashcard } from "./flashcardStore";
+import { flashFaces } from "./cloze";
 import "./flashcardViewer.css";
 
 /**
@@ -47,7 +48,18 @@ function Face({
     <div className={"fcv-face " + side} aria-hidden="true">
       <span className="fcv-label">{label}</span>
       <div className="fcv-text" ref={box}>
-        <p ref={inner}>{text}</p>
+        <p ref={inner}>
+          {/* Las respuestas de los huecos van en **negrita**. */}
+          {text
+            .split(/(\*\*[^*]+\*\*)/g)
+            .map((part, i) =>
+              part.length > 4 && part.startsWith("**") && part.endsWith("**") ? (
+                <strong key={i}>{part.slice(2, -2)}</strong>
+              ) : (
+                part
+              ),
+            )}
+        </p>
       </div>
     </div>
   );
@@ -78,6 +90,7 @@ export function FlashcardViewer({
 
   const card = deck[index];
   const last = deck.length - 1;
+  const faces = card ? flashFaces(card) : null;
 
   const go = (step: 1 | -1) => {
     const next = index + step;
@@ -216,8 +229,12 @@ export function FlashcardViewer({
               aria-pressed={flipped}
               aria-label={
                 flipped
-                  ? "Respuesta: " + card.back + ". Pulsa para ver la pregunta."
-                  : "Pregunta: " + card.front + ". Pulsa para ver la respuesta."
+                  ? "Respuesta: " +
+                    faces!.back.replace(/\*\*/g, "") +
+                    ". Pulsa para ver la pregunta."
+                  : (faces!.cloze ? "Completa: " : "Pregunta: ") +
+                    faces!.front +
+                    ". Pulsa para ver la respuesta."
               }
               onPointerDown={(e) => {
                 swipe.current = { x: e.clientX, y: e.clientY, moved: false };
@@ -241,8 +258,13 @@ export function FlashcardViewer({
               }}
             >
               <div className="fcv-inner">
-                <Face side="front" label="Pregunta" text={card.front} max={30} />
-                <Face side="back" label="Respuesta" text={card.back} max={24} />
+                <Face
+                  side="front"
+                  label={faces!.cloze ? "Completa" : "Pregunta"}
+                  text={faces!.front}
+                  max={30}
+                />
+                <Face side="back" label="Respuesta" text={faces!.back} max={24} />
               </div>
             </div>
           </div>

@@ -5,7 +5,7 @@ import {
   type CSSProperties,
   type MouseEvent,
 } from "react";
-import { Check, Highlighter, Pin, RefreshCw } from "lucide-react";
+import { Check, FolderInput, Heart, Highlighter, Pin, RefreshCw } from "lucide-react";
 import type { Card } from "./library";
 import { preview } from "./media";
 
@@ -16,6 +16,9 @@ export type RowActions = {
   refetch: (card: Card) => void;
   /** Marca o desmarca la tarjeta para una acción en lote. `range`: hasta la última marcada. */
   pick: (card: Card, range: boolean) => void;
+  favorite: (card: Card) => void;
+  /** Abre (o cierra) el menú de destino junto a `button`: cuaderno, carpeta o archivo. */
+  destination: (card: Card, button: HTMLElement) => void;
 };
 
 const host = (url: string) => {
@@ -41,6 +44,7 @@ export const ReadingRow = memo(function ReadingRow({
   reloading,
   selecting,
   picked,
+  destOpen = false,
   actions,
 }: {
   card: Card;
@@ -53,6 +57,8 @@ export const ReadingRow = memo(function ReadingRow({
   /** Hay tarjetas marcadas: un clic marca en lugar de abrir. */
   selecting: boolean;
   picked: boolean;
+  /** Su menú de destino está abierto. */
+  destOpen?: boolean;
   actions: RowActions;
 }) {
   // Portada que no cargó: se oculta (y vuelve a intentarse si cambia, p. ej. al volver a descargar).
@@ -81,7 +87,9 @@ export const ReadingRow = memo(function ReadingRow({
         (thumb ? " has-thumb" : "") +
         (reloading ? " refetching" : "") +
         (selecting ? " selecting" : "") +
-        (picked ? " picked" : "")
+        (picked ? " picked" : "") +
+        (a.favorite ? " favorite" : "") +
+        (destOpen ? " dest-open" : "")
       }
       aria-busy={reloading || undefined}
     >
@@ -156,24 +164,10 @@ export const ReadingRow = memo(function ReadingRow({
         <span className="rd-preview">{excerpt}</span>
       </button>
       {!selecting && (
-        <>
+        <div className="rd-acts">
           <button
             type="button"
-            className="rd-pin"
-            aria-pressed={Boolean(a.pinned_at)}
-            title={a.pinned_at ? "Desfijar" : "Fijar arriba"}
-            aria-label={
-              a.pinned_at
-                ? `Desfijar «${a.title}»`
-                : `Fijar «${a.title}» arriba`
-            }
-            onClick={() => actions.pin(a)}
-          >
-            <Pin size={14} fill={a.pinned_at ? "currentColor" : "none"} />
-          </button>
-          <button
-            type="button"
-            className="rd-refetch"
+            className="rd-act rd-refetch"
             disabled={reloading}
             title={reloading ? "Descargando de nuevo…" : "Volver a descargar"}
             aria-label={
@@ -185,7 +179,46 @@ export const ReadingRow = memo(function ReadingRow({
           >
             <RefreshCw size={13} className={reloading ? "spin" : undefined} />
           </button>
-        </>
+          <button
+            type="button"
+            className="rd-act rd-dest-btn"
+            aria-haspopup="dialog"
+            aria-expanded={destOpen}
+            title="Destino: cuaderno, carpeta o archivo"
+            aria-label={`Decidir el destino de «${a.title}»`}
+            onClick={(e) => actions.destination(a, e.currentTarget)}
+          >
+            <FolderInput size={14} />
+          </button>
+          <button
+            type="button"
+            className="rd-act rd-fav"
+            aria-pressed={a.favorite}
+            title={a.favorite ? "Quitar de favoritos" : "Añadir a favoritos"}
+            aria-label={
+              a.favorite
+                ? `Quitar «${a.title}» de favoritos`
+                : `Añadir «${a.title}» a favoritos`
+            }
+            onClick={() => actions.favorite(a)}
+          >
+            <Heart size={14} fill={a.favorite ? "currentColor" : "none"} />
+          </button>
+          <button
+            type="button"
+            className="rd-act rd-pin"
+            aria-pressed={Boolean(a.pinned_at)}
+            title={a.pinned_at ? "Desfijar" : "Fijar arriba"}
+            aria-label={
+              a.pinned_at
+                ? `Desfijar «${a.title}»`
+                : `Fijar «${a.title}» arriba`
+            }
+            onClick={() => actions.pin(a)}
+          >
+            <Pin size={14} fill={a.pinned_at ? "currentColor" : "none"} />
+          </button>
+        </div>
       )}
     </div>
   );

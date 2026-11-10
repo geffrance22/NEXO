@@ -10,6 +10,7 @@ import {
   BookOpen,
   Columns3,
   Highlighter,
+  Images,
   Link2,
   Search,
   SquareCheck,
@@ -36,9 +37,11 @@ import {
   useReadingSearch,
   type ReadingHit,
 } from "../readings/search";
+import { useCaptureSearch, type ShotHit } from "../capturas/search";
+import { peekShot } from "../capturas/nav";
 
 type Look = { icon: LucideIcon; color: string; soft: string };
-type Hit = SearchHit | ReadingHit | NoteHit;
+type Hit = SearchHit | ReadingHit | NoteHit | ShotHit;
 
 const hostOf = (url: string) => {
   try {
@@ -53,6 +56,18 @@ const clip = (s: string, n: number) =>
 /** Ícono, colores y textos de una fila de resultado. */
 function describe(hit: Hit): { title: string; sub: string; look: Look | null } {
   switch (hit.type) {
+    case "shot": {
+      const { shot } = hit;
+      const note = shot.note.replace(/\s+/g, " ").trim();
+      return {
+        title: shot.name,
+        sub: [
+          shot.archived_at ? "Captura archivada" : "Captura",
+          note ? clip(note, 70) : shortDate(shot.created_at),
+        ].join(" · "),
+        look: { icon: Images, color: "#4f6b3d", soft: "#e8f0df" },
+      };
+    }
     case "note": {
       const text = plainOf(hit.body).replace(/\s+/g, " ").trim();
       return {
@@ -156,7 +171,7 @@ function describe(hit: Hit): { title: string; sub: string; look: Look | null } {
   }
 }
 
-/** Campo de búsqueda del encabezado: personas, recuerdos, notas, tarjetas, lugares, vínculos, grupos y lecturas. */
+/** Campo de búsqueda del encabezado: personas, recuerdos, notas, tarjetas, lugares, vínculos, grupos, lecturas y capturas. */
 export function GlobalSearch() {
   const { workspace, go, viewEntry, openTie, openGroup } = useApp();
   const feed = useBoardFeed();
@@ -167,12 +182,13 @@ export function GlobalSearch() {
   const listId = useId();
   const reading = useReadingSearch(open ? query : "");
   const notes = useNoteSearch(open ? query : "");
+  const captures = useCaptureSearch(open ? query : "");
 
   const local = useMemo(
     () => searchWorkspace(workspace, query, feed.cards),
     [workspace, query, feed.cards],
   );
-  // Notas y lecturas llegan un instante después: van al final para no mover lo que ya ves.
+  // Notas, lecturas y capturas llegan un instante después: van al final para no mover lo que ya ves.
   const groups = useMemo<{ label: string; hits: Hit[] }[]>(
     () =>
       [
@@ -180,8 +196,9 @@ export function GlobalSearch() {
         { label: "Notas", hits: notes },
         { label: "Lecturas", hits: reading.readings },
         { label: "Resaltados", hits: reading.marks },
+        { label: "Capturas", hits: captures },
       ].filter((g) => g.hits.length > 0),
-    [local, notes, reading.readings, reading.marks],
+    [local, notes, reading.readings, reading.marks, captures],
   );
   const flat = useMemo(() => groups.flatMap((g) => g.hits), [groups]);
   const shown = open && query.trim() !== "";
@@ -195,6 +212,8 @@ export function GlobalSearch() {
     setOpen(false);
     setQuery("");
     switch (hit.type) {
+      case "shot":
+        return peekShot(hit.shot.id);
       case "note":
         return go("Libroteca", { id: hit.id });
       case "reading":
@@ -305,6 +324,15 @@ export function GlobalSearch() {
                   >
                     {hit.type === "person" ? (
                       <Avatar person={hit.person} size={28} />
+                    ) : hit.type === "shot" ? (
+                      <span className="gs-ico gs-thumb" aria-hidden="true">
+                        <img
+                          src={hit.shot.thumb ?? hit.shot.url}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      </span>
                     ) : (
                       look && (
                         <span

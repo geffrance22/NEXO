@@ -45,8 +45,23 @@ import {
 import { useLibrary, type Card } from "./library";
 import { Notebooks } from "./Notebooks";
 import { MarkGroups, useResume } from "./ReadingExtras";
-import { ArticleMarks, toneOf } from "./ArticleMarks";
-import { BookA, Heart, Layers, NotebookPen, Pin, Rss } from "lucide-react";
+import { ArticleMarks, MARK_COLORS, toneOf } from "./ArticleMarks";
+import { Destinations, type Shelf } from "./Destinations";
+import {
+  BookA,
+  Heart,
+  Layers,
+  ListTree,
+  NotebookPen,
+  Pencil,
+  Pin,
+  Rss,
+} from "lucide-react";
+import { ArticleEditor } from "./ArticleEditor";
+import { LayeredReader } from "./LayeredReader";
+import { CardEditor, type CardSeed } from "./CardEditor";
+import { heal, type Cut } from "./anchors";
+import { saveTrim, undoTrim } from "./trim";
 import { ReadingRow, type RowActions } from "./ReadingRow";
 import { Dictionary } from "./Dictionary";
 import { Flashcards } from "./Flashcards";
@@ -92,7 +107,7 @@ const missingColumn = (e: { code?: string; message: string }) =>
 const markError = (e: unknown) => {
   const err = e as { code?: string; message?: string };
   if (err?.code === "23514" || /color_check/.test(err?.message ?? ""))
-    return "Para los colores nuevos ejecuta supabase/migrations/202611070011_reading_colors.sql en el SQL Editor de Supabase.";
+    return "Para el color verde (Acción) ejecuta supabase/migrations/202611100005_reading_destinations.sql en el SQL Editor de Supabase.";
   return err?.message || "No se pudo guardar el resaltado.";
 };
 type Mark = {
@@ -103,8 +118,32 @@ type Mark = {
   note: string;
   color?: string;
   edited_at: string;
+  /** Lo que se leía al resaltarlo: con esto se vuelve a encontrar si el texto cambia. */
+  quote?: string | null;
 };
 type Span = { start: number; end: number };
+/**
+ * Recoloca los resaltados que ya no coinciden con el texto (lo cambió una descarga nueva, una
+ * edición o algo de fuera) buscando su cita, y guarda de fondo dónde quedaron.
+ */
+function healMarks(content: string, marks: Mark[]) {
+  const { moved, lost } = heal(content, marks);
+  if (!moved.length) return { marks, lost };
+  const to = new Map(moved.map((x) => [x.id, x.to]));
+  for (const x of moved)
+    void supabase
+      .from("reading_marks")
+      .update({
+        ...x.to,
+        quote: readableSlice(content, x.to.start_offset, x.to.end_offset),
+      })
+      .eq("id", x.id)
+      .then(() => undefined);
+  return {
+    marks: marks.map((m) => (to.has(m.id) ? { ...m, ...to.get(m.id)! } : m)),
+    lost,
+  };
+}
 /** La colección donde vive un artículo. */
 const viewOf = (a: {
   archived: boolean;
@@ -195,6 +234,12 @@ export function Readings({
     [tagOpen, setTagOpen] = useState(false),
     [tag, setTag] = useState(""),
     [speed, setSpeed] = useState(false);
+  // Limpiar el artículo (quitar líneas), la lectura en capas y una flashcard nueva del texto.
+  const [trimming, setTrimming] = useState(false),
+    [layered, setLayered] = useState(false),
+    [cardSeed, setCardSeed] = useState<CardSeed | null>(null);
+  // Resaltados que no aparecen en el texto actual.
+  const [lost, setLost] = useState<ReadonlySet<string>>(new Set());
   const [summaries, setSummaries] = useState<Record<string, string>>({}),
     [showSummary, setShowSummary] = useState(false);
   const [box, setBox] = useState<Box | null>(null);
@@ -206,11 +251,8 @@ export function Readings({
       right: rect.right,
     });
   }
-  const palette = {
-    yellow: "Amarillo",
-    blue: "Azul oscuro",
-    orange: "Naranja",
-  };
+  // Dato, idea, cita y acción: el tooltip de cada color dice qué significa.
+  const palette = MARK_COLORS;
   // Qué abrió la barra: una selección nueva o un resaltado existente (se lee sin esperar render).
   const mode = useRef<"selection" | "mark" | null>(null);
   const articleRef = useRef<HTMLElement>(null);
@@ -256,6 +298,13 @@ export function Readings({
   // Tarjetas marcadas para acciones en lote y la última que marcaste (para Mayús + clic).
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const lastPick = useRef("");
+  // Menú «Destino» abierto (tarjeta y botón que lo abrió).
+  const [dest, setDest] = useState<{ card: Card; rect: DOMRect } | null>(null);
+  // Cuadernos: se refrescan al enviarles algo desde la lista; `bookFocus` abre uno en concreto.
+  const [bookRev, bumpBooks] = useState(0),
+    [bookFocus, setBookFocus] = useState<{ id: string } | null>(null);
+  // Con un artículo abierto, Cuadernos va en una tercera columna; sin él, ocupa el lector.
+  const booksFull = books && !id;
   // Diccionario de palabras y conceptos por aprender (se carga una vez).
   const dictionary = useWords(notify);
   const pendingWords = dictionary.words.filter((w) => !w.learned_at).length;
@@ -322,36 +371,7 @@ export function Readings({
         return;
       }
       const { row, lost } = result;
-      const len = Math.max(1, row.content.length);
-      // Portada, extracto y minutos los recalcula la base al cambiar el texto.
-      patchCard(card.id, {
-        title: row.title,
-        excerpt: row.excerpt ?? "",
-        cover: row.cover ?? null,
-        minutes: row.minutes ?? minutesOf(row.content),
-        progress: row.read_at
-          ? 100
-          : !row.last_read || row.resume_at <= 0
-            ? null
-            : Math.min(
-                100,
-                Math.max(1, Math.round((100 * row.resume_at) / len)),
-              ),
-      });
-      // El porcentaje que llevabas se calculó con el texto viejo.
-      setReadNow((p) => {
-        const next = { ...p };
-        delete next[card.id];
-        return next;
-      });
-      if (shown.current === card.id) {
-        const fresh = await loadArticleMarks(card.id);
-        if (shown.current === card.id) {
-          setArticle(row);
-          setMarks(fresh);
-        }
-      }
-      bumpMarks((v) => v + 1);
+      await showFresh(card.id, row);
       notify(
         lost
           ? `Artículo actualizado. ${lost === 1 ? "1 resaltado quedó descolocado" : `${lost} resaltados quedaron descolocados`}.`
@@ -366,6 +386,71 @@ export function Readings({
         return next;
       });
     }
+  }
+  /**
+   * Tras cambiar el texto de un artículo (descargarlo de nuevo, limpiarlo o deshacerlo): la
+   * tarjeta de la lista y, si está abierto, el lector con sus resaltados recolocados.
+   */
+  async function showFresh(rid: string, row: Fresh) {
+    const len = Math.max(1, row.content.length);
+    // Portada, extracto y minutos los recalcula la base al cambiar el texto.
+    patchCard(rid, {
+      title: row.title,
+      excerpt: row.excerpt ?? "",
+      cover: row.cover ?? null,
+      minutes: row.minutes ?? minutesOf(row.content),
+      progress: row.read_at
+        ? 100
+        : !row.last_read || row.resume_at <= 0
+          ? null
+          : Math.min(100, Math.max(1, Math.round((100 * row.resume_at) / len))),
+    });
+    // El porcentaje que llevabas se calculó con el texto viejo.
+    setReadNow((p) => {
+      const next = { ...p };
+      delete next[rid];
+      return next;
+    });
+    if (shown.current === rid) {
+      const fresh = healMarks(row.content, await loadArticleMarks(rid));
+      if (shown.current === rid) {
+        setArticle(row);
+        setMarks(fresh.marks);
+        setLost(new Set(fresh.lost));
+      }
+    }
+    bumpMarks((v) => v + 1);
+  }
+  /** Guarda el artículo sin las líneas que quitaste (con «Deshacer» en el aviso). */
+  async function saveTrimmed(cuts: Cut[]) {
+    if (!article) return;
+    const rid = article.id;
+    // Los resaltados recién hechos se esperan hasta tener su id real. Los que ya no aparecen en
+    // el texto no se tocan: su posición no es fiable y se perdería su nota.
+    const rows = (
+      await Promise.all(
+        mine
+          .filter((m) => !lost.has(m.id))
+          .map(async (m) => {
+            const real = await realId(m.id);
+            return real ? { ...m, id: real } : null;
+          }),
+      )
+    ).filter((m): m is Mark => m !== null);
+    const { row, removed, snapshot } = await saveTrim<Fresh>(article, cuts, rows);
+    await showFresh(rid, row);
+    setTrimming(false);
+    const undo = () =>
+      void undoTrim<Fresh>(snapshot)
+        .then((back) => showFresh(rid, back))
+        .then(() => notify("Volvió el texto de antes."))
+        .catch((e) => notify("No se pudo deshacer: " + failure(e, true)));
+    notify(
+      removed
+        ? `Artículo limpio. ${removed === 1 ? "Se quitó 1 resaltado" : `Se quitaron ${removed} resaltados`} que estaban en lo borrado.`
+        : "Artículo limpio. Tus resaltados siguen en su sitio.",
+      { label: "Deshacer", icon: "undo", run: undo },
+    );
   }
   /** Fija o suelta un artículo al instante; se guarda de fondo. */
   function togglePin(card: Card) {
@@ -434,9 +519,11 @@ export function Readings({
           throw a.error;
         }
         if (live) {
+          const healed = healMarks(a.data.content, m);
           setArticle(a.data);
           setFolder(a.data.folder);
-          setMarks(m);
+          setMarks(healed.marks);
+          setLost(new Set(healed.lost));
           // Primera vez que lo abres: deja de ir en negrita en la lista (sin la migración, no hay
           // columna y no se hace nada).
           if (a.data.opened_at === null) {
@@ -503,7 +590,7 @@ export function Readings({
   useResume(
     article?.id,
     article?.resume_at || 0,
-    !annotations && !books && !speed,
+    !annotations && !booksFull && !speed && !trimming && !layered,
     fail,
     (offset) => {
       if (!article) return;
@@ -554,10 +641,11 @@ export function Readings({
      */
     function escape(e: KeyboardEvent) {
       if (e.key !== "Escape" || e.defaultPrevented || e.repeat) return;
-      if (speed || adding || moving || deleting) return;
+      if (speed || adding || moving || deleting || trimming || layered || cardSeed)
+        return;
       if (
         document.querySelector(
-          "dialog[open], .sheet-backdrop, .confirm-backdrop, .picker-backdrop, .lightbox, .nx-peek, .chat-panel, .rd-listen-pop, .rd-qf.open",
+          "dialog[open], .sheet-backdrop, .confirm-backdrop, .picker-backdrop, .lightbox, .nx-peek, .chat-panel, .rd-listen-pop, .rd-qf.open, .rd-dest",
         )
       )
         return;
@@ -576,16 +664,21 @@ export function Readings({
       } else if (tagOpen) setTagOpen(false);
       else if (showSummary) setShowSummary(false);
       else if (annotations) setAnnotations(false);
+      else if (books) showBooks(false);
       else open();
     }
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
   }, [
     id,
+    books,
     speed,
     adding,
     moving,
     deleting,
+    trimming,
+    layered,
+    cardSeed,
     span,
     tagOpen,
     askOpen,
@@ -620,10 +713,14 @@ export function Readings({
       setMarks([]);
     }
     window.getSelection()?.removeAllRanges();
-    showBooks(false);
+    // Abrir otro artículo deja Cuadernos al lado; cerrar el artículo lo cierra también.
+    if (!a?.id) showBooks(false);
     showDict(false);
     showFlash(false);
     setSpeed(false);
+    setTrimming(false);
+    setLayered(false);
+    setCardSeed(null);
     setTagOpen(false);
     setTag("");
     setShowSummary(false);
@@ -1120,10 +1217,14 @@ export function Readings({
     a: Article,
     { images, rules, cuts }: NonNullable<typeof layout>,
   ) {
+    // Los que ya no aparecen en el texto no se pintan (marcarían otro fragmento).
+    const placed = mine.filter(
+      (m) => !lost.has(m.id) && m.end_offset <= a.content.length,
+    );
     const points = [
       ...new Set([
         ...cuts,
-        ...mine.flatMap((m) => [m.start_offset, m.end_offset]),
+        ...placed.flatMap((m) => [m.start_offset, m.end_offset]),
       ]),
     ].sort((x, y) => x - y);
     const n = points.length - 1;
@@ -1152,7 +1253,7 @@ export function Readings({
         hidden[i] = 1;
     }
     // Si dos resaltados se pisan, manda el primero (como antes).
-    for (const m of mine)
+    for (const m of placed)
       for (
         let i = at.get(m.start_offset)!, end = at.get(m.end_offset)!;
         i < end;
@@ -1230,7 +1331,7 @@ export function Readings({
   // El artículo solo se vuelve a pintar si cambian él o sus resaltados: abrir la barra es instantáneo.
   const rendered = useMemo(
     () => (article && layout ? body(article, layout) : null),
-    [article, mine, layout],
+    [article, mine, layout, lost],
   );
   // Los resaltados se abren con un solo escucha en el artículo (no uno por fragmento).
   const markAt = (target: EventTarget | null) => {
@@ -1413,23 +1514,108 @@ export function Readings({
     } else if (changes)
       setArticle((a) => (a ? ({ ...a, ...changes } as Article) : a));
   }
+  /**
+   * Favorito al instante desde la tarjeta; se guarda de fondo. Los contadores se refrescan al
+   * guardarse y, en «Favoritos», la lista también.
+   */
+  function toggleFavorite(card: Card) {
+    const on = !card.favorite;
+    const apply = (v: boolean) => {
+      patchCard(card.id, { favorite: v });
+      setArticle((a) => (a && a.id === card.id ? { ...a, favorite: v } : a));
+    };
+    apply(on);
+    void supabase
+      .from("readings")
+      .update({ favorite: on })
+      .eq("id", card.id)
+      .then(({ error }) => {
+        if (error) {
+          apply(!on);
+          notify("No se pudo guardar el favorito: " + error.message);
+          return;
+        }
+        bumpMarks((v) => v + 1);
+        if (view === "favorites") bump((v) => v + 1);
+      });
+  }
+  /** Mueve una tarjeta de carpeta o la archiva desde su menú de destino (con «Deshacer»). */
+  async function relocate(
+    card: Card,
+    changes: Partial<Pick<Card, "folder" | "archived">>,
+    message: string,
+    undo?: Partial<Pick<Card, "folder" | "archived">>,
+  ) {
+    setDest(null);
+    const { error } = await supabase
+      .from("readings")
+      .update(changes)
+      .eq("id", card.id);
+    if (error) {
+      notify("No se pudo completar: " + error.message);
+      return;
+    }
+    batchDone("folder" in changes ? "move" : "archive", [card.id], changes);
+    notify(
+      message,
+      undo && {
+        label: "Deshacer",
+        icon: "undo",
+        run: () => void relocate({ ...card, ...changes }, undo, "Listo, como estaba."),
+      },
+    );
+  }
+  /** Entró o salió de un cuaderno desde el menú de destino. */
+  function sentToNotebook(card: Card, book: Shelf, added: boolean) {
+    bumpBooks((v) => v + 1);
+    const title = card.title.length > 40 ? card.title.slice(0, 40) + "…" : card.title;
+    const name = book.name.slice(0, 40);
+    if (!added) {
+      notify(`«${title}» salió de «${name}».`);
+      return;
+    }
+    notify(`«${title}» está en «${name}».`, {
+      label: "Ver",
+      icon: "open",
+      run: () => {
+        setDest(null);
+        localStorage.setItem("nexo-notebook", book.id);
+        setBookFocus({ id: book.id });
+        showDict(false);
+        showFlash(false);
+        showBooks(true);
+      },
+    });
+  }
   // Las tarjetas reciben siempre las mismas funciones (leen lo último al pulsarse): así no se
   // vuelven a pintar todas con cada cambio del lector.
-  const rowLive = useRef({ open, togglePin, refetch, pick });
-  rowLive.current = { open, togglePin, refetch, pick };
+  const rowLive = useRef({ open, togglePin, refetch, pick, toggleFavorite });
+  rowLive.current = { open, togglePin, refetch, pick, toggleFavorite };
   const rowActions = useMemo<RowActions>(
     () => ({
       open: (card) => rowLive.current.open(card),
       pin: (card) => rowLive.current.togglePin(card),
       refetch: (card) => void rowLive.current.refetch(card),
       pick: (card, range) => rowLive.current.pick(card, range),
+      favorite: (card) => rowLive.current.toggleFavorite(card),
+      destination: (card, button) =>
+        setDest((d) =>
+          d?.card.id === card.id
+            ? null
+            : { card, rect: button.getBoundingClientRect() },
+        ),
     }),
     [],
   );
+  // La tarjeta del menú, al día (p. ej. si cambió su favorito mientras estaba abierto).
+  const destCard = dest
+    ? (listed.find((c) => c.id === dest.card.id) ?? dest.card)
+    : null;
   return (
     <section
       className="readings"
       data-open={!!article || books || dict || flash}
+      data-books={books ? (id ? "side" : "full") : undefined}
       data-paper={reader.paper}
       data-align={reader.prefs.align}
       style={reader.style}
@@ -1477,11 +1663,21 @@ export function Readings({
               <Rss size={17} />
             </button>
             <button
-              title="Cuadernos"
+              title={
+                books && id
+                  ? "Cerrar Cuadernos"
+                  : id
+                    ? "Cuadernos (se abren al lado del artículo)"
+                    : "Cuadernos"
+              }
               aria-label="Cuadernos"
               aria-pressed={books}
               onClick={() => {
-                select("");
+                // Con un artículo abierto, Cuadernos va al lado (y el mismo botón lo cierra).
+                if (books && id) {
+                  showBooks(false);
+                  return;
+                }
                 showDict(false);
                 showFlash(false);
                 showBooks(true);
@@ -1640,6 +1836,7 @@ export function Readings({
             reloading={refetching.has(a.id)}
             selecting={picked.size > 0}
             picked={picked.has(a.id)}
+            destOpen={dest?.card.id === a.id}
             actions={rowActions}
           />
         ))}
@@ -1657,12 +1854,7 @@ export function Readings({
       {/* Claves distintas para cada hermano: si se repiten, React no sabe cuál quitar. */}
       <main key={"reader:" + id}>
         {error && <p role="alert">{error}</p>}
-        {books ? (
-          <Notebooks
-            open={(id) => open({ id })}
-            back={() => showBooks(false)}
-          />
-        ) : dict ? (
+        {dict ? (
           <Dictionary
             api={dictionary}
             open={(id) => open({ id })}
@@ -1732,6 +1924,12 @@ export function Readings({
                 <Tag size={16} />
               </button>
               <button
+                title={annotations ? "Volver al texto" : "Anotaciones"}
+                aria-label={
+                  annotations
+                    ? "Volver al texto"
+                    : "Anotaciones (" + mine.length + ")"
+                }
                 aria-pressed={annotations}
                 onClick={() => {
                   setAnnotations(!annotations);
@@ -1741,7 +1939,7 @@ export function Readings({
                 <Highlighter size={16} />
                 {annotations
                   ? "Volver al texto"
-                  : "Anotaciones (" + mine.length + ")"}
+                  : "(" + mine.length + ")"}
               </button>
               <button
                 disabled={busy}
@@ -1761,6 +1959,15 @@ export function Readings({
               <button onClick={() => setSpeed(true)}>
                 <Zap size={16} /> Lectura rápida
               </button>
+              <button
+                title="Mapa, ideas clave y lectura guiada párrafo a párrafo"
+                onClick={() => {
+                  closeEditor(true);
+                  setLayered(true);
+                }}
+              >
+                <ListTree size={16} /> En capas
+              </button>
               {!annotations && (
                 <Listen
                   article={articleRef}
@@ -1770,6 +1977,19 @@ export function Readings({
                 />
               )}
               {!annotations && <ReaderSettings api={reader} />}
+              <button
+                aria-label="Limpiar el artículo"
+                title="Limpiar el artículo: quitar líneas que sobran"
+                aria-pressed={trimming}
+                onClick={() => {
+                  closeEditor(true);
+                  setAnnotations(false);
+                  setShowSummary(false);
+                  setTrimming(!trimming);
+                }}
+              >
+                <Pencil size={16} />
+              </button>
               <button
                 aria-label="Eliminar artículo"
                 title="Eliminar artículo"
@@ -1857,6 +2077,38 @@ export function Readings({
                 id={id}
                 text={article.content}
                 close={() => setSpeed(false)}
+              />
+            )}
+            {layered && (
+              <LayeredReader
+                key={"layers:" + id}
+                title={article.title}
+                content={article.content}
+                marks={mine}
+                close={(at) => {
+                  setLayered(false);
+                  // Vuelve al párrafo donde ibas (el primer fragmento desde esa posición).
+                  if (at === undefined || at <= 0) return;
+                  const el = Array.from(
+                    articleRef.current?.querySelectorAll<HTMLElement>(
+                      "[data-offset]",
+                    ) ?? [],
+                  ).find((x) => Number(x.dataset.offset) >= at);
+                  if (el) flashAt(Number(el.dataset.offset));
+                }}
+              />
+            )}
+            {cardSeed && (
+              <CardEditor
+                seed={cardSeed}
+                close={() => setCardSeed(null)}
+                saved={(rows) =>
+                  notify(
+                    rows.length === 1
+                      ? "Flashcard creada: entra a tu repaso mañana."
+                      : `${rows.length} flashcards creadas: entran a tu repaso mañana.`,
+                  )
+                }
               />
             )}
             {moving && (
@@ -1979,6 +2231,20 @@ export function Readings({
                 onKeep={keepAnswer}
                 onWord={isTerm(term) ? toggleWord : undefined}
                 wordSaved={Boolean(wordSaved)}
+                onCard={() => {
+                  const quote = readableSlice(article.content, span.start, span.end)
+                    .replace(/\s+/g, " ")
+                    .trim();
+                  // La tarjeta nace de un subrayado: si era solo una selección, queda resaltada.
+                  if (editing) closeEditor(true);
+                  else highlightNow();
+                  setCardSeed({
+                    kind: "cloze",
+                    front: quote.slice(0, 1000),
+                    reading_id: article.id,
+                    source: article.title,
+                  });
+                }}
                 onPick={(key) => highlightNow(key)}
                 onToggleNote={() => {
                   setNoteOpen((v) => !v);
@@ -1994,6 +2260,7 @@ export function Readings({
             {annotations ? (
               <ArticleMarks
                 marks={mine}
+                lost={lost}
                 content={article.content}
                 title={article.title}
                 feedback={feedback}
@@ -2003,6 +2270,15 @@ export function Readings({
                   jumpTo.current = start;
                   setAnnotations(false);
                 }}
+              />
+            ) : trimming ? (
+              <ArticleEditor
+                key={"trim:" + article.id}
+                content={article.content}
+                media={article.media}
+                marks={mine.filter((m) => !lost.has(m.id))}
+                save={saveTrimmed}
+                cancel={() => setTrimming(false)}
               />
             ) : (
               <>
@@ -2089,8 +2365,58 @@ export function Readings({
           </div>
         )}
       </main>
+      {/*
+       * Cuadernos va fuera del lector: abrir otro artículo no lo reinicia. Con un artículo abierto
+       * es una tercera columna; sin él, ocupa el sitio del lector.
+       */}
+      {books && (
+        <div className="rd-dock">
+          <Notebooks
+            open={(id) => open({ id })}
+            back={() => showBooks(false)}
+            revision={bookRev + markRev}
+            focus={bookFocus}
+            current={
+              article
+                ? {
+                    id: article.id,
+                    title: article.title,
+                    url: article.url,
+                    minutes: size?.minutes ?? null,
+                  }
+                : null
+            }
+          />
+        </div>
+      )}
+      {destCard && dest && picked.size === 0 && (
+        <Destinations
+          key={destCard.id}
+          card={destCard}
+          anchor={dest.rect}
+          folders={filters.folders}
+          onClose={() => setDest(null)}
+          onFolder={(folder) =>
+            void relocate(
+              destCard,
+              { folder },
+              folder ? `Movido a «${folder.slice(0, 40)}».` : "Ya no está en ninguna carpeta.",
+              { folder: destCard.folder },
+            )
+          }
+          onArchive={() =>
+            void relocate(
+              destCard,
+              { archived: !destCard.archived },
+              destCard.archived ? "Desarchivado." : "Archivado.",
+              { archived: destCard.archived },
+            )
+          }
+          onNotebook={(book, added) => sentToNotebook(destCard, book, added)}
+        />
+      )}
       {/* Fuera del área que se desplaza: queda siempre en la esquina del lector. */}
-      {article && !books && (
+      {article && (
         <QuestionFab
           key={"fab:" + article.id}
           question={article.question ?? ""}

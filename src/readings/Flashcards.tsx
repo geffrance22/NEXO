@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowUpRight,
+  Brackets,
   Check,
   ChevronDown,
+  Highlighter,
   Layers,
   LoaderCircle,
+  MessageCircleQuestion,
+  Pencil,
   Play,
+  Plus,
   Search,
   Sparkles,
   Trash2,
@@ -24,15 +29,20 @@ import {
   FLASHCARDS_SQL,
   generateFlashcards,
   loadFlashcards,
+  loadHighlights,
   readArticles,
   type Flashcard,
+  type Highlight,
   type ReadArticle,
 } from "./flashcardStore";
+import { CardEditor, type CardSeed } from "./CardEditor";
+import { clozePlain, flashFaces } from "./cloze";
+import { recallToday, memoryOf } from "../review/fsrs";
 import { FlashcardViewer } from "./FlashcardViewer";
 import "./dictionary.css";
 import "./flashcards.css";
 
-type Tab = "articles" | "cards";
+type Tab = "articles" | "cards" | "marks";
 type Status = "wait" | "busy" | "done" | "error";
 
 /** Artículos plegados en «Tus flashcards», recordados entre visitas. */
@@ -47,6 +57,8 @@ function loadFolded(): Set<string> {
   }
 }
 
+const needleOf = (q: string) => normalizeText(q.trim());
+
 const host = (url: string) => {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -55,15 +67,29 @@ const host = (url: string) => {
   }
 };
 
-/** Cuándo vuelve una tarjeta al repaso. */
+/** Cuándo vuelve una tarjeta al repaso y, si ya la repasaste, qué tan fresca la tienes. */
 function nextReview(c: Flashcard) {
   if (c.review_step < 0) return "Fuera del repaso";
   if (!c.review_due) return "Entra al repaso mañana";
   const today = todayInputValue();
-  return c.review_due <= today
-    ? "Toca repasarla hoy"
-    : "Repaso: " + friendlyDate(c.review_due, today).toLowerCase();
+  const when =
+    c.review_due <= today
+      ? "Toca repasarla hoy"
+      : "Repaso: " + friendlyDate(c.review_due, today).toLowerCase();
+  const r = recallToday(memoryOf(c), today);
+  return r === null ? when : `${when} · la recuerdas al ${Math.round(r * 100)} %`;
 }
+
+/** ¿Ya hay una tarjeta hecha con este subrayado? */
+const madeFrom = (h: Highlight, cards: Flashcard[]) => {
+  const q = normalizeText(h.quote.replace(/\s+/g, " ").trim());
+  return cards.some(
+    (c) =>
+      c.reading_id === h.reading_id &&
+      (normalizeText(clozePlain(c.front).replace(/\s+/g, " ")).includes(q) ||
+        normalizeText(c.back.replace(/\s+/g, " ")).includes(q)),
+  );
+};
 
 /**
  * Flashcards de Lecturas: eliges artículos ya leídos, la IA saca lo esencial en tarjetas de
@@ -92,6 +118,49 @@ export function Flashcards({
   const [study, setStudy] = useState<{ deck: Flashcard[]; start: number } | null>(
     null,
   );
+  // Tarjeta abierta en el editor: una tuya para editarla o una nueva (vacía o de un subrayado).
+  const [editor, setEditor] = useState<{
+    card?: Flashcard;
+    seed?: CardSeed;
+  } | null>(null);
+  // Tus subrayados: se cargan al abrir su pestaña.
+  const [highlights, setHighlights] = useState<Highlight[] | null>(null);
+  const [hlError, setHlError] = useState("");
+  useEffect(() => {
+    if (tab !== "marks" || highlights) return;
+    let live = true;
+    loadHighlights()
+      .then((h) => live && setHighlights(h))
+      .catch((e) => live && setHlError(errorMessage(e)));
+    return () => {
+      live = false;
+    };
+  }, [tab, highlights]);
+  const shownHighlights = useMemo(
+    () =>
+      (highlights ?? []).filter(
+        (h) =>
+          !needleOf(query) ||
+          normalizeText(`${h.quote} ${h.note} ${h.title}`).includes(
+            needleOf(query),
+          ),
+      ),
+    [highlights, query],
+  );
+  function savedCards(rows: Flashcard[], edited: boolean) {
+    if (edited)
+      setCards((v) =>
+        (v ?? []).map((c) => rows.find((r) => r.id === c.id) ?? c),
+      );
+    else {
+      setCards((v) => [...rows, ...(v ?? [])]);
+      notify(
+        rows.length === 1
+          ? "Flashcard creada: entra a tu repaso mañana."
+          : `${rows.length} flashcards creadas: entran a tu repaso mañana.`,
+      );
+    }
+  }
 
   useEffect(() => {
     let live = true;
@@ -241,6 +310,15 @@ export function Flashcards({
         </div>
         <button
           type="button"
+          className="dc-btn"
+          disabled={!cards}
+          title="Escribir una tarjeta a mano"
+          onClick={() => setEditor({ seed: {} })}
+        >
+          <Plus size={15} /> Nueva
+        </button>
+        <button
+          type="button"
           className="dc-btn primary"
           disabled={!pickedCount || running || cards === null}
           onClick={() => void generate()}
@@ -303,13 +381,26 @@ export function Flashcards({
               >
                 Tus flashcards <b>{cards ? total : ""}</b>
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "marks"}
+                className={tab === "marks" ? "on" : ""}
+                onClick={() => setTab("marks")}
+              >
+                Tus subrayados <b>{highlights?.length ?? ""}</b>
+              </button>
             </div>
             <label className="dc-search">
               <Search size={15} aria-hidden="true" />
               <input
                 aria-label="Buscar"
                 placeholder={
-                  tab === "articles" ? "Buscar artículos…" : "Buscar tarjetas…"
+                  tab === "articles"
+                    ? "Buscar artículos…"
+                    : tab === "marks"
+                      ? "Buscar subrayados…"
+                      : "Buscar tarjetas…"
                 }
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -326,7 +417,94 @@ export function Flashcards({
             </label>
           </div>
 
-          {tab === "articles" ? (
+          {tab === "marks" ? (
+            hlError ? (
+              <div className="dc-empty" role="alert">
+                <strong>No se pudieron cargar tus subrayados</strong>
+                <p>{hlError}</p>
+              </div>
+            ) : !highlights ? (
+              <p className="dc-none">Cargando…</p>
+            ) : !highlights.length ? (
+              <div className="dc-empty">
+                <Highlighter size={26} />
+                <strong>Aún no tienes subrayados</strong>
+                <p>
+                  Selecciona un fragmento de un artículo para resaltarlo. Luego
+                  podrás convertirlo aquí en una tarjeta de huecos o de
+                  pregunta.
+                </p>
+              </div>
+            ) : !shownHighlights.length ? (
+              <p className="dc-none">Nada coincide con «{query}».</p>
+            ) : (
+              <>
+                <div className="fc-bulk">
+                  <span>
+                    Convierte un subrayado en tarjeta: con huecos (ocultas lo
+                    que quieres recordar) o con una pregunta tuya.
+                  </span>
+                </div>
+                <ul className="dc-list">
+                  {shownHighlights.slice(0, 300).map((h) => {
+                    const done = madeFrom(h, cards ?? []);
+                    const seed = {
+                      reading_id: h.reading_id,
+                      source: h.title,
+                    };
+                    return (
+                      <li key={h.id} className="dc-item fc-hl">
+                        <div className="dc-main">
+                          <q>{h.quote}</q>
+                          {h.note.trim() && !h.note.startsWith("✦") && (
+                            <span className="fc-hl-note">{h.note.trim()}</span>
+                          )}
+                          <span className="dc-meta">
+                            <span>{h.title}</span>
+                            {done && (
+                              <span className="fc-has">Ya tiene tarjeta</span>
+                            )}
+                          </span>
+                        </div>
+                        <div className="dc-acts">
+                          <button
+                            type="button"
+                            className="dc-btn ghost sm"
+                            title="Tarjeta de huecos: ocultas las palabras clave"
+                            onClick={() =>
+                              setEditor({
+                                seed: { ...seed, kind: "cloze", front: h.quote },
+                              })
+                            }
+                          >
+                            <Brackets size={14} /> Huecos
+                          </button>
+                          <button
+                            type="button"
+                            className="dc-btn ghost sm"
+                            title="Tarjeta de pregunta: el subrayado es la respuesta"
+                            onClick={() =>
+                              setEditor({
+                                seed: { ...seed, kind: "qa", back: h.quote },
+                              })
+                            }
+                          >
+                            <MessageCircleQuestion size={14} /> Pregunta
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {shownHighlights.length > 300 && (
+                  <p className="dc-none">
+                    Se muestran 300 de {shownHighlights.length}: busca para
+                    encontrar el resto.
+                  </p>
+                )}
+              </>
+            )
+          ) : tab === "articles" ? (
             articles === null || cards === undefined ? (
               <p className="dc-none">Cargando…</p>
             ) : !articles.length ? (
@@ -454,7 +632,8 @@ export function Flashcards({
               <strong>Todavía no tienes flashcards</strong>
               <p>
                 En «Artículos leídos» elige los que quieres estudiar y pulsa
-                «Crear flashcards». Desde mañana aparecen en el repaso de la
+                «Crear flashcards», escribe una con «Nueva» o conviértelos desde
+                «Tus subrayados». Desde mañana aparecen en el repaso de la
                 agenda.
               </p>
             </div>
@@ -537,7 +716,9 @@ export function Flashcards({
                     </h3>
                     {!shut && (
                     <ul className="dc-list" id={listId}>
-                      {g.map((c) => (
+                      {g.map((c) => {
+                        const f = flashFaces(c);
+                        return (
                         <li
                           key={c.id}
                           className={
@@ -550,13 +731,27 @@ export function Flashcards({
                             title="Estudiar desde esta tarjeta"
                             onClick={() => studyFrom(c)}
                           >
-                            <strong>{c.front}</strong>
-                            <p>{c.back}</p>
+                            <strong>{f.front}</strong>
+                            <p>{f.cloze ? f.back.replace(/\*\*/g, "") : f.back}</p>
                             <span className="dc-meta">
+                              {f.cloze && (
+                                <span className="fc-type">
+                                  <Brackets size={12} /> Huecos
+                                </span>
+                              )}
                               <span>{nextReview(c)}</span>
                             </span>
                           </button>
                           <div className="dc-acts">
+                            <button
+                              type="button"
+                              className="dc-icon sm"
+                              title="Editar la flashcard"
+                              aria-label="Editar la flashcard"
+                              onClick={() => setEditor({ card: c })}
+                            >
+                              <Pencil size={15} />
+                            </button>
                             <button
                               type="button"
                               className="dc-icon sm danger"
@@ -568,7 +763,8 @@ export function Flashcards({
                             </button>
                           </div>
                         </li>
-                      ))}
+                        );
+                      })}
                     </ul>
                     )}
                   </section>
@@ -584,6 +780,14 @@ export function Flashcards({
           cards={study.deck}
           start={study.start}
           onClose={() => setStudy(null)}
+        />
+      )}
+      {editor && (
+        <CardEditor
+          card={editor.card}
+          seed={editor.seed}
+          close={() => setEditor(null)}
+          saved={savedCards}
         />
       )}
     </section>

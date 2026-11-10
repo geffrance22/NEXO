@@ -453,7 +453,7 @@ function Study({
         )}
         <h3 className="dc-big">{w.term}</h3>
         {w.definition ? (
-          <DefinitionView d={w.definition} />
+          <DefinitionView d={w.definition} term={w.term} />
         ) : (
           <Context text={w.context} term={w.term} />
         )}

@@ -9,6 +9,18 @@ export const kinds = [
   "Pendiente",
 ] as const;
 export type Kind = (typeof kinds)[number];
+/**
+ * Memoria de repaso espaciado (FSRS) que viaja dentro de una entrada: cuántas veces seguidas lo
+ * recordaste, cuándo toca (AAAA-MM-DD), su estabilidad `s` (días), su dificultad `d` (1 a 10) y
+ * el día del último repaso. `s`, `d` y `last` faltan en lo repasado antes de FSRS.
+ */
+export type ReviewMemory = {
+  step: number;
+  due: string | null;
+  s?: number | null;
+  d?: number | null;
+  last?: string | null;
+};
 export type Direction = "ingreso" | "egreso";
 export type Status = "pendiente" | "completado";
 export type Page =
@@ -349,7 +361,7 @@ export type EntryDetails = {
    * Repaso espaciado de las citas: por cada una (ver `quoteKey`), cuántas veces seguidas la
    * recordaste y cuándo toca volver a verla (AAAA-MM-DD). No hace falta ninguna migración.
    */
-  quoteReview?: Record<string, { step: number; due: string | null }>;
+  quoteReview?: Record<string, ReviewMemory>;
   stage?: "idea" | "curso" | "pausa" | "listo";
   priority?: "baja" | "media" | "alta";
   nextStep?: string;
@@ -380,7 +392,7 @@ export type EntryDetails = {
    * Repaso espaciado de un aprendizaje: cuántas veces seguidas lo recordaste y cuándo toca volver
    * a verlo (AAAA-MM-DD). `step` -1 o `due` null: ya no se repasa.
    */
-  review?: { step: number; due: string | null };
+  review?: ReviewMemory;
   source?: string;
   sourceName?: string;
   /** Qué tan bien lo entendiste, de 1 a 5. */

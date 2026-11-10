@@ -99,11 +99,12 @@
 }
 
 /* Captura */
-.hc.cap {
+/* «hcap» y no «cap»: .cap es la pestaña Capturas (min-height: 52vh) y estiraba esta tarjeta. */
+.hc.hcap {
   background: linear-gradient(160deg, #f4f2fc, #fff 70%);
   border-color: #e6e3f3;
 }
-.hc.cap h3 svg {
+.hc.hcap h3 svg {
   color: #6b62b5;
 }
 .cap-launch {
@@ -167,7 +168,7 @@
 .cap-ask:hover {
   background: #ebe8f6;
 }
-.cap button:focus-visible {
+.hcap button:focus-visible {
   outline: 2px solid #7870b0;
   outline-offset: 2px;
 }

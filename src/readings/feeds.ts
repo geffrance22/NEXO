@@ -61,38 +61,68 @@ const when = (raw: string) => {
   return Number.isFinite(t) ? t : null;
 };
 
-function parse(xml: string, base: string): Parsed | null {
+/** Texto sin etiquetas ni entidades (Google Alerts trae títulos como `<b>Hola</b> &amp; adiós`). */
+function untag(raw: string) {
+  if (!/[<&]/.test(raw)) return raw;
+  const doc = new DOMParser().parseFromString(raw, "text/html");
+  return doc.body.textContent?.replace(/\s+/g, " ").trim() ?? raw;
+}
+
+/**
+ * Google Alerts (y Google News) envuelve cada enlace en `google.com/url?...&url=<destino>`:
+ * se usa el destino real para que el artículo se capture de su sitio.
+ */
+function unwrap(href: string) {
+  try {
+    const u = new URL(href);
+    if (/(^|\.)google\.[a-z.]+$/i.test(u.hostname) && u.pathname === "/url") {
+      const target = u.searchParams.get("url") || u.searchParams.get("q");
+      if (target && /^https?:\/\//i.test(target)) return target;
+    }
+  } catch {
+    /* Se deja tal cual. */
+  }
+  return href;
+}
+
+function parse(source: string, base: string): Parsed | null {
+  // Quita BOM, espacios antes de la declaración XML y caracteres de control que el parser rechaza.
+  const xml = source
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
+    .replace(/^[\s\uFEFF]+/, "");
   const doc = new DOMParser().parseFromString(xml, "application/xml");
   if (doc.querySelector("parsererror")) return null;
   const root = doc.documentElement;
   const name = root.localName.toLowerCase();
   const absolute = (href: string) => {
     try {
-      return new URL(href, base).href;
+      return unwrap(new URL(href, base).href);
     } catch {
       return "";
     }
   };
   if (name === "feed") {
     // Atom.
-    const linkOf = (el: Element) => {
+    const linkOf = (el: Element, isFeed = false) => {
       const links = Array.from(el.children).filter(
-        (c) => c.localName === "link",
+        (c) => c.localName === "link" && c.getAttribute("href"),
       );
+      const rel = (l: Element) => l.getAttribute("rel") ?? "alternate";
+      // El enlace `self` de un feed es el propio feed (Google Alerts no trae otro): no es el sitio.
       const best =
-        links.find(
-          (l) => (l.getAttribute("rel") ?? "alternate") === "alternate",
-        ) ?? links[0];
+        links.find((l) => rel(l) === "alternate") ??
+        (isFeed ? undefined : links.find((l) => rel(l) !== "self"));
       return absolute(best?.getAttribute("href") ?? "");
     };
     return {
-      title: text(child(root, "title")),
-      site: linkOf(root),
+      title: untag(text(child(root, "title"))),
+      site: linkOf(root, true),
       items: Array.from(root.children)
         .filter((c) => c.localName === "entry")
         .map((e) => ({
           link: linkOf(e),
-          title: text(child(e, "title")),
+          title: untag(text(child(e, "title"))),
           date: when(text(child(e, "published", "updated", "issued"))),
           html: child(e, "content", "summary")?.textContent ?? "",
         })),
@@ -111,7 +141,7 @@ function parse(xml: string, base: string): Parsed | null {
             : "";
         return {
           link: absolute(text(child(i, "link")) || permalink),
-          title: text(child(i, "title")),
+          title: untag(text(child(i, "title"))),
           date: when(text(child(i, "pubdate", "date", "published", "updated"))),
           html:
             child(i, "encoded")?.textContent ??

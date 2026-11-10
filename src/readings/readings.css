@@ -165,7 +165,7 @@
   color: #222;
   cursor: pointer;
 }
-/* Tres colores fuertes. mint/red/rose son de antes de la migración 011. */
+/* Cuatro colores fuertes. mint/red/rose son de antes de la migración 011. */
 .lit.yellow,
 .lit.mint {
   background: #ffd43b;
@@ -180,6 +180,10 @@
 .lit.rose {
   background: #ff8c1a;
   color: #1f1206;
+}
+.lit.green {
+  background: #22c55e;
+  color: #052e14;
 }
 .rd-empty {
   text-align: center;
@@ -2570,31 +2574,90 @@
 .rd-row:hover .read-row:not(.current) {
   background: var(--rd-soft);
 }
-.readings .rd-pin {
+/*
+ * Acciones de la tarjeta (volver a descargar, destino, favorito y fijar): asoman juntas arriba a
+ * la derecha al pasar el cursor. Los fijados y los favoritos muestran siempre su icono.
+ */
+.rd-acts {
   position: absolute;
   top: 9px;
   right: 9px;
   z-index: 1;
+  display: flex;
+  gap: 4px;
+  pointer-events: none;
+}
+.readings .rd-act {
   display: grid;
   place-items: center;
   width: 28px;
   height: 28px;
   padding: 0;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--surface, #fff) 88%, transparent);
+  background: color-mix(in srgb, var(--surface, #fff) 90%, transparent);
   box-shadow: 0 1px 4px rgba(20, 35, 25, 0.16);
   color: color-mix(in srgb, currentColor 60%, transparent);
   opacity: 0;
   transform: scale(0.85);
+  pointer-events: auto;
   transition:
     opacity 0.15s,
     transform 0.15s,
-    color 0.15s;
+    color 0.15s,
+    background 0.15s;
 }
-.rd-row:hover .rd-pin,
-.readings .rd-pin:focus-visible {
+/* Entran de derecha a izquierda, una tras otra. */
+.readings .rd-act:nth-last-child(2) {
+  transition-delay: 0.02s;
+}
+.readings .rd-act:nth-last-child(3) {
+  transition-delay: 0.04s;
+}
+.readings .rd-act:nth-last-child(4) {
+  transition-delay: 0.06s;
+}
+.rd-row:hover .rd-act,
+.rd-row.dest-open .rd-act,
+.readings .rd-act:focus-visible {
   opacity: 1;
   transform: none;
+}
+/* Mientras está oculta no se puede pulsar por accidente. */
+.rd-row:not(:hover, .dest-open, :focus-within) .rd-act:not(:focus-visible) {
+  pointer-events: none;
+}
+.readings .rd-act:hover:not(:disabled) {
+  color: var(--rd-accent);
+  background: var(--surface, #fff);
+}
+.readings .rd-row.dest-open .rd-dest-btn {
+  color: #fff;
+  background: var(--rd-accent);
+}
+/* Favorito: corazón rojo, visible siempre que lo sea. */
+.readings .rd-row.favorite .rd-fav {
+  opacity: 1;
+  transform: none;
+  color: #d6456a;
+}
+.readings .rd-row.favorite .rd-fav:hover {
+  color: #b8304f;
+}
+.readings .rd-row.favorite:not(:hover, .dest-open) .rd-fav {
+  background: transparent;
+  box-shadow: none;
+}
+.readings .rd-row.favorite.has-thumb .rd-fav {
+  background: color-mix(in srgb, var(--surface, #fff) 90%, transparent);
+  box-shadow: 0 1px 4px rgba(20, 35, 25, 0.16);
+}
+.readings .rd-fav[aria-pressed='true'] svg {
+  animation: rd-fav-pop 0.28s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+@keyframes rd-fav-pop {
+  50% {
+    transform: scale(1.3);
+  }
 }
 .readings .rd-pin:hover {
   color: var(--rd-accent);
@@ -2616,45 +2679,22 @@
   background: color-mix(in srgb, var(--surface, #fff) 88%, transparent);
   box-shadow: 0 1px 4px rgba(20, 35, 25, 0.16);
 }
-/* Deja sitio al clip junto al título cuando no hay portada. */
+/* Deja sitio al clip junto al título cuando no hay portada (y al corazón si es favorito). */
 .rd-row:not(.has-thumb) .read-row strong {
   padding-right: 26px;
 }
+.rd-row.favorite:not(.has-thumb) .read-row strong {
+  padding-right: 62px;
+}
 @media (hover: none) {
-  .readings .rd-pin {
+  .readings .rd-act {
     opacity: 0.45;
     transform: none;
+    pointer-events: auto;
   }
-}
-/* Volver a descargar: junto al clip, también al pasar el cursor. */
-.readings .rd-refetch {
-  position: absolute;
-  top: 9px;
-  right: 41px;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--surface, #fff) 88%, transparent);
-  box-shadow: 0 1px 4px rgba(20, 35, 25, 0.16);
-  color: color-mix(in srgb, currentColor 60%, transparent);
-  opacity: 0;
-  transform: scale(0.85);
-  transition:
-    opacity 0.15s 0.03s,
-    transform 0.15s 0.03s,
-    color 0.15s;
-}
-.rd-row:hover .rd-refetch,
-.readings .rd-refetch:focus-visible {
-  opacity: 1;
-  transform: none;
-}
-.readings .rd-refetch:hover:not(:disabled) {
-  color: var(--rd-accent);
+  .rd-row:not(:hover, .dest-open, :focus-within) .rd-act:not(:focus-visible) {
+    pointer-events: auto;
+  }
 }
 .readings .rd-row.refetching .rd-refetch {
   opacity: 1;
@@ -2684,12 +2724,6 @@
   }
   to {
     background-position: 170% 0;
-  }
-}
-@media (hover: none) {
-  .readings .rd-refetch {
-    opacity: 0.45;
-    transform: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -4244,4 +4278,971 @@
 .rd-feeds .rd-dlg-foot {
   justify-content: flex-start;
   margin-top: 12px;
+}
+
+/* ════════════════ Limpiar un artículo (quitar líneas) ════════════════ */
+.rd-trim {
+  max-width: min(100%, 740px);
+  margin: 0 auto;
+}
+.rd-trim-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--rd-line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface, Canvas) 92%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 24px -20px rgba(0, 0, 0, 0.5);
+}
+.readings .rd-trim-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 9px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.readings .rd-trim-bar button:hover:not(:disabled) {
+  background: var(--rd-tint);
+}
+.readings .rd-trim-bar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.rd-trim-hint {
+  flex: 1;
+  min-width: 180px;
+  font-size: 0.82rem;
+  opacity: 0.7;
+}
+.rd-trim-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--rd-line);
+}
+.readings .rd-trim-bar .rd-trim-cut {
+  background: #fbe9e5;
+  color: #a33a2a;
+}
+.readings .rd-trim-bar .rd-trim-cut:hover:not(:disabled) {
+  background: #f6d7d0;
+}
+.readings .rd-trim-bar .rd-trim-save {
+  background: var(--rd-accent);
+  color: #fff;
+}
+.readings .rd-trim-bar .rd-trim-save:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--rd-accent) 85%, #000);
+}
+.rd-trim-error {
+  color: #b8412f;
+  font-size: 0.88rem;
+}
+.rd-trim-lines {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rd-trim-line {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 34px 7px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  line-height: 1.6;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+.rd-trim-line:hover {
+  background: var(--rd-tint);
+}
+.rd-trim-line:focus-visible {
+  outline: 2px solid #568674;
+  outline-offset: 1px;
+}
+.rd-trim-line.on {
+  border-color: color-mix(in srgb, #b8412f 45%, transparent);
+  background: color-mix(in srgb, #b8412f 9%, transparent);
+}
+.rd-trim-line.on .rd-trim-text {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, #b8412f 60%, transparent);
+}
+.rd-trim-line.heading {
+  font:
+    650 1.2em/1.35 Georgia,
+    serif;
+}
+.rd-trim-line.quote {
+  font-style: italic;
+  border-left: 3px solid var(--rd-line);
+}
+.rd-trim-line img {
+  max-width: 180px;
+  max-height: 120px;
+  border-radius: 8px;
+  object-fit: cover;
+  pointer-events: none;
+}
+.rd-trim-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.rd-trim-mark {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 700;
+  color: #b88a00;
+}
+.rd-trim-gone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+  padding: 4px 12px;
+  border: 1px dashed var(--rd-line);
+  border-radius: 10px;
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+.rd-trim-gone span {
+  flex: 1;
+}
+.readings .rd-trim-gone button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  font-weight: 650;
+}
+.readings .rd-trim-gone button:hover {
+  background: var(--rd-tint);
+}
+.rd-am-lost {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.74rem;
+  font-weight: 650;
+  color: #b8412f;
+}
+
+/* ════════════════ Lectura en capas ════════════════ */
+.ly {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface, Canvas);
+  color: inherit;
+}
+.ly-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px clamp(12px, 3vw, 32px);
+  border-bottom: 1px solid var(--rd-line, rgba(0, 0, 0, 0.12));
+}
+.ly button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.ly-head > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  font-weight: 600;
+}
+.ly-head > button:hover {
+  background: color-mix(in srgb, #61aeb1 12%, transparent);
+}
+.ly-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-left: auto;
+  padding: 3px;
+  border-radius: 12px;
+  background: #eef4ef;
+}
+.ly-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 9px;
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: color-mix(in srgb, currentColor 64%, transparent);
+}
+.ly-tabs button.on {
+  background: var(--surface, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+  color: #365c52;
+}
+.ly-tabs small {
+  font-size: 0.72rem;
+  font-weight: 600;
+  opacity: 0.65;
+}
+.ly-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: clamp(16px, 4vw, 48px) clamp(16px, 4vw, 32px) 64px;
+}
+.ly-doc {
+  max-width: 700px;
+  margin: 0 auto;
+}
+.ly-doc h2 {
+  margin: 0 0 6px;
+  font:
+    650 1.7rem/1.25 Georgia,
+    serif;
+  letter-spacing: -0.02em;
+}
+.ly-lead {
+  margin: 0 0 22px;
+  font-size: 0.9rem;
+  opacity: 0.65;
+}
+.ly-sec {
+  margin-bottom: 22px;
+}
+.ly-sec h3 {
+  margin: 0 0 8px;
+  font:
+    650 1.15rem/1.35 Georgia,
+    serif;
+  color: #365c52;
+}
+.ly-sec ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ly-sec li > button {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 9px;
+  text-align: left;
+  line-height: 1.55;
+}
+.ly-sec li > button:hover {
+  background: color-mix(in srgb, #61aeb1 12%, transparent);
+}
+.ly-ideas li {
+  position: relative;
+  padding-left: 14px;
+}
+.ly-ideas li::before {
+  content: '';
+  position: absolute;
+  top: 0.85em;
+  left: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e0b100;
+}
+.ly-pause .ly-ideas li {
+  padding: 3px 0 3px 14px;
+  line-height: 1.5;
+}
+.ly-next {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  background: #365c52 !important;
+  color: #fff !important;
+  font-weight: 650;
+}
+.ly-guided {
+  display: flex;
+  flex-direction: column;
+  max-width: 720px;
+  min-height: 100%;
+  margin: 0 auto;
+}
+.ly-guided progress {
+  width: 100%;
+  height: 3px;
+  margin-bottom: 24px;
+}
+.ly-focus {
+  flex: 1;
+  animation: ly-in 0.25s ease-out;
+}
+@keyframes ly-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.ly-where {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #365c52;
+}
+.ly-para {
+  margin: 0;
+  font:
+    1.08rem/1.8 Georgia,
+    serif;
+}
+.ly-para.focus {
+  font-size: 1.28rem;
+  line-height: 1.75;
+}
+.ly-para.quote {
+  padding-left: 14px;
+  border-left: 3px solid var(--rd-line, rgba(0, 0, 0, 0.15));
+  font-style: italic;
+}
+.ly-para .ly-key {
+  background: linear-gradient(transparent 58%, rgba(245, 184, 0, 0.33) 58%);
+}
+.ly-ghost {
+  margin: 14px 0;
+  opacity: 0.32;
+  max-height: 7.5em;
+  overflow: hidden;
+  mask-image: linear-gradient(#000 40%, transparent);
+}
+.ly-pause {
+  display: grid;
+  flex: 1;
+  align-content: start;
+  gap: 12px;
+  animation: ly-in 0.25s ease-out;
+}
+.ly-pause small {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #365c52;
+}
+.ly-pause h3 {
+  margin: 0;
+  font:
+    650 1.35rem/1.3 Georgia,
+    serif;
+}
+.ly-pause textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--rd-line, rgba(0, 0, 0, 0.15));
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.5;
+}
+.ly-pause > button,
+.ly-end button {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #eef4ef !important;
+  color: #365c52 !important;
+  font-weight: 650;
+}
+.ly-end {
+  margin: auto 0;
+  text-align: center;
+}
+.ly-end div {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+.ly-end button.primary {
+  background: #365c52 !important;
+  color: #fff !important;
+}
+.ly-foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 24px;
+  padding: 10px 0;
+  background: var(--surface, Canvas);
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+.ly-foot button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #eef4ef !important;
+  color: #365c52 !important;
+}
+.ly-foot button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* ── Tooltips de la barra de resaltado: título y una línea que lo explica ── */
+.rd-mt-btn,
+.rd-mt-swatch {
+  position: relative;
+}
+/* Agrandar la muestra agrandaría también su tooltip: el aro basta para marcarla. */
+.rd-mt-swatch:hover:not(:disabled) {
+  transform: none;
+}
+.rd-tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 11px);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: max-content;
+  max-width: 220px;
+  padding: 6px 9px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  background: #111710;
+  box-shadow: 0 10px 24px -8px rgba(5, 10, 5, 0.6);
+  color: #f3f6ef;
+  font: 500 12px/1.3 'DM Sans', sans-serif;
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  translate: -50% 3px;
+  transition:
+    opacity 0.12s ease,
+    translate 0.12s ease;
+}
+.rd-tip b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 650;
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+}
+.rd-tip small {
+  color: #aab5a3;
+  font-size: 11.5px;
+  font-weight: 450;
+}
+.rd-tip-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+  cursor: inherit;
+}
+/* Barra debajo del texto: el tooltip va debajo para no tapar la selección. */
+.rd-marktools.bottom .rd-tip {
+  top: calc(100% + 11px);
+  bottom: auto;
+  translate: -50% -3px;
+}
+/* Los de los extremos se alinean con su borde para no salirse de la pantalla. */
+.rd-mt-colors > :first-child .rd-tip {
+  left: -6px;
+  translate: 0 3px;
+}
+.rd-mt-row > :last-child .rd-tip {
+  left: auto;
+  right: -6px;
+  translate: 0 3px;
+}
+.rd-marktools.bottom .rd-mt-colors > :first-child .rd-tip,
+.rd-marktools.bottom .rd-mt-row > :last-child .rd-tip {
+  translate: 0 -3px;
+}
+/* Aparece al instante al pasar el puntero; al salir se desvanece rápido. */
+.rd-mt-btn:hover .rd-tip,
+.rd-mt-swatch:hover:not(:disabled) .rd-tip,
+.rd-mt-btn:focus-visible .rd-tip,
+.rd-mt-swatch:focus-visible .rd-tip {
+  opacity: 1;
+  translate: -50% 0;
+  transition: none;
+}
+.rd-mt-colors > :first-child:is(:hover, :focus-visible) .rd-tip,
+.rd-mt-row > :last-child:is(:hover, :focus-visible) .rd-tip {
+  translate: 0 0;
+}
+/* Con un panel abierto debajo, el tooltip de abajo lo taparía: solo con el teclado. */
+.rd-marktools.bottom:has(.rd-mt-panel) .rd-mt-row :hover > .rd-tip {
+  opacity: 0;
+}
+@media (hover: none) {
+  .rd-tip {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rd-tip {
+    transition: opacity 0.1s;
+  }
+}
+
+/* ── Menú «Destino» de una tarjeta: cuaderno, carpeta o archivo (va en un portal) ── */
+.rd-dest {
+  --dd-accent: #365c52;
+  --dd-soft: color-mix(in srgb, #365c52 9%, transparent);
+  --dd-line: color-mix(in srgb, currentColor 12%, transparent);
+  --dd-muted: color-mix(in srgb, currentColor 56%, transparent);
+  position: fixed;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--dd-line);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+  color: var(--text, #1d2419);
+  box-shadow:
+    0 18px 40px -14px rgba(16, 28, 20, 0.35),
+    0 3px 10px rgba(16, 28, 20, 0.08);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13.5px;
+  transform-origin: top right;
+  animation: rd-dest-in 0.14s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+.rd-dest.up {
+  transform-origin: bottom right;
+}
+@keyframes rd-dest-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+}
+.rd-dest button,
+.rd-dest select,
+.rd-dest input {
+  font: inherit;
+  color: inherit;
+}
+.rd-dest button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.rd-dest button:disabled {
+  cursor: default;
+}
+.rd-dest-head {
+  display: grid;
+  gap: 1px;
+  padding: 6px 8px 8px;
+  border-bottom: 1px solid var(--dd-line);
+  margin-bottom: 4px;
+}
+.rd-dest-head small {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dd-muted);
+}
+.rd-dest-head strong {
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rd-dest-sec {
+  display: grid;
+  gap: 5px;
+  padding: 4px 2px 8px;
+}
+.rd-dest-sec + .rd-dest-sec {
+  padding-top: 8px;
+  border-top: 1px solid var(--dd-line);
+}
+.rd-dest-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--dd-muted);
+}
+.rd-dest-label em {
+  margin-left: auto;
+  overflow: hidden;
+  max-width: 60%;
+  font-style: normal;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dd-accent);
+}
+.rd-dest-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 2px;
+  padding: 0 10px;
+  height: 34px;
+  border: 1px solid var(--dd-line);
+  border-radius: 9px;
+  color: var(--dd-muted);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.rd-dest-search:focus-within {
+  border-color: color-mix(in srgb, var(--dd-accent) 60%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dd-accent) 14%, transparent);
+}
+.rd-dest-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text, #1d2419);
+}
+.rd-dest-books {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rd-dest-books button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 8px;
+  text-align: left;
+  transition: background 0.12s;
+}
+.rd-dest-books button:hover:not(:disabled),
+.rd-dest-books button:focus-visible {
+  background: var(--dd-soft);
+}
+.rd-dest-books button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dd-accent) 55%, transparent);
+  outline-offset: -2px;
+}
+.rd-dest-box {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 6px;
+  color: #fff;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.rd-dest-books button.on .rd-dest-box {
+  border-color: var(--dd-accent);
+  background: var(--dd-accent);
+}
+.rd-dest-new .rd-dest-box {
+  border-style: dashed;
+  color: var(--dd-accent);
+}
+.rd-dest-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rd-dest-new .rd-dest-name {
+  font-weight: 600;
+  color: var(--dd-accent);
+}
+.rd-dest-books small {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--dd-muted);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.rd-dest-books button:hover small,
+.rd-dest-books button:focus-visible small {
+  opacity: 1;
+}
+.rd-dest-empty,
+.rd-dest-more {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--dd-muted);
+}
+.rd-dest-more {
+  padding-top: 2px;
+}
+.rd-dest-error {
+  margin: 0 6px;
+  font-size: 12px;
+  color: #b64d40;
+}
+.rd-dest-skel {
+  display: grid;
+  gap: 6px;
+  padding: 4px 8px;
+}
+.rd-dest-skel i {
+  height: 22px;
+  border-radius: 7px;
+  background: var(--dd-soft);
+  animation: rd-dest-pulse 1s ease-in-out infinite alternate;
+}
+@keyframes rd-dest-pulse {
+  to {
+    opacity: 0.45;
+  }
+}
+.rd-dest-select {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 0 2px;
+  color: var(--dd-muted);
+}
+.rd-dest-select select {
+  width: 100%;
+  height: 34px;
+  padding: 0 30px 0 10px;
+  border: 1px solid var(--dd-line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text, #1d2419);
+  cursor: pointer;
+  appearance: none;
+  transition: border-color 0.15s;
+}
+.rd-dest-select select:hover {
+  border-color: color-mix(in srgb, var(--dd-accent) 45%, transparent);
+}
+.rd-dest-select select:focus-visible {
+  outline: 0;
+  border-color: color-mix(in srgb, var(--dd-accent) 60%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dd-accent) 14%, transparent);
+}
+.rd-dest-select svg {
+  position: absolute;
+  right: 10px;
+  pointer-events: none;
+}
+.rd-dest-folder {
+  display: flex;
+  gap: 6px;
+  margin: 0 2px;
+}
+.rd-dest-folder input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--dd-accent) 60%, transparent);
+  border-radius: 9px;
+  outline: 0;
+  background: transparent;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dd-accent) 14%, transparent);
+}
+.rd-dest .rd-dest-folder button {
+  padding: 0 12px;
+  border-radius: 9px;
+  background: var(--dd-accent);
+  color: #fff;
+  font-weight: 600;
+}
+.rd-dest .rd-dest-folder button:disabled {
+  opacity: 0.45;
+}
+.rd-dest .rd-dest-archive {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 36px;
+  margin-top: 2px;
+  padding: 0 10px;
+  border-top: 1px solid var(--dd-line);
+  border-radius: 0 0 9px 9px;
+  text-align: left;
+  transition: background 0.12s;
+}
+.rd-dest .rd-dest-archive:hover,
+.rd-dest .rd-dest-archive:focus-visible {
+  border-radius: 9px;
+  border-top-color: transparent;
+  background: var(--dd-soft);
+}
+.rd-dest-archive span {
+  flex: 1;
+  font-weight: 600;
+}
+.rd-dest-archive small {
+  font-size: 11.5px;
+  color: var(--dd-muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rd-dest {
+    animation: none;
+  }
+}
+
+/* ── Cuadernos al lado: con un artículo abierto, tercera columna; sin él, ocupa el lector ── */
+.readings {
+  --rd-dock-w: clamp(320px, 30vw, 440px);
+}
+.rd-dock {
+  min-width: 0;
+  overflow: auto;
+  padding: 0 clamp(14px, 3vw, 40px);
+  container-type: inline-size;
+  overscroll-behavior: contain;
+}
+.readings[data-books='full'] > main {
+  display: none;
+}
+.readings[data-books='side'] {
+  grid-template-columns: minmax(230px, 24%) minmax(0, 1fr) var(--rd-dock-w);
+}
+.readings[data-books='side'] > main {
+  padding-inline: clamp(16px, 3vw, 44px);
+}
+.readings[data-books='side'] .rd-dock {
+  padding: 0 16px;
+  border-left: 1px solid var(--rd-line);
+  background: color-mix(in srgb, var(--rd-soft) 45%, var(--surface, #fff));
+  animation: rd-dock-in 0.2s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes rd-dock-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+/* El botón de la pregunta guía sigue en la esquina del lector, no encima del cuaderno. */
+.readings[data-books='side'] .rd-qf-dock {
+  right: calc(var(--rd-dock-w) + 22px);
+}
+/* En el lateral, Cuadernos se compacta. */
+@container (max-width: 560px) {
+  .bk {
+    padding-top: 12px;
+  }
+  .bk-mark {
+    display: none;
+  }
+  .bk-title h2 {
+    font-size: 1.2rem;
+  }
+  .bk .bk-tabs button {
+    gap: 5px;
+    padding: 0 6px;
+    font-size: 0.8rem;
+  }
+  .bk .bk-tabs button svg {
+    display: none;
+  }
+  .bk-bar {
+    flex-wrap: wrap;
+  }
+  .bk-create {
+    flex-direction: column;
+  }
+}
+.bk-src.reading {
+  border-color: color-mix(in srgb, var(--bk-accent) 45%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bk-accent) 10%, transparent);
+}
+/* Pantalla mediana: lector y cuaderno; la lista vuelve al cerrar el cuaderno. */
+@media (max-width: 1080px) and (min-width: 761px) {
+  .readings[data-books='side'] {
+    grid-template-columns: minmax(0, 1fr) var(--rd-dock-w);
+  }
+  .readings[data-books='side'] > aside {
+    display: none;
+  }
+}
+/* Móvil: una sola columna; el cuaderno va encima y al cerrarlo vuelve el artículo. */
+@media (max-width: 760px) {
+  .readings[data-books] > aside,
+  .readings[data-books] > main {
+    display: none;
+  }
+  .readings[data-books] .rd-dock {
+    border: 0;
+    padding: 0 14px;
+  }
+  .readings[data-books='side'] .rd-qf-dock {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .readings[data-books='side'] .rd-dock {
+    animation: none;
+  }
 }

@@ -106,6 +106,10 @@ src/
 
 Las fotos de los recuerdos se suben a [ImgBB](https://api.imgbb.com) a través de la Edge Function `image-upload`, así la clave nunca llega al navegador ni a git. En Edge Functions → Secrets configura `IMGBB_API_KEY` (o `supabase secrets set IMGBB_API_KEY=...`) y despliega con `supabase functions deploy image-upload --no-verify-jwt`. La función valida la sesión antes de subir. Ejecuta también `supabase/migrations/202611060004_images_details.sql`, que añade las columnas `images` y `details`. Sin esa migración la app funciona, avisa y guarda solo notas sin fotos ni detalles. Los PDF y textos adjuntos siguen yendo a Supabase Storage. Las fotos de ImgBB son accesibles por su enlace.
 
+## CAPTURAS (YourImageShare)
+
+La pestaña CAPTURAS de Libroteca sube imágenes a [YourImageShare](https://yourimageshare.com/about/api) a través de la Edge Function `screenshots`. Esa clave permite listar y borrar todo lo subido, así que vive solo en los secretos: `npx supabase secrets set YIS_API_KEY=... --project-ref imdvmlzdbmbvwkfoisgs` y despliega con `npx supabase functions deploy screenshots --no-verify-jwt --project-ref imdvmlzdbmbvwkfoisgs`. Ejecuta antes `supabase/migrations/202611100006_screenshots.sql` (tablas `screenshots` y `screenshot_folders`). Las imágenes se suben sin recomprimir y como `private` (solo con el enlace). YourImageShare admite 20 peticiones por minuto: la cola reparte las subidas y espera sola cuando hace falta. Al borrar, la captura desaparece al instante y la función la borra de YourImageShare por detrás.
+
 ## Portadas de películas
 
 La búsqueda usa una función autenticada. En los secretos de Edge Functions configura TMDB_READ_TOKEN con el token de lectura de TMDB y despliega con `supabase functions deploy movie-search --no-verify-jwt`. La función valida la sesión antes de consultar TMDB. Las portadas se sirven desde TMDB y las personalizadas desde ImgBB. This product uses the TMDB API but is not endorsed or certified by TMDB.

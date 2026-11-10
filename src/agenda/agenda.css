@@ -633,6 +633,18 @@
   border-color: #efc3b5;
   background: #fdf3ef;
 }
+.rv-grades .dificil:hover:not(:disabled) {
+  border-color: #ecd7a8;
+  background: #fcf7ea;
+}
+.rv-grades.four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+@media (max-width: 420px) {
+  .rv-grades.four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .rv-grades .bien:hover:not(:disabled) {
   border-color: #c6dcb5;
   background: #f3f8ee;

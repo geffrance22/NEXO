@@ -3,6 +3,7 @@ import {
   BookMarked,
   Briefcase,
   Clapperboard,
+  Images,
   LayoutGrid,
   Lightbulb,
   ListChecks,
@@ -30,6 +31,8 @@ export type TabId =
   | "citas"
   /** Notas libres (tablero tipo Keep, tabla `quick_notes`). */
   | "lienzo"
+  /** CAPTURAS: imágenes en YourImageShare, por carpetas (tablas `screenshots*`). */
+  | "capturas"
   // Agenda
   | "cuadernos"
   | "pendientes"
@@ -330,6 +333,7 @@ export const sectionTabs: Record<ShelfSection, TabMeta[]> = {
     { id: "series", label: "Series", icon: Tv },
     { id: "libros", label: "Libros", icon: BookMarked },
     { id: "citas", label: "Citas", icon: Quote },
+    { id: "capturas", label: "CAPTURAS", icon: Images, divider: true },
   ],
   Agenda: [
     { id: "notas", label: "Diario", icon: BookHeart },

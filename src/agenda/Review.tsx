@@ -211,11 +211,15 @@ export function ReviewAgendaCard() {
 }
 
 type GradeOption = { id: Grade; label: string; key: string };
-/** Tarjetas con respuesta: lo piensas, lo ves y dices cómo te fue. */
+/**
+ * Tarjetas con respuesta: lo piensas, lo ves y dices cómo te fue. Las cuatro respuestas de FSRS:
+ * no la recordabas, te costó, la recordaste o fue inmediato.
+ */
 const recallGrades: GradeOption[] = [
   { id: "otra", label: "Otra vez", key: "1" },
-  { id: "bien", label: "Lo recordaba", key: "2" },
-  { id: "facil", label: "Fácil", key: "3" },
+  { id: "dificil", label: "Difícil", key: "2" },
+  { id: "bien", label: "Lo recordaba", key: "3" },
+  { id: "facil", label: "Fácil", key: "4" },
 ];
 /** Citas y resaltados sin respuesta: se leen y dices qué tanto te sirven. */
 const reflectGrades: GradeOption[] = [
@@ -278,7 +282,7 @@ function ReviewDialog({
     }
   };
 
-  // Atajos: espacio para ver la respuesta; 1, 2, 3 para calificar.
+  // Atajos: espacio para ver la respuesta; 1 a 4 para calificar.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!card || (e.target as HTMLElement).closest("input, textarea")) return;
@@ -442,7 +446,13 @@ function ReviewDialog({
               )}
             </div>
 
-            <footer className={"rv-grades" + (revealed ? "" : " wait")}>
+            <footer
+              className={
+                "rv-grades" +
+                (options.length === 4 ? " four" : "") +
+                (revealed ? "" : " wait")
+              }
+            >
               {options.map((g) => (
                 <button
                   type="button"
@@ -452,7 +462,7 @@ function ReviewDialog({
                   onClick={() => void grade(g.id)}
                 >
                   <strong>{g.label}</strong>
-                  <small>{inDays(schedule(card.step, g.id).days)}</small>
+                  <small>{inDays(schedule(card.memory, g.id).days)}</small>
                 </button>
               ))}
               <button

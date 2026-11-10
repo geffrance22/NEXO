@@ -1,4 +1,6 @@
 import { supabase } from "../backend";
+import { FSRS_SQL } from "../review/fsrs";
+import { MEMORY_COLUMNS, withMemory } from "../review/memoryStore";
 
 /** Una flashcard de un artículo leído (tabla `reading_flashcards`). */
 export type Flashcard = {
@@ -12,7 +14,30 @@ export type Flashcard = {
   review_step: number;
   review_due: string | null;
   created_at: string;
+  review_stability?: number | null;
+  review_difficulty?: number | null;
+  reviewed_at?: string | null;
 };
+/** Lo que escribes al crear o editar una tarjeta a mano. */
+export type CardDraft = {
+  front: string;
+  back: string;
+  reading_id: string | null;
+  source: string;
+};
+/** Un subrayado tuyo, candidato a tarjeta. */
+export type Highlight = {
+  id: string;
+  reading_id: string;
+  title: string;
+  quote: string;
+  note: string;
+  color?: string | null;
+};
+/** Largo máximo del anverso (con la migración de FSRS; antes, 400). */
+export const FRONT_MAX = 1000;
+export const BACK_MAX = 1200;
+const COLUMNS = "id,reading_id,source,front,back,review_step,review_due,created_at";
 /** Un artículo ya leído, candidato a flashcards. */
 export type ReadArticle = {
   id: string;
@@ -46,11 +71,15 @@ export async function readArticles() {
 
 /** Todas tus flashcards; null si falta la migración. */
 export async function loadFlashcards() {
-  const { data, error } = await supabase
-    .from("reading_flashcards")
-    .select("id,reading_id,source,front,back,review_step,review_due,created_at")
-    .order("created_at", { ascending: false })
-    .limit(3000);
+  const { data, error } = await withMemory<Flashcard[]>(
+    (extra) =>
+      supabase
+        .from("reading_flashcards")
+        .select(COLUMNS + extra)
+        .order("created_at", { ascending: false })
+        .limit(3000),
+    ",reviewed_at",
+  );
   if (error) {
     if (isMissing(error)) return null;
     throw error;
@@ -105,7 +134,7 @@ export async function generateFlashcards(
         back: c.back,
       })),
     )
-    .select("id,reading_id,source,front,back,review_step,review_due,created_at");
+    .select(COLUMNS);
   if (error) {
     if (isMissing(error))
       throw Error(
@@ -122,4 +151,89 @@ export async function deleteFlashcard(id: string) {
     .delete()
     .eq("id", id);
   if (error) throw error;
+}
+
+/** Error de guardado con un mensaje claro (migración que falta o tarjeta demasiado larga). */
+function saveError(e: { code?: string; message?: string }) {
+  if (isMissing(e))
+    return Error(
+      `Para usar las flashcards ejecuta ${FLASHCARDS_SQL} en el SQL Editor de Supabase.`,
+    );
+  if (e.code === "23514" || /front_check/.test(e.message ?? ""))
+    return Error(
+      `La tarjeta es demasiado larga. Para tarjetas de hasta ${FRONT_MAX} caracteres ejecuta ${FSRS_SQL} en el SQL Editor de Supabase.`,
+    );
+  return Error(e.message || "No se pudo guardar la flashcard.");
+}
+
+const clean = (d: CardDraft) => ({
+  front: d.front.trim().slice(0, FRONT_MAX),
+  back: d.back.trim().slice(0, BACK_MAX),
+  reading_id: d.reading_id,
+  source: d.source.slice(0, 300),
+});
+
+/** Guarda tarjetas escritas a mano (o sacadas de tus subrayados). Entran al repaso mañana. */
+export async function createFlashcards(drafts: CardDraft[]) {
+  const rows = drafts.map(clean).filter((d) => d.front && d.back);
+  if (!rows.length) return [];
+  const { data, error } = await supabase
+    .from("reading_flashcards")
+    .insert(rows)
+    .select(COLUMNS);
+  if (error) throw saveError(error);
+  return (data ?? []) as Flashcard[];
+}
+
+/**
+ * Cambia el texto de una tarjeta. Su memoria se conserva: si cambias lo que pregunta, puedes
+ * pedir que vuelva a empezar (`restart`).
+ */
+export async function updateFlashcard(
+  id: string,
+  draft: Pick<CardDraft, "front" | "back">,
+  restart = false,
+) {
+  const changes: Record<string, unknown> = {
+    front: draft.front.trim().slice(0, FRONT_MAX),
+    back: draft.back.trim().slice(0, BACK_MAX),
+  };
+  if (restart)
+    Object.assign(changes, {
+      review_step: 0,
+      review_due: null,
+      reviewed_at: null,
+      review_stability: null,
+      review_difficulty: null,
+    });
+  let res = await supabase
+    .from("reading_flashcards")
+    .update(changes)
+    .eq("id", id)
+    .select(COLUMNS + "," + MEMORY_COLUMNS)
+    .single();
+  // Sin la migración de FSRS: sin las columnas de la memoria.
+  if (res.error && /review_stability|review_difficulty/.test(res.error.message)) {
+    delete changes.review_stability;
+    delete changes.review_difficulty;
+    res = await supabase
+      .from("reading_flashcards")
+      .update(changes)
+      .eq("id", id)
+      .select(COLUMNS + ",reviewed_at")
+      .single();
+  }
+  if (res.error) throw saveError(res.error);
+  return res.data as unknown as Flashcard;
+}
+
+/** Tus subrayados (de todos los artículos), los más recientes primero. */
+export async function loadHighlights() {
+  const { data, error } = await supabase
+    .from("reading_annotations")
+    .select("id,reading_id,title,quote,note,color")
+    .order("edited_at", { ascending: false })
+    .limit(2000);
+  if (error) throw error;
+  return ((data ?? []) as Highlight[]).filter((h) => h.quote?.trim());
 }

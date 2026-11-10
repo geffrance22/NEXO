@@ -1,7 +1,9 @@
 import type { Entry } from '../data';
-import { addDays, todayInputValue } from '../lib/format';
+import { todayInputValue } from '../lib/format';
 import { sample } from '../lib/random';
-import { schedule, type Grade } from '../readings/review';
+import type { Grade } from '../readings/review';
+import type { Memory } from './fsrs';
+import { nextMemory } from './learnings';
 
 /**
  * Citas de tus libros dentro del repaso espaciado. Cada libro guarda, junto a sus citas, cuándo toca
@@ -29,6 +31,7 @@ export type DueQuote = {
   text: string;
   key: string;
   step: number;
+  memory: Memory;
 };
 
 /** Citas que nunca has repasado y que se presentan por día: así no te cae un libro entero. */
@@ -109,9 +112,12 @@ export function dueQuotes(entries: Entry[], today = todayInputValue()) {
       if (seen.has(id)) continue;
       seen.add(id);
       const record = records[key];
-      if (!record) unseen.push({ id, book, text, key, step: 0 });
+      if (!record) unseen.push({ id, book, text, key, step: 0, memory: { step: 0 } });
       else if (record.step >= 0 && record.due && record.due <= today)
-        dated.push({ quote: { id, book, text, key, step: record.step }, due: record.due });
+        dated.push({
+          quote: { id, book, text, key, step: record.step, memory: { ...record } },
+          due: record.due,
+        });
     }
   }
   dated.sort((a, b) => a.due.localeCompare(b.due));
@@ -122,16 +128,15 @@ type Patch = (entry: Entry, changes: { details: Entry['details'] }) => Promise<b
 
 /** Guarda cómo te fue con una cita y cuándo toca de nuevo (en el propio libro). */
 export async function rateQuote(
-  quote: { key: string; step: number },
+  quote: { key: string; memory: Memory },
   grade: Grade,
   book: Entry,
   patch: Patch,
 ) {
-  const { step, days } = schedule(quote.step, grade);
   const today = todayInputValue();
   const records = { ...book.details.quoteReview };
   const wasNew = !records[quote.key];
-  records[quote.key] = { step, due: days === null ? null : addDays(today, days) };
+  records[quote.key] = nextMemory(quote.memory, grade);
   // Sin huérfanas: solo se conserva lo de las citas que siguen en el libro.
   const alive = new Set((book.details.quotes ?? []).map((q) => quoteKey(String(q))));
   for (const key of Object.keys(records)) if (!alive.has(key)) delete records[key];

@@ -89,7 +89,22 @@ const byName = (a: Book, b: Book) => a.name.localeCompare(b.name, 'es');
  * Cuadernos: reúnen artículos sobre un tema con sus resaltados, tus notas y preguntas, y le
  * preguntan a la IA por el conjunto (resumen, ideas clave, contradicciones…).
  */
-export function Notebooks({ open, back }: { open: (id: string) => void; back: () => void }) {
+export function Notebooks({
+  open,
+  back,
+  revision = 0,
+  focus = null,
+  current: reading = null,
+}: {
+  open: (id: string) => void;
+  back: () => void;
+  /** Cambia cuando algo de fuera tocó los cuadernos (p. ej. enviar un artículo desde la lista). */
+  revision?: number;
+  /** Abre este cuaderno (un objeto nuevo cada vez que se pide). */
+  focus?: { id: string } | null;
+  /** El artículo abierto al lado: se puede añadir con un clic. */
+  current?: Pick | null;
+}) {
   const { confirm, notify } = useApp();
   const [books, setBooks] = useState<Book[] | null>(null);
   const [book, setBook] = useState(() => localStorage.getItem(LAST) ?? '');
@@ -101,6 +116,8 @@ export function Notebooks({ open, back }: { open: (id: string) => void; back: ()
   const [marks, setMarks] = useState<Mark[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(false);
+  // Cuaderno cuyas fuentes ya llegaron (al recargar de fondo no cuenta como «cargando»).
+  const [ready, setReady] = useState('');
   const [rev, reload] = useState(0);
 
   const [creating, setCreating] = useState(false);
@@ -154,7 +171,14 @@ export function Notebooks({ open, back }: { open: (id: string) => void; back: ()
     return () => {
       alive = false;
     };
-  }, []);
+  }, [revision]);
+
+  // Pidieron abrir un cuaderno concreto (p. ej. «Ver» tras enviarle un artículo).
+  useEffect(() => {
+    if (!focus) return;
+    setBook(focus.id);
+    setTab('sources');
+  }, [focus]);
 
   // Fuentes, resaltados y notas del cuaderno abierto. Al cambiar de cuaderno se limpia todo.
   const shown = useRef('');
@@ -215,13 +239,14 @@ export function Notebooks({ open, back }: { open: (id: string) => void; back: ()
       setSources(rows);
       setNotes((n.data ?? []) as Note[]);
       setMarks(found);
+      setReady(book);
     })()
       .catch((e) => alive && fail(errorMessage(e)))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, [book, rev]);
+  }, [book, rev, revision]);
 
   // Buscador de artículos para añadir (sin texto: los más recientes).
   useEffect(() => {
@@ -727,6 +752,17 @@ export function Notebooks({ open, back }: { open: (id: string) => void; back: ()
                     ? 'Los resaltados de cada artículo, juntos. Pulsa el título para seguir leyendo.'
                     : ''}
                 </p>
+                {reading && ready === book && !sources.some((s) => s.id === reading.id) && (
+                  <button
+                    type="button"
+                    className="bk-btn primary"
+                    disabled={busy}
+                    title={`Añadir «${reading.title}» a este cuaderno`}
+                    onClick={() => void addSource(reading)}
+                  >
+                    <BookmarkPlus size={15} /> Añadir el que lees
+                  </button>
+                )}
                 <button
                   type="button"
                   className={'bk-btn' + (picking ? ' on' : '')}
@@ -825,7 +861,10 @@ export function Notebooks({ open, back }: { open: (id: string) => void; back: ()
                     const long = list.length > PREVIEW + 1;
                     const all = !long || expanded[s.id];
                     return (
-                      <li className="bk-src" key={s.id}>
+                      <li
+                        className={'bk-src' + (s.id === reading?.id ? ' reading' : '')}
+                        key={s.id}
+                      >
                         <div className="bk-src-head">
                           {s.cover ? (
                             <img

@@ -1,6 +1,8 @@
 import { supabase } from "../backend";
-import { addDays, todayInputValue } from "../lib/format";
+import { todayInputValue } from "../lib/format";
 import { schedule, type Grade } from "../readings/review";
+import { memoryOf } from "./fsrs";
+import { saveMemory, withMemory } from "./memoryStore";
 
 /**
  * Flashcards de Lecturas dentro del repaso espaciado. Entran a partir del día siguiente a
@@ -13,22 +15,33 @@ export type DueFlashcard = {
   front: string;
   back: string;
   review_step: number;
+  review_due?: string | null;
+  review_stability?: number | null;
+  review_difficulty?: number | null;
+  reviewed_at?: string | null;
 };
 
 /** Las flashcards que toca repasar hoy, las más atrasadas primero. null si falta la migración. */
 export async function dueFlashcards(limit: number) {
   const today = todayInputValue();
   const dayAgo = new Date(Date.now() - 86_400_000).toISOString();
-  const { data, error, count } = await supabase
-    .from("reading_flashcards")
-    .select("id,reading_id,source,front,back,review_step", { count: "exact" })
-    .gte("review_step", 0)
-    .or(
-      `review_due.lte.${today},and(review_due.is.null,created_at.lte.${dayAgo})`,
-    )
-    .order("review_due", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: true })
-    .limit(limit);
+  const { data, error, count } = await withMemory<DueFlashcard[]>(
+    (extra) =>
+      supabase
+        .from("reading_flashcards")
+        .select(
+          "id,reading_id,source,front,back,review_step,review_due" + extra,
+          { count: "exact" },
+        )
+        .gte("review_step", 0)
+        .or(
+          `review_due.lte.${today},and(review_due.is.null,created_at.lte.${dayAgo})`,
+        )
+        .order("review_due", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: true })
+        .limit(limit),
+    ",reviewed_at",
+  );
   if (error) return null;
   const items = (data ?? []) as DueFlashcard[];
   return { items, total: count ?? items.length };
@@ -36,14 +49,9 @@ export async function dueFlashcards(limit: number) {
 
 /** Guarda cómo te fue con una flashcard y cuándo vuelve. */
 export async function rateFlashcard(card: DueFlashcard, grade: Grade) {
-  const { step, days } = schedule(card.review_step, grade);
-  const { error } = await supabase
-    .from("reading_flashcards")
-    .update({
-      review_step: step,
-      review_due: days === null ? null : addDays(todayInputValue(), days),
-      reviewed_at: new Date().toISOString(),
-    })
-    .eq("id", card.id);
-  if (error) throw error;
+  await saveMemory(
+    "reading_flashcards",
+    card.id,
+    schedule(memoryOf(card), grade),
+  );
 }

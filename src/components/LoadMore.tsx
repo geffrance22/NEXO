@@ -12,7 +12,13 @@ export function useInfinite<T>(items: T[], page: number, reset: string) {
   const limit = stale ? page : Math.max(state.limit, page);
   const visible = useMemo(() => items.slice(0, limit), [items, limit]);
   const loadMore = useCallback(() => setState((s) => ({ ...s, limit: s.limit + page })), [page]);
-  return { visible, rest: Math.max(0, items.length - limit), loadMore };
+  /** Asegura que se muestren al menos `n` (p. ej. para dejar a la vista uno que está más abajo). */
+  const reach = useCallback(
+    (n: number) =>
+      setState((s) => (n > s.limit ? { ...s, limit: Math.ceil(n / page) * page } : s)),
+    [page],
+  );
+  return { visible, rest: Math.max(0, items.length - limit), loadMore, reach };
 }
 
 /**

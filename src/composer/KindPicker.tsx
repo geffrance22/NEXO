@@ -11,7 +11,7 @@ export function KindPicker({
   onClose,
   onShortcut,
 }: {
-  onShortcut: (kind: 'idea' | 'link' | 'person') => void;
+  onShortcut: (kind: 'idea' | 'link' | 'person' | 'capture') => void;
   current?: Kind;
   onPick: (kind: Kind) => void;
   onClose: () => void;
@@ -48,7 +48,13 @@ export function KindPicker({
       key: 'G',
       action: () => onShortcut('person'),
     },
-    { label: 'Guardar Captura', hint: 'Próximamente', Icon: ScanLine, key: '', action: undefined },
+    {
+      label: 'Guardar Captura',
+      hint: 'Subir a CAPTURAS',
+      Icon: ScanLine,
+      key: 'C',
+      action: () => onShortcut('capture'),
+    },
   ];
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {

@@ -53,6 +53,8 @@ import { MergeDialog } from "../people/MergeDialog";
 import { parseHash, toHash, type Route } from "../lib/route";
 import { ConnectionsPage } from "../pages/ConnectionsPage";
 import { Agenda, Libroteca } from "../library/Libroteca";
+import { UploadTray } from "../capturas/UploadTray";
+import { ShotPeek } from "../capturas/ShotPeek";
 import { NoteReminders } from "../notes/reminders";
 import { DiaryReader, type DiaryJob } from "../diary/reader/DiaryReader";
 import { isVaulted, useDiaryVault } from "../diary/vault";
@@ -836,6 +838,8 @@ export function AppShell({ user }: { user: AppUser }) {
           />
         )}
         {confirmDialog}
+        <UploadTray />
+        <ShotPeek />
       </div>
     </AppProvider>
   );

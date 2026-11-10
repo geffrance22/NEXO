@@ -1,6 +1,16 @@
-import { useState } from 'react';
-import { Eye, Lightbulb, Quote, Shuffle, Sprout, TriangleAlert } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  BadgeCheck,
+  ExternalLink,
+  Eye,
+  Lightbulb,
+  Quote,
+  Shuffle,
+  Sprout,
+  TriangleAlert,
+} from 'lucide-react';
 import type { Definition } from './define';
+import { fetchEtymology, wiktionarySearch, type Etymology } from './etymology';
 
 function Chips({ label, items, tone }: { label: string; items: string[]; tone?: string }) {
   if (!items.length) return null;
@@ -17,20 +27,58 @@ function Chips({ label, items, tone }: { label: string; items: string[]; tone?: 
 }
 
 /** La ficha completa de una palabra: significado, raíz, truco, ejemplo, relaciones y ejercicio. */
-export function DefinitionView({ d }: { d: Definition }) {
+export function DefinitionView({ d, term = '' }: { d: Definition; term?: string }) {
   const [shown, show] = useState(false);
+  // Fichas de antes de usar Wiktionary: se busca la fuente al abrirlas (no se guarda).
+  const [late, setLate] = useState<Etymology | null | undefined>(undefined);
+  useEffect(() => {
+    if (d.source !== undefined || !term) return;
+    let live = true;
+    void fetchEtymology(term).then((e) => live && setLate(e));
+    return () => {
+      live = false;
+    };
+  }, [d.source, term]);
+  const source = d.source !== undefined ? d.source : late;
   return (
     <div className="df">
       {d.kind && <span className="df-kind">{d.kind}</span>}
       <p className="df-meaning">{d.meaning}</p>
 
-      {(d.root || d.history) && (
+      {(d.root || d.history || source) && (
         <section className="df-block">
           <span className="df-label">
             <Sprout size={13} /> Raíz e historia
           </span>
           {d.root && <p>{d.root}</p>}
           {d.history && <p className="df-soft">{d.history}</p>}
+          {source ? (
+            <details className="df-source" open={!d.root && !d.history}>
+              <summary>
+                <BadgeCheck size={13} /> Según Wiktionary
+                {source.language ? ` · ${source.language}` : ''}
+              </summary>
+              <p>{source.text}</p>
+              <a href={source.url} target="_blank" rel="noopener noreferrer">
+                Ver la entrada en Wiktionary <ExternalLink size={11} />
+              </a>
+              <small>Texto de Wiktionary, CC BY-SA 4.0.</small>
+            </details>
+          ) : (
+            (d.root || d.history) && (
+              <small className="df-unverified">
+                <TriangleAlert size={12} />
+                {source === undefined
+                  ? 'Escrito por la IA.'
+                  : 'Wiktionary no tiene su etimología: lo escribió la IA y puede tener errores.'}{' '}
+                {term && (
+                  <a href={wiktionarySearch(term)} target="_blank" rel="noopener noreferrer">
+                    Verificar
+                  </a>
+                )}
+              </small>
+            )
+          )}
         </section>
       )}
 

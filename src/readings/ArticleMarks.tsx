@@ -19,13 +19,22 @@ export type MarkLike = {
   note: string;
   color?: string;
   edited_at: string;
+  /** El texto que se leía al resaltarlo. */
+  quote?: string | null;
 };
 
-const colorInfo: Record<string, { label: string; ink: string }> = {
-  yellow: { label: 'Amarillo', ink: '#f5b800' },
-  blue: { label: 'Azul oscuro', ink: '#1e3a8a' },
-  orange: { label: 'Naranja', ink: '#f2760a' },
-};
+/**
+ * Los colores del resaltado y lo que significa cada uno (solo para organizarte: no cambian nada
+ * más). El verde necesita la migración 202611100005.
+ */
+export const MARK_COLORS: Record<string, { label: string; name: string; hint: string; ink: string }> =
+  {
+    yellow: { label: 'Dato', name: 'Amarillo', hint: 'Hechos, cifras y fechas', ink: '#f5b800' },
+    blue: { label: 'Idea', name: 'Azul', hint: 'Conceptos y argumentos', ink: '#1e3a8a' },
+    orange: { label: 'Cita', name: 'Naranja', hint: 'Frases para citar tal cual', ink: '#f2760a' },
+    green: { label: 'Acción', name: 'Verde', hint: 'Algo para aplicar o probar', ink: '#12a150' },
+  };
+const colorInfo = MARK_COLORS;
 const colorOrder = Object.keys(colorInfo);
 /** Colores de antes de la migración 011: se muestran como el más cercano. */
 const LEGACY: Record<string, string> = { mint: 'yellow', red: 'orange', rose: 'orange' };
@@ -50,7 +59,10 @@ export function ArticleMarks({
   copy,
   onEdit,
   onJump,
+  lost,
 }: {
+  /** Resaltados que ya no aparecen en el texto (se muestra la cita que guardaron). */
+  lost?: ReadonlySet<string>;
   marks: MarkLike[];
   content: string;
   title: string;
@@ -66,8 +78,14 @@ export function ArticleMarks({
     () =>
       [...marks]
         .sort((a, b) => a.start_offset - b.start_offset)
-        .map((m) => ({ mark: m, quote: readableSlice(content, m.start_offset, m.end_offset) })),
-    [marks, content],
+        .map((m) => ({
+          mark: m,
+          quote:
+            lost?.has(m.id) && m.quote
+              ? m.quote
+              : readableSlice(content, m.start_offset, m.end_offset),
+        })),
+    [marks, content, lost],
   );
   const counts = useMemo(() => {
     const c: Record<string, number> = { todas: rows.length, notas: 0, ia: 0 };
@@ -179,6 +197,14 @@ export function ArticleMarks({
                   <i style={{ width: `${Math.max(4, where)}%` }} />
                 </span>
                 <small>{where < 8 ? 'Inicio' : where > 92 ? 'Final' : `${where}%`}</small>
+                {lost?.has(mark.id) && (
+                  <small
+                    className="rd-am-lost"
+                    title="El texto cambió y este fragmento ya no aparece: la cita es la que guardaste."
+                  >
+                    No está en el texto
+                  </small>
+                )}
                 {isAi(mark) && (
                   <small className="rd-am-ai">
                     <Sparkles size={11} /> IA

@@ -1,30 +1,20 @@
 import { supabase } from "../backend";
 import { capture } from "./capture";
 import { minutesOf as minutes, savePictures } from "./media";
+import { relocate } from "./anchors";
+import { readableSlice } from "./formatting";
 
-type Mark = { id: string; start_offset: number; end_offset: number };
+type Mark = {
+  id: string;
+  start_offset: number;
+  end_offset: number;
+  quote?: string | null;
+};
 type Offsets = Pick<Mark, "start_offset" | "end_offset">;
 
 /** ¿El texto guardado conserva hipervínculos? Entonces la versión nueva también. */
 const hasLinks = (text: string) =>
   /(?<!!)\[[^\]\n]+\]\(https?:\/\/[^\s()]+\)/.test(text);
-
-/**
- * Dónde queda un resaltado en el texto nuevo: la aparición de su mismo texto más cercana a la
- * posición que tenía (proporcional a la longitud de cada versión). Si no aparece, null.
- */
-function relocate(before: string, after: string, m: Mark): Offsets | null {
-  const piece = before.slice(m.start_offset, m.end_offset);
-  if (!piece.trim()) return null;
-  const expected = (m.start_offset / Math.max(1, before.length)) * after.length;
-  let best = -1;
-  for (let i = after.indexOf(piece); i >= 0; i = after.indexOf(piece, i + 1))
-    if (best < 0 || Math.abs(i - expected) < Math.abs(best - expected))
-      best = i;
-  return best < 0
-    ? null
-    : { start_offset: best, end_offset: best + piece.length };
-}
 
 /**
  * Vuelve a descargar un artículo desde su enlace y reemplaza su título, texto e imágenes.
@@ -51,7 +41,7 @@ export async function refetchReading<Row>(
   // Los resaltados se leen después de descargar: así cuentan también los que hiciste mientras.
   const saved = await supabase
     .from("reading_marks")
-    .select("id,start_offset,end_offset")
+    .select("id,start_offset,end_offset,quote")
     .eq("reading_id", id);
   if (saved.error) throw saved.error;
 
@@ -103,7 +93,13 @@ export async function refetchReading<Row>(
   );
   const results = await Promise.all(
     moved.map((x) =>
-      supabase.from("reading_marks").update(x.to).eq("id", x.m.id),
+      supabase
+        .from("reading_marks")
+        .update({
+          ...x.to,
+          quote: readableSlice(snap.content, x.to.start_offset, x.to.end_offset),
+        })
+        .eq("id", x.m.id),
     ),
   );
   const failed = results.find((r) => r.error);

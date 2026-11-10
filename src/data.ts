@@ -314,6 +314,11 @@ export type EntryDetails = {
    * Sin estado cuenta como «leyendo» (así se guardaban los primeros libros).
    */
   read?: "estante" | "quiero" | "leyendo" | "terminado";
+  /**
+   * Qué lectura es esta del mismo libro: 2 = la segunda vez, 3 = la tercera… Sin valor es la
+   * primera. Se detecta sola si ya lo habías terminado antes y se puede corregir a mano.
+   */
+  readNo?: number;
   /** Fotos del libro aparte de la portada (ImgBB): tu ejemplar, páginas, dedicatorias… */
   bookPhotos?: StoredImage[];
   /** AAAA-MM-DD: el día que marcaste el libro como terminado (cuenta para la meta del año). */

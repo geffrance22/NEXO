@@ -4,7 +4,8 @@ import { useApp } from "../AppContext";
 import type { Entry } from "../data";
 import { Sheet } from "../components/Sheet";
 import { entryImages } from "../lib/moviePosters";
-import { toneVars } from "./Collection";
+import { ReadMark, toneVars } from "./Collection";
+import { timesRead } from "./rereads";
 import { toneOf } from "./shelf";
 
 /** Libro en papel que está en tu casa: tuyo o prestado por alguien. */
@@ -48,7 +49,7 @@ export function ShelfSheet({
   books: Entry[];
   onClose: () => void;
 }) {
-  const { viewEntry } = useApp();
+  const { viewEntry, workspace } = useApp();
   const list = useMemo(
     () =>
       books
@@ -83,7 +84,13 @@ export function ShelfSheet({
       <div className="lt-shelf-grid">
         {list.map((e) => {
           const owner = lent(e) ? shortName(e.details.lentBy) : "";
-          const label = [e.title, e.details.author, owner && `de ${owner}`]
+          const reads = timesRead(e, workspace.entries);
+          const label = [
+            e.title,
+            e.details.author,
+            owner && `de ${owner}`,
+            reads === 1 ? "leído" : reads > 1 && `leído ${reads} veces`,
+          ]
             .filter(Boolean)
             .join(" · ");
           return (
@@ -101,6 +108,7 @@ export function ShelfSheet({
             >
               <span className="lt-art">
                 <ShelfCover entry={e} />
+                <ReadMark count={reads} className="soft" />
                 {owner && <span className="lt-shelf-owner">{owner}</span>}
               </span>
             </button>

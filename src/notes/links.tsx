@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode } from 'react';
+import { stripFormat } from './marks';
 
 /**
  * Enlaces dentro de las notas. El texto se guarda plano: un enlace con nombre queda como
@@ -27,9 +28,10 @@ function trimBare(url: string) {
   return out;
 }
 
-type Piece = { text: string } | { label: string; href: string; raw: string };
+export type Piece = { text: string } | { label: string; href: string; raw: string };
 
-function pieces(text: string): Piece[] {
+/** El texto partido en tramos de texto y enlaces. */
+export function pieces(text: string): Piece[] {
   const out: Piece[] = [];
   let last = 0;
   for (const m of text.matchAll(LINK)) {
@@ -94,9 +96,9 @@ export function linksIn(text: string) {
   return out;
 }
 
-/** El texto tal como se lee: `[nombre](url)` → `nombre`. */
+/** El texto tal como se lee: `[nombre](url)` → `nombre`, sin marcas de formato. */
 export const plainOf = (text: string) =>
-  text.replace(/\[([^\]\n]{1,300})\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)/gi, '$1');
+  stripFormat(text.replace(/\[([^\]\n]{1,300})\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)/gi, '$1'));
 
 export const hostOf = (href: string) => {
   try {
@@ -106,75 +108,3 @@ export const hostOf = (href: string) => {
     return href;
   }
 };
-
-const BLOCK = new Set([
-  'P',
-  'DIV',
-  'LI',
-  'UL',
-  'OL',
-  'H1',
-  'H2',
-  'H3',
-  'H4',
-  'H5',
-  'H6',
-  'BLOCKQUOTE',
-  'PRE',
-  'TR',
-  'TABLE',
-  'SECTION',
-  'ARTICLE',
-  'HEADER',
-  'FOOTER',
-]);
-
-/**
- * Lo que pegas desde una web o un documento, como texto de nota: conserva los saltos de párrafo,
- * las viñetas y los hipervínculos (como `[texto](url)`). Devuelve null si no trae enlaces (entonces
- * basta el pegado normal).
- */
-export function htmlToNoteText(html: string): string | null {
-  if (!/<a\s[^>]*href/i.test(html)) return null;
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  let out = '';
-  const newline = () => {
-    if (out && !out.endsWith('\n')) out += '\n';
-  };
-  const walk = (node: Node, pre: boolean) => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const t = node.textContent ?? '';
-      out += pre ? t : t.replace(/\s+/g, ' ');
-      return;
-    }
-    if (!(node instanceof Element)) return;
-    const tag = node.tagName;
-    if (['SCRIPT', 'STYLE', 'TEMPLATE', 'HEAD'].includes(tag)) return;
-    if (tag === 'BR') {
-      out += '\n';
-      return;
-    }
-    if (tag === 'A') {
-      const href = safeHref(node.getAttribute('href') ?? '');
-      const label = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
-      if (href) {
-        const bare = href.replace(/\/$/, '');
-        const same = !label || label === href || label === bare || href.endsWith(label);
-        out += same ? href : `[${label.replace(/[[\]]/g, '')}](${href})`;
-        return;
-      }
-    }
-    const block = BLOCK.has(tag);
-    if (block) newline();
-    if (tag === 'LI') out += '• ';
-    for (const child of node.childNodes) walk(child, pre || tag === 'PRE');
-    if (block) newline();
-  };
-  walk(doc.body, false);
-  return out
-    .split('\n')
-    .map((l) => l.replace(/[ \t]+$/, '').replace(/^ +/, ''))
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}

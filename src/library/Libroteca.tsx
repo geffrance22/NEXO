@@ -8,6 +8,8 @@ import { normalizeText, todayInputValue } from '../lib/format';
 import { Cuadernos } from '../cuadernos/Cuadernos';
 import { NotebookView } from '../cuadernos/NotebookView';
 import { useCuadernos } from '../cuadernos/useCuadernos';
+import { Diary } from '../diary/Diary';
+import { buildDays, streaks } from '../diary/model';
 import { NotesBoard } from '../notes/NotesBoard';
 import { noteText, useNotes } from '../notes/useNotes';
 import { EmptyState, EntryCollection, ShelfChips, SortMenu, ViewSwitch } from './Collection';
@@ -64,8 +66,8 @@ export function Libroteca({ noteId = null }: { noteId?: string | null }) {
 }
 
 /**
- * Agenda: tu día a día (pendientes, trabajo, encuentros, notas y aprendizajes) y los cuadernos que
- * lo reúnen. Con `notebookId`, abre ese cuaderno en su lienzo.
+ * Agenda: tu diario y tu día a día (pendientes, encuentros, trabajo y aprendizajes), y los
+ * cuadernos que lo reúnen. Con `notebookId`, abre ese cuaderno en su lienzo.
  */
 export function Agenda({ notebookId }: { notebookId?: string | null }) {
   if (notebookId) return <NotebookView id={notebookId} />;
@@ -75,7 +77,7 @@ export function Agenda({ notebookId }: { notebookId?: string | null }) {
 /**
  * Una página con pestañas: cada pestaña tiene sus estantes, su orden, su vista (tarjetas, portadas
  * o lista) y su botón «Añadir». La primera pestaña de cada página es especial: «Inicio» en
- * Libroteca y «Cuadernos» en Agenda.
+ * Libroteca y «Diario» en Agenda.
  */
 function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?: string | null }) {
   const { workspace, openEntry, dataSettled } = useApp();
@@ -187,7 +189,9 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
       (e) => (e.details.stage ?? 'curso') === 'curso',
     ).length;
     const nbs = notebooks.list?.length ?? 0;
+    const streak = streaks(buildDays(lists.get('notas') ?? []), today).current;
     stats = [
+      streak ? `Diario: ${plural(streak, 'día seguido', 'días seguidos')}` : '',
       plural(open.length, 'pendiente abierto', 'pendientes abiertos'),
       late ? plural(late, 'vencido', 'vencidos') : '',
       working ? `${working} en curso` : '',
@@ -338,6 +342,8 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
     );
   } else if (tab === 'cuadernos') {
     content = <Cuadernos query={deferredQuery} creating={creating} setCreating={setCreating} />;
+  } else if (tab === 'notas') {
+    content = <Diary entries={lists.get('notas') ?? []} matches={matches} query={deferredQuery} />;
   } else if (entryTab) {
     const all = lists.get(tab) ?? [];
     const { found, sorted } = pipeline;
@@ -410,7 +416,9 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
           ? 'Buscar en tus notas'
           : tab === 'cuadernos'
             ? 'Buscar cuadernos'
-            : `Buscar en ${label}`;
+            : tab === 'notas'
+              ? 'Buscar en tu diario'
+              : `Buscar en ${label}`;
 
   return (
     <div className={'lt' + (section === 'Agenda' ? ' lt-agenda' : '')}>

@@ -2,6 +2,7 @@ import type { Entry, Person, Workspace } from "../data";
 import type { CapturePlan, Piece } from "./capture";
 import { contentWords } from "./captureMemory";
 import { distance } from "./duplicates";
+import { ordinal, readsBefore, sameBook } from "../library/rereads";
 import { friendlyDate, money, normalizeText, todayInputValue } from "./format";
 import { daysBetween } from "./people";
 
@@ -251,6 +252,26 @@ function shelfBookFor(p: Piece, ws: Workspace): Entry | null {
     : null;
 }
 
+/**
+ * Un libro que ya terminaste y que el texto vuelve a leer («empecé a releer…», «lo terminé otra
+ * vez»): no es un duplicado, es tu siguiente lectura. Devuelve su número (2, 3…) o 0. Si ya lo
+ * estás leyendo ahora mismo, sí es un duplicado.
+ */
+function rereadFor(p: Piece, ws: Workspace, date: string): number {
+  if (p.kind !== "obra" || p.media !== "Libro") return 0;
+  if (p.status !== "curso" && p.status !== "listo") return 0;
+  const book = { title: p.title, author: p.author };
+  const open = ws.entries.some(
+    (e) =>
+      e.kind === "Libro" &&
+      (e.details.read ?? "leyendo") === "leyendo" &&
+      sameBook(book, { title: e.title, author: e.details.author }),
+  );
+  if (open) return 0;
+  const prior = readsBefore(book, ws.entries, date);
+  return prior > 0 ? prior + 1 : 0;
+}
+
 /** Marca lo que ya existe, quita lo repetido dentro del texto y avisa de nombres parecidos. */
 export function markDuplicates(plan: CapturePlan, ws: Workspace): CapturePlan {
   const seen = new Set<string>();
@@ -263,6 +284,7 @@ export function markDuplicates(plan: CapturePlan, ws: Workspace): CapturePlan {
     }
     const dup = p.dup ?? findDup(p, ws, plan.date);
     const shelf = !p.dup && p.kind === "obra" ? shelfBookFor(p, ws) : null;
+    const again = !p.dup && !shelf ? rereadFor(p, ws, plan.date) : 0;
     pieces.push(
       shelf
         ? ({
@@ -271,7 +293,13 @@ export function markDuplicates(plan: CapturePlan, ws: Workspace): CapturePlan {
             copy: "mio",
             hint: `«${shelf.title}» está en tu estantería: se actualiza su estado.`,
           } as Piece)
-        : dup
+        : again
+          ? ({
+              ...p,
+              readNo: again,
+              hint: `Ya lo habías leído: se guarda como tu ${ordinal(again)} lectura.`,
+            } as Piece)
+          : dup
           ? ({ ...p, on: false, dup } as Piece)
           : p,
     );

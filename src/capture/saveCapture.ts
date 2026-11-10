@@ -96,6 +96,7 @@ function mediaDetails(
               ? "leyendo"
               : "quiero",
       author: p.author,
+      readNo: p.readNo,
       rating: p.rating || undefined,
       ...(copy && { bookFormat: "fisico", bookOwner: copy }),
       ...(copy === "prestado" &&

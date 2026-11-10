@@ -57,7 +57,7 @@ export function NoteTile({ entry }: { entry: Entry }) {
       )}
       <div className="nt-top">
         <span className="nt-kind">
-          <Icon size={12} /> {series ? 'Serie' : entry.kind}
+          <Icon size={12} /> {series ? 'Serie' : meta.label}
         </span>
         <time dateTime={entry.created_at}>
           {friendlyDate(todayInputValue(new Date(entry.created_at)))}

@@ -13,6 +13,8 @@ import type { Kind } from '../data';
 
 export type KindMeta = {
   icon: LucideIcon;
+  /** Cómo se llama en pantalla (el tipo guardado no cambia: «Nota» se muestra como «Entrada»). */
+  label: string;
   /** Frase corta para el selector de tipo. */
   hint: string;
   saveLabel: string;
@@ -27,13 +29,15 @@ export type KindMeta = {
 export const kindMeta: Record<Kind, KindMeta> = {
   Nota: {
     icon: PenLine,
-    hint: 'Una idea, un pensamiento, lo que sea',
-    saveLabel: 'Guardar nota',
+    label: 'Entrada',
+    hint: 'Lo que viviste y sentiste, en tu diario',
+    saveLabel: 'Guardar en el diario',
     accent: '#5f8247',
     soft: '#eaf1e0',
     ink: '#3a5229',
   },
   Encuentro: {
+    label: 'Encuentro',
     icon: Users,
     hint: 'Con quién estuviste y cómo fue',
     saveLabel: 'Guardar encuentro',
@@ -42,6 +46,7 @@ export const kindMeta: Record<Kind, KindMeta> = {
     ink: '#553f6e',
   },
   Película: {
+    label: 'Película',
     icon: Clapperboard,
     hint: 'Películas y series que viste o quieres ver',
     saveLabel: 'Guardar película',
@@ -51,6 +56,7 @@ export const kindMeta: Record<Kind, KindMeta> = {
     cover: true,
   },
   Libro: {
+    label: 'Libro',
     icon: BookMarked,
     hint: 'Tu lectura, frases y progreso',
     saveLabel: 'Guardar libro',
@@ -60,6 +66,7 @@ export const kindMeta: Record<Kind, KindMeta> = {
     cover: true,
   },
   Trabajo: {
+    label: 'Trabajo',
     icon: Briefcase,
     hint: 'Proyectos, avances y próximos pasos',
     saveLabel: 'Guardar trabajo',
@@ -68,6 +75,7 @@ export const kindMeta: Record<Kind, KindMeta> = {
     ink: '#2b4c64',
   },
   Aprendizaje: {
+    label: 'Aprendizaje',
     icon: Lightbulb,
     hint: 'Algo nuevo que ya sabes',
     saveLabel: 'Guardar aprendizaje',
@@ -76,6 +84,7 @@ export const kindMeta: Record<Kind, KindMeta> = {
     ink: '#205750',
   },
   Movimiento: {
+    label: 'Movimiento',
     icon: Banknote,
     hint: 'Un ingreso o un gasto',
     saveLabel: 'Guardar movimiento',
@@ -85,6 +94,7 @@ export const kindMeta: Record<Kind, KindMeta> = {
     cover: true,
   },
   Pendiente: {
+    label: 'Pendiente',
     icon: ListChecks,
     hint: 'Algo por hacer, con fecha',
     saveLabel: 'Guardar pendiente',

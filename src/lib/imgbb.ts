@@ -1,6 +1,8 @@
+import { SUPABASE_KEY, SUPABASE_URL, supabase } from '../backend';
 import type { StoredImage } from '../data';
 
-const ENDPOINT = 'https://api.imgbb.com/1/upload';
+/** La subida pasa por la función `image-upload`, que guarda la clave de ImgBB en los secretos. */
+const ENDPOINT = SUPABASE_URL + '/functions/v1/image-upload';
 /** ImgBB admite hasta 32 MB por imagen. */
 export const MAX_INPUT_BYTES = 32 * 1024 * 1024;
 /** Lado máximo tras reducir: suficiente para ver la foto completa en pantalla. */
@@ -8,7 +10,8 @@ const MAX_SIDE = 1800;
 /** Por debajo de este peso (y del lado máximo) la foto se sube tal cual. */
 const KEEP_AS_IS_BYTES = 1.5 * 1024 * 1024;
 
-export const hasImgbbKey = () => Boolean(import.meta.env.VITE_IMGBB_API_KEY);
+/** La clave vive en Supabase; desde el navegador no se puede saber si está configurada. */
+export const hasImgbbKey = () => true;
 
 /** Convierte la respuesta de ImgBB en lo que guardamos de la foto. */
 export function parseImgbbResponse(json: unknown): StoredImage {
@@ -62,20 +65,20 @@ export async function prepareImage(file: File): Promise<Blob> {
 
 type UploadOptions = { onProgress?: (fraction: number) => void; signal?: AbortSignal };
 
-/** Sube una imagen a ImgBB con progreso real. Se puede cancelar con `signal`. */
-export function uploadToImgbb(
+/** Sube una imagen a ImgBB (a través de Supabase) con progreso real. Se puede cancelar con `signal`. */
+export async function uploadToImgbb(
   blob: Blob,
   name: string,
   { onProgress, signal }: UploadOptions = {},
 ): Promise<StoredImage> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw Error('Inicia sesión para subir fotos.');
   return new Promise((resolve, reject) => {
-    const key = import.meta.env.VITE_IMGBB_API_KEY;
-    if (!key) return reject(Error('Falta la clave de ImgBB (VITE_IMGBB_API_KEY).'));
     if (signal?.aborted) return reject(new DOMException('Subida cancelada', 'AbortError'));
 
     const xhr = new XMLHttpRequest();
     const form = new FormData();
-    form.append('key', key);
     form.append('image', blob, name);
 
     const onAbort = () => xhr.abort();
@@ -83,6 +86,8 @@ export function uploadToImgbb(
     const done = () => signal?.removeEventListener('abort', onAbort);
 
     xhr.open('POST', ENDPOINT);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+    xhr.setRequestHeader('apikey', SUPABASE_KEY);
     xhr.timeout = 90_000;
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress?.(e.loaded / e.total);
@@ -102,8 +107,9 @@ export function uploadToImgbb(
           return reject(e);
         }
       }
-      const message = (json as { error?: { message?: string } } | null)?.error?.message;
-      reject(Error(message ? `ImgBB: ${message}` : `ImgBB respondió con el error ${xhr.status}.`));
+      const err = (json as { error?: string | { message?: string } } | null)?.error;
+      const message = typeof err === 'string' ? err : err?.message;
+      reject(Error(message || `La subida a ImgBB falló (error ${xhr.status}).`));
     };
     xhr.onerror = () => {
       done();

@@ -137,6 +137,8 @@ export type MediaPiece = Base & {
   copy: "mio" | "prestado" | "";
   /** Libro que ya está en tu estantería sin empezar: se actualiza su estado en vez de duplicarlo. */
   shelfId?: string;
+  /** Libro que ya habías terminado: qué lectura es esta (2 = la segunda). */
+  readNo?: number;
   rating: number;
   /** Con quién la viste o quién aparece. */
   personIds: string[];
@@ -276,7 +278,7 @@ export const pieceLabels: Record<PieceKind, string> = {
   compromiso: "Compromiso",
   conexion: "Posible conexión",
   aprendizaje: "Aprendizaje",
-  nota: "Nota",
+  nota: "Entrada al diario",
   obra: "Libro o película",
   idea: "Idea",
   trabajo: "Trabajo",

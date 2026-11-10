@@ -1,6 +1,7 @@
 import { memo, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   ArrowUpDown,
+  BookOpen,
   Check,
   Images,
   LayoutDashboard,
@@ -26,6 +27,7 @@ import {
 } from '../lib/entries';
 import { friendlyDate, todayInputValue } from '../lib/format';
 import { entryImages } from '../lib/moviePosters';
+import { timesRead } from './rereads';
 import { MenuItem, Popover } from '../planner/BoardPopover';
 import {
   captionOf,
@@ -199,6 +201,21 @@ export function StatusPill({ status }: { status: Status }) {
   );
 }
 
+/**
+ * Libro leído: un libro abierto pequeño y, si lo has leído 2 o más veces, cuántas. Nada si aún
+ * no lo terminas.
+ */
+export function ReadMark({ count, className = '' }: { count: number; className?: string }) {
+  if (count < 1) return null;
+  const label = count === 1 ? 'Leído' : `Leído ${count} veces`;
+  return (
+    <span className={'lt-read ' + className} title={label} aria-label={label}>
+      <BookOpen size={11} strokeWidth={2.2} />
+      {count >= 2 && <b>{count}</b>}
+    </span>
+  );
+}
+
 export function RatingPill({ value }: { value?: number }) {
   if (!value) return null;
   return (
@@ -272,7 +289,7 @@ export function Poster({ entry }: { entry: Entry }) {
 
 /** Una película, serie o libro en la cuadrícula de portadas: solo el póster. */
 function CoverTileBase({ entry }: { entry: Entry }) {
-  const { viewEntry } = useApp();
+  const { workspace, viewEntry } = useApp();
   const label = [entry.title, captionOf(entry)].filter(Boolean).join(' · ');
   return (
     <button
@@ -285,6 +302,7 @@ function CoverTileBase({ entry }: { entry: Entry }) {
     >
       <span className="lt-art">
         <Poster entry={entry} />
+        <ReadMark count={timesRead(entry, workspace.entries)} />
       </span>
     </button>
   );
@@ -353,6 +371,7 @@ function EntryRowBase({ entry, today }: { entry: Entry; today: string }) {
               <Star size={11} /> {entry.details.rating}
             </span>
           ) : null}
+          <ReadMark count={timesRead(entry, workspace.entries)} className="flat" />
           <time dateTime={entry.created_at}>
             {friendlyDate(todayInputValue(new Date(entry.created_at)), today)}
           </time>
@@ -401,6 +420,7 @@ function MediaCardBase({ entry }: { entry: Entry }) {
             <i style={{ width: pace.percent + '%' }} />
           </span>
         )}
+        <ReadMark count={timesRead(entry, workspace.entries)} />
       </span>
       <div className="lt-mc-body">
         <h3>

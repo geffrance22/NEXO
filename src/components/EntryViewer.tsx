@@ -146,7 +146,7 @@ export function EntryViewer({
       >
         <header className="ev-head">
           <span className="ev-kind">
-            <Icon size={14} /> {series ? "Serie" : entry.kind}
+            <Icon size={14} /> {series ? "Serie" : meta.label}
           </span>
           <span className="ev-date">{longDate(entry.created_at)}</span>
           <button

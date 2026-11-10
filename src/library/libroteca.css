@@ -2008,3 +2008,46 @@ html[data-theme='dark'] .lt-tabs {
   white-space: nowrap;
   color: #fff;
 }
+
+/* ── Libro leído (y cuántas veces): abajo a la derecha de la portada, discreto ── */
+.lt-read {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font:
+    700 10.5px/1 'Manrope',
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  /* Sin fondo: solo el icono, con una sombra mínima para que se lea sobre cualquier portada. */
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+  pointer-events: none;
+}
+.lt-read svg {
+  flex: none;
+  opacity: 0.9;
+}
+.lt-read b {
+  font-weight: 750;
+}
+/* Si hay barra de progreso abajo, la marca sube un poco para no taparla. */
+.lt-bar + .lt-read {
+  bottom: 18px;
+}
+/* En la estantería: más sutil, abajo a la izquierda (a la derecha va quién te lo prestó). */
+.lt-read.soft {
+  right: auto;
+  left: 7px;
+  bottom: 7px;
+  opacity: 0.85;
+}
+/* En la lista: en línea, junto a la calificación. */
+.lt-read.flat {
+  position: static;
+  filter: none;
+  color: var(--lt-faint);
+}

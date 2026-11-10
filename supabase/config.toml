@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.greeting]
 verify_jwt = false
+
+[functions.image-upload]
+verify_jwt = false

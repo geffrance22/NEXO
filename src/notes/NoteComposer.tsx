@@ -76,7 +76,7 @@ export function NoteComposer({
       const t = e.target as HTMLElement;
       if (root.current?.contains(t)) return;
       // Lo que se abre encima (confirmaciones, avisos) no cuenta como «fuera».
-      if (t.closest('.confirm-backdrop, .toast, .sheet-backdrop, .lightbox')) return;
+      if (t.closest('.confirm-backdrop, .toast, .sheet-backdrop, .lightbox, .kp-bubble')) return;
       void closeRef.current();
     };
     const key = (e: KeyboardEvent) => {

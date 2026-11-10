@@ -358,7 +358,7 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
     window.dispatchEvent(new Event("nexo:" + type + "-saved"));
     notify(
       type === "idea"
-        ? "Idea guardada en tus notas."
+        ? "Nota guardada en Libroteca."
         : "Enlace disponible en Lecturas.",
     );
     onClose();
@@ -436,7 +436,7 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
             >
               <ChevronLeft size={16} />
               <Icon size={17} />
-              <strong>{series ? "Serie" : c.kind}</strong>
+              <strong>{series ? "Serie" : meta.label}</strong>
             </button>
             {c.editing && <span className="cp-editing">Editando</span>}
             <button

@@ -196,6 +196,28 @@ export async function giftIdeas(
 export type SparkIdea = { idea: string; step: string; why: string };
 
 /**
+ * Pregunta o pide algo a la IA sobre un fragmento de la entrada del diario que escribes.
+ * `rewrite` es true cuando la respuesta es el fragmento transformado (para reemplazarlo).
+ */
+export async function askEntry(input: {
+  selection: string;
+  prompt: string;
+  text: string;
+  title?: string;
+}): Promise<{ answer: string; rewrite: boolean }> {
+  const data = await callMode({
+    mode: 'entry-ask',
+    selection: input.selection.slice(0, 4000),
+    prompt: input.prompt.slice(0, 1500),
+    text: input.text.slice(0, 40000),
+    title: input.title?.slice(0, 200),
+  });
+  const answer = typeof data?.answer === 'string' ? data.answer.trim() : '';
+  if (!answer) throw new Error(OUTDATED);
+  return { answer, rewrite: data?.rewrite === true };
+}
+
+/**
  * Una idea concreta para sacarle partido a algo que guardaste (una cita, un resaltado) a partir de
  * lo que conecta con ello (un proyecto, una persona…). `avoid` son las ideas que ya viste.
  */

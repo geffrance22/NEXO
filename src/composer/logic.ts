@@ -26,6 +26,7 @@ export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
     "lentBy",
     "lentById",
     "read",
+    "readNo",
     "finishedAt",
     "pagesRead",
     "pagesTotal",
@@ -113,6 +114,11 @@ export function cleanDetails(kind: Kind, details: EntryDetails): EntryDetails {
     }
     if (out.read !== "leyendo") delete out.pagesRead;
     if (out.read === "quiero" || out.read === "estante") delete out.pageLog;
+    // El número de lectura solo cuenta desde la segunda y mientras lo lees o ya lo terminaste.
+    const n = Math.floor(Number(out.readNo));
+    if (n >= 2 && n <= 99 && (out.read === "leyendo" || out.read === "terminado"))
+      out.readNo = n;
+    else delete out.readNo;
     // Tuyo o prestado solo aplica al papel; «de quién», solo si es prestado.
     if (out.bookFormat !== "fisico") delete out.bookOwner;
     else if (!out.bookOwner) out.bookOwner = "mio";
@@ -191,7 +197,7 @@ export function deriveTitle(kind: Kind, f: TitleFields) {
         clip(
           plainText(f.body.split("\n").find((line) => line.trim()) ?? ""),
           80,
-        ) || "Nota"
+        ) || "Entrada"
       );
     case "Encuentro": {
       const shown = f.names.slice(0, 3).join(", ");

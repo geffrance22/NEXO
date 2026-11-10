@@ -36,7 +36,7 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: 'todo', label: 'Todo' },
   { id: 'pendientes', label: 'Pendientes' },
   { id: 'encuentros', label: 'Encuentros' },
-  { id: 'notas', label: 'Notas' },
+  { id: 'notas', label: 'Diario' },
   { id: 'trabajo', label: 'Trabajo' },
   { id: 'aprendizajes', label: 'Aprendizajes' },
   { id: 'libros', label: 'Libros' },

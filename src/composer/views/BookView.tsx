@@ -4,8 +4,10 @@ import {
   BookOpen,
   Handshake,
   Library,
+  Minus,
   Plus,
   Quote,
+  RotateCcw,
   Tablet,
   UserPlus,
   X,
@@ -14,6 +16,7 @@ import { useApp } from "../../AppContext";
 import type { Entry, EntryDetails } from "../../data";
 import { normalizeText } from "../../lib/format";
 import { entryImages } from "../../lib/moviePosters";
+import { ordinal, readsBefore } from "../../library/rereads";
 import { inMyShelf } from "../../library/shelf";
 import { Avatar } from "../../people/Avatar";
 import {
@@ -51,6 +54,7 @@ export function BookView({ c }: ViewProps) {
       quotes.map((q, j) => (j === i ? text : q)),
     );
   const shelf = useShelfMatch(c);
+  const reread = useReread(c, read);
   const shelfCover = shelf.match ? entryImages(shelf.match)[0] : undefined;
   // «Estantería» solo tiene sentido para un libro en papel que es tuyo.
   const canShelve = format !== "digital" && owner !== "prestado";
@@ -171,6 +175,48 @@ export function BookView({ c }: ViewProps) {
             { value: "terminado", label: "Terminado" },
           ]}
         />
+
+        {reread.active &&
+          (reread.no >= 2 ? (
+            <div className="cp-reread">
+              <RotateCcw size={14} aria-hidden="true" />
+              <span>
+                Es tu <b>{ordinal(reread.no)} lectura</b>
+                {reread.prior > 0 && (
+                  <small>
+                    {reread.prior === 1
+                      ? " · ya lo habías terminado una vez"
+                      : ` · ya lo terminaste ${reread.prior} veces`}
+                  </small>
+                )}
+              </span>
+              <span className="cp-reread-step">
+                <button
+                  type="button"
+                  aria-label="Una lectura menos"
+                  onClick={() => reread.set(reread.no - 1)}
+                >
+                  <Minus size={13} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Una lectura más"
+                  disabled={reread.no >= 99}
+                  onClick={() => reread.set(reread.no + 1)}
+                >
+                  <Plus size={13} />
+                </button>
+              </span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="cp-reread-add"
+              onClick={() => reread.set(Math.max(2, reread.prior + 1))}
+            >
+              <RotateCcw size={13} /> Ya lo había leído antes
+            </button>
+          ))}
 
         {read === "estante" ? (
           <p className="cp-hint">
@@ -414,6 +460,52 @@ function useShelfMatch(c: ComposerApi) {
       setFocused(false);
     },
     decline: () => setDeclined(match?.id ?? null),
+  };
+}
+
+/**
+ * Releer: cuenta las veces que ya terminaste este libro (antes de la fecha de esta lectura) y, al
+ * registrarlo, lo marca solo como la siguiente («2.ª lectura»). Se corrige a mano con − y +.
+ */
+function useReread(c: ComposerApi, read: string) {
+  const { workspace } = useApp();
+  const active = read === "leyendo" || read === "terminado";
+  const author = c.details.author;
+  const prior = useMemo(
+    () =>
+      c.title.trim()
+        ? readsBefore(
+            { title: c.title, author },
+            workspace.entries,
+            c.date,
+            c.entry?.id,
+          )
+        : 0,
+    [c.title, author, c.date, c.entry?.id, workspace.entries],
+  );
+  // Lo que puso la detección (para actualizarlo si cambia el título) y si lo tocaste tú.
+  const auto = useRef<number | undefined>(undefined);
+  const touched = useRef(false);
+  const current = c.details.readNo;
+
+  useEffect(() => {
+    // Al editar no se cambia solo: lo que ya estaba guardado manda.
+    if (c.editing || !active || touched.current) return;
+    if (current !== undefined && current !== auto.current) return;
+    const want = prior > 0 ? prior + 1 : undefined;
+    if (current === want) return;
+    auto.current = want;
+    c.setDetail("readNo", want);
+  }, [active, prior, c.editing]);
+
+  return {
+    active,
+    prior,
+    no: current ?? 1,
+    set: (n: number) => {
+      touched.current = true;
+      c.setDetail("readNo", n >= 2 ? Math.min(n, 99) : undefined);
+    },
   };
 }
 

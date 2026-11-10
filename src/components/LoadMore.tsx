@@ -23,19 +23,22 @@ export function LoadMore({
   rest,
   onMore,
   shown,
+  auto = true,
 }: {
   /** Cuántos faltan por mostrar (0: no se pinta nada). */
   rest: number;
   onMore: () => void;
   /** Cuántos hay ya en pantalla: al cambiar, se vuelve a mirar si el final sigue a la vista. */
   shown: number;
+  /** Cargar sola al acercarse (false: solo con el botón, p. ej. si hay algo debajo de la lista). */
+  auto?: boolean;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
   const more = useRef(onMore);
   more.current = onMore;
   useEffect(() => {
     const el = ref.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
+    if (!auto || !el || typeof IntersectionObserver === 'undefined') return;
     // Un observador nuevo por tanda: avisa de inmediato si el final sigue cerca (pantallas altas).
     const io = new IntersectionObserver(
       (seen) => {
@@ -45,10 +48,15 @@ export function LoadMore({
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [shown, rest > 0]);
+  }, [shown, rest > 0, auto]);
   if (rest <= 0) return null;
   return (
-    <button type="button" ref={ref} className="lt-more lt-more-auto" onClick={onMore}>
+    <button
+      type="button"
+      ref={ref}
+      className={'lt-more' + (auto ? ' lt-more-auto' : '')}
+      onClick={onMore}
+    >
       Ver más <span>{rest.toLocaleString('es-CO')}</span>
     </button>
   );

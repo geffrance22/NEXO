@@ -1,6 +1,6 @@
 import { useEffect, type CSSProperties } from 'react';
 
-import { X, Lightbulb, Link2, UserPlus, ScanLine } from 'lucide-react';
+import { X, StickyNote, Link2, UserPlus, ScanLine } from 'lucide-react';
 import { kinds, type Kind } from '../data';
 import { kindMeta } from './kinds';
 
@@ -17,7 +17,7 @@ export function KindPicker({
   onClose: () => void;
 }) {
   const letters: Record<Kind, string> = {
-    Nota: 'N',
+    Nota: 'H',
     Encuentro: 'E',
     Película: 'P',
     Libro: 'L',
@@ -28,10 +28,10 @@ export function KindPicker({
   };
   const extras = [
     {
-      label: 'Idea',
-      hint: 'Guardar en Notas',
-      Icon: Lightbulb,
-      key: 'I',
+      label: 'Nota',
+      hint: 'Guardar en Notas de Libroteca',
+      Icon: StickyNote,
+      key: 'N',
       action: () => onShortcut('idea'),
     },
     {
@@ -109,7 +109,7 @@ export function KindPicker({
               <span className="cp-tile-icon">
                 <Icon size={24} strokeWidth={1.7} />
               </span>
-              <strong>{kind}</strong>
+              <strong>{meta.label}</strong>
               <span className="cp-tile-hint">{meta.hint}</span>
               <kbd>{letters[kind]}</kbd>
             </button>

@@ -1,4 +1,5 @@
 import {
+  BookHeart,
   BookMarked,
   Briefcase,
   Clapperboard,
@@ -6,7 +7,6 @@ import {
   Lightbulb,
   ListChecks,
   NotebookTabs,
-  PenLine,
   Quote,
   StickyNote,
   Tv,
@@ -217,8 +217,8 @@ export const entryTabs: EntryTab[] = [
   },
   {
     id: "notas",
-    label: "Notas",
-    icon: PenLine,
+    label: "Diario",
+    icon: BookHeart,
     kind: "Nota",
     tone: tone("Nota"),
     match: (e) => e.kind === "Nota",
@@ -232,8 +232,8 @@ export const entryTabs: EntryTab[] = [
       { id: "fotos", label: "Con fotos", test: (e) => e.images.length > 0 },
     ],
     sorts: ["reciente", "titulo", "antiguo"],
-    noun: "nota",
-    empty: "Aún no hay notas.",
+    noun: "entrada",
+    empty: "Tu diario está en blanco.",
   },
   {
     id: "encuentros",
@@ -332,12 +332,12 @@ export const sectionTabs: Record<ShelfSection, TabMeta[]> = {
     { id: "citas", label: "Citas", icon: Quote },
   ],
   Agenda: [
-    { id: "cuadernos", label: "Cuadernos", icon: NotebookTabs },
+    { id: "notas", label: "Diario", icon: BookHeart },
     { id: "pendientes", label: "Pendientes", icon: ListChecks, divider: true },
-    { id: "trabajo", label: "Trabajo", icon: Briefcase },
     { id: "encuentros", label: "Encuentros", icon: Users },
-    { id: "notas", label: "Notas", icon: PenLine },
+    { id: "trabajo", label: "Trabajo", icon: Briefcase },
     { id: "aprendizajes", label: "Aprendizajes", icon: Lightbulb },
+    { id: "cuadernos", label: "Cuadernos", icon: NotebookTabs, divider: true },
   ],
 };
 export const isTabOf = (section: ShelfSection, s: string | null): s is TabId =>
@@ -573,7 +573,10 @@ export function statusOf(e: Entry): Status | null {
     if (r === "quiero") return { label: "Quiero leer", tone: "want" };
     if (r === "leyendo") {
       const p = bookPace(e);
-      return { label: p ? `Leyendo · ${p.percent}%` : "Leyendo", tone: "now" };
+      // Releyéndolo: «2.ª lectura» en lugar de «Leyendo».
+      const what =
+        (d.readNo ?? 1) >= 2 ? `${d.readNo}.ª lectura` : "Leyendo";
+      return { label: p ? `${what} · ${p.percent}%` : what, tone: "now" };
     }
     return { label: "Leído", tone: "done" };
   }

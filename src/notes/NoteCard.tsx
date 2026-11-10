@@ -17,7 +17,7 @@ import {
   PinOff,
   Trash2,
 } from 'lucide-react';
-import { LinkedText } from './links';
+import { NoteText } from './NoteText';
 import { imagesOf, MAX_NOTE_IMAGES, NoteGallery, useNoteUploads } from './NoteImages';
 import { colorOf } from './palette';
 import { IconButton, Pop, Swatches } from './parts';
@@ -127,9 +127,9 @@ export function NoteCard({
         )}
         {note.title && <h3>{note.title}</h3>}
         {note.body && (
-          <p className="kp-card-text">
-            <LinkedText text={note.body} />
-          </p>
+          <div className="kp-card-text kp-md">
+            <NoteText text={note.body} />
+          </div>
         )}
         {note.checks.length > 0 && (
           <ul className="kp-card-checks">

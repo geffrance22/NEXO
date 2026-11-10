@@ -104,7 +104,7 @@ src/
 
 ## Fotos (ImgBB)
 
-Las fotos de los recuerdos se suben a [ImgBB](https://api.imgbb.com). Pon tu clave en `.env.local` como `VITE_IMGBB_API_KEY` (ver `.env.example`) y ejecuta `supabase/migrations/202611060004_images_details.sql`, que añade las columnas `images` y `details`. Sin esa migración la app funciona, avisa y guarda solo notas sin fotos ni detalles. Los PDF y textos adjuntos siguen yendo a Supabase Storage. La clave viaja en el código del navegador y las fotos de ImgBB son accesibles por su enlace.
+Las fotos de los recuerdos se suben a [ImgBB](https://api.imgbb.com) a través de la Edge Function `image-upload`, así la clave nunca llega al navegador ni a git. En Edge Functions → Secrets configura `IMGBB_API_KEY` (o `supabase secrets set IMGBB_API_KEY=...`) y despliega con `supabase functions deploy image-upload --no-verify-jwt`. La función valida la sesión antes de subir. Ejecuta también `supabase/migrations/202611060004_images_details.sql`, que añade las columnas `images` y `details`. Sin esa migración la app funciona, avisa y guarda solo notas sin fotos ni detalles. Los PDF y textos adjuntos siguen yendo a Supabase Storage. Las fotos de ImgBB son accesibles por su enlace.
 
 ## Portadas de películas
 

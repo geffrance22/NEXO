@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
 import {
+  ALargeSmall,
   AlignLeft,
   Bell,
   Check,
@@ -12,14 +13,19 @@ import {
   Palette,
   Pin,
   PinOff,
+  Redo2,
+  Undo2,
   X,
 } from 'lucide-react';
 import { useApp } from '../AppContext';
+import { historyKeys, useTextHistory } from '../composer/useTextHistory';
 import type { Named } from '../planner/shared';
-import { hostOf, htmlToNoteText, linksIn } from './links';
+import { hostOf, linksIn } from './links';
+import { parseLines, stripMarks } from './marks';
 import { imagesOf, MAX_NOTE_IMAGES, NoteGallery, useNoteUploads } from './NoteImages';
 import { AutoText, CheckEditor, IconButton, Pop, Swatches, TagEditor } from './parts';
 import { ReminderChip, ReminderMenu } from './reminders';
+import { FormatBar, RichNote, useRichEditor } from './RichNote';
 import type { KeepNote } from './useNotes';
 
 export type Draft = Omit<KeepNote, 'id' | 'created_at' | 'rank' | 'vaulted' | 'secret'>;
@@ -111,6 +117,10 @@ export function NoteForm({
   const { openImages } = useApp();
   const [list, setList] = useState(initialList || draft.checks.length > 0);
   const [tagging, setTagging] = useState(false);
+  const [fmt, setFmt] = useState(false);
+  const editor = useRichEditor();
+  const history = useTextHistory(draft.body, (body) => set({ body }));
+  const hasText = !list || Boolean(draft.body);
   const root = useRef<HTMLDivElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const [dropping, setDropping] = useState(false);
@@ -128,25 +138,13 @@ export function NoteForm({
   }, [uploads.busy]);
   const links = linksIn(draft.body);
 
-  /** Pegar: fotos del portapapeles se suben; texto con hipervínculos los conserva. */
+  /** Pegar: fotos del portapapeles se suben (el texto lo pega el propio editor). */
   const onPaste = (e: ClipboardEvent<HTMLElement>) => {
     const files = imagesOf(e.clipboardData);
     if (files.length && extras) {
       e.preventDefault();
       uploads.add(files);
-      return;
     }
-    const target = e.target as HTMLTextAreaElement;
-    if (!target.classList.contains('kp-body')) return;
-    const text = htmlToNoteText(e.clipboardData.getData('text/html'));
-    if (text === null) return;
-    e.preventDefault();
-    const { selectionStart: a, selectionEnd: b, value } = target;
-    const next = value.slice(0, a) + text + value.slice(b);
-    set({ body: next });
-    requestAnimationFrame(() => {
-      target.selectionStart = target.selectionEnd = a + text.length;
-    });
   };
 
   const focusBody = () =>
@@ -157,9 +155,9 @@ export function NoteForm({
   }, []);
 
   const toList = () => {
-    const lines = draft.body
-      .split('\n')
-      .map((l) => l.replace(BULLET, '').trim())
+    // Cada línea, sin viñetas ni marcas de formato (los enlaces se conservan).
+    const lines = parseLines(draft.body)
+      .map((l) => stripMarks(l.text).replace(BULLET, '').trim())
       .filter(Boolean);
     set({
       body: '',
@@ -172,14 +170,14 @@ export function NoteForm({
         })),
       ],
     });
+    history.reset('');
     setList(true);
   };
   const toText = () => {
     const lines = draft.checks.map((c) => c.text.trim()).filter(Boolean);
-    set({
-      body: [draft.body.trim(), ...lines].filter(Boolean).join('\n'),
-      checks: [],
-    });
+    const body = [draft.body.trim(), ...lines].filter(Boolean).join('\n');
+    set({ body, checks: [] });
+    history.reset(body);
     setList(false);
   };
 
@@ -247,13 +245,15 @@ export function NoteForm({
 
       <div className="kp-form-scroll">
         {(!list || draft.body) && (
-          <AutoText
+          <RichNote
+            editor={editor}
             className="kp-body"
             placeholder={list ? 'Texto' : 'Escribe una nota…'}
-            aria-label="Nota"
+            label="Nota"
             autoFocus={autoFocus === 'body'}
             value={draft.body}
-            onChange={(e) => set({ body: e.target.value })}
+            onChange={(body) => set({ body })}
+            history={history}
           />
         )}
         {list && <CheckEditor checks={draft.checks} onChange={(checks) => set({ checks })} />}
@@ -322,7 +322,17 @@ export function NoteForm({
         )}
       </div>
 
+      {fmt && hasText && <FormatBar editor={editor} onClose={() => setFmt(false)} />}
       <div className="kp-toolbar">
+        {hasText && (
+          <IconButton
+            icon={ALargeSmall}
+            label="Opciones de formato"
+            pressed={fmt}
+            size={18}
+            onClick={() => setFmt((f) => !f)}
+          />
+        )}
         <Pop icon={Palette} label="Color">
           {() => <Swatches value={draft.color} onPick={(color) => set({ color })} />}
         </Pop>
@@ -414,6 +424,32 @@ export function NoteForm({
           </Pop>
         )}
         {start}
+        {hasText && (
+          <span className="kp-history" role="group" aria-label="Historial de la nota">
+            <button
+              type="button"
+              className="kp-ic"
+              aria-label="Deshacer"
+              title={`Deshacer (${historyKeys.undo})`}
+              disabled={!history.canUndo}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => editor.step(history, 'undo')}
+            >
+              <Undo2 size={17} />
+            </button>
+            <button
+              type="button"
+              className="kp-ic"
+              aria-label="Rehacer"
+              title={`Rehacer (${historyKeys.redo})`}
+              disabled={!history.canRedo}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => editor.step(history, 'redo')}
+            >
+              <Redo2 size={17} />
+            </button>
+          </span>
+        )}
         <span className="kp-toolbar-gap" />
         {end}
       </div>

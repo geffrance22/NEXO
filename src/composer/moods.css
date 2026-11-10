@@ -1,0 +1,218 @@
+/*
+ * Ícono de un ánimo: una ficha de esquinas suaves (no un círculo plano), con un tinte
+ * apenas visible de su color, un filo fino y un brillo arriba. El símbolo es de Remix Icon.
+ */
+.mood-orb {
+  --mood-size: 28px;
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: var(--mood-size);
+  height: var(--mood-size);
+  border-radius: calc(var(--mood-size) * 0.34);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 60%),
+    color-mix(in srgb, var(--mood) 11%, #fff);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--mood) 16%, transparent),
+    0 1px 2px -1px color-mix(in srgb, var(--mood) 30%, transparent);
+  color: color-mix(in srgb, var(--mood) 88%, #1d2219);
+  vertical-align: middle;
+  transition:
+    background 0.25s,
+    box-shadow 0.25s,
+    color 0.25s;
+}
+.mood-orb svg {
+  display: block;
+  width: 68%;
+  height: 68%;
+  fill: currentColor;
+}
+/* Lleno: el elegido. Degradado del mismo color, brillo arriba y una sombra de su tono. */
+.mood-orb.solid {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(
+      155deg,
+      color-mix(in srgb, var(--mood) 80%, #fff) 0%,
+      var(--mood) 50%,
+      color-mix(in srgb, var(--mood) 84%, #000) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 0 0 1px color-mix(in srgb, var(--mood) 85%, #000),
+    0 4px 10px -4px color-mix(in srgb, var(--mood) 70%, transparent);
+  color: #fff;
+}
+
+/* Un pequeño gesto de cada ánimo al pasar el cursor por el selector. */
+@keyframes mood-giggle {
+  0%,
+  100% {
+    transform: rotate(0) translateY(0);
+  }
+  20% {
+    transform: rotate(-10deg) translateY(-1px);
+  }
+  40% {
+    transform: rotate(8deg) translateY(0);
+  }
+  60% {
+    transform: rotate(-6deg) translateY(-1px);
+  }
+  80% {
+    transform: rotate(4deg) translateY(0);
+  }
+}
+@keyframes mood-zap {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  15% {
+    transform: scale(1.18) skewX(-6deg);
+  }
+  30% {
+    transform: scale(0.95);
+  }
+  45% {
+    transform: scale(1.08);
+  }
+}
+@keyframes mood-twinkle {
+  0%,
+  100% {
+    transform: scale(1) rotate(0);
+  }
+  50% {
+    transform: scale(1.12) rotate(12deg);
+  }
+}
+@keyframes mood-rock {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  50% {
+    transform: rotate(-14deg);
+  }
+}
+@keyframes mood-flip {
+  0%,
+  20% {
+    transform: rotate(0);
+  }
+  60%,
+  100% {
+    transform: rotate(180deg);
+  }
+}
+@keyframes mood-drift {
+  50% {
+    transform: translateX(1.5px);
+  }
+}
+@keyframes mood-doze {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-1.5px);
+    opacity: 0.55;
+  }
+}
+@keyframes mood-heartbeat {
+  0%,
+  40%,
+  100% {
+    transform: scale(1);
+  }
+  10%,
+  30% {
+    transform: scale(1.16);
+  }
+  20% {
+    transform: scale(0.98);
+  }
+}
+@keyframes mood-droop {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+  50% {
+    transform: translateY(1.5px) rotate(-6deg);
+  }
+}
+@keyframes mood-fume {
+  0%,
+  100% {
+    transform: translateX(0) scale(1);
+  }
+  15%,
+  45%,
+  75% {
+    transform: translateX(-1.2px) scale(1.06);
+  }
+  30%,
+  60%,
+  90% {
+    transform: translateX(1.2px) scale(1.06);
+  }
+}
+:is(.cp-moods button:hover, .cp-moods button:focus-visible) .mood-orb svg {
+  animation: 1.1s ease-in-out infinite;
+}
+:is(.cp-moods button:hover, .cp-moods button:focus-visible) .mood-orb[data-mood='alegre'] svg {
+  animation-name: mood-giggle;
+  animation-duration: 1.2s;
+}
+:is(.cp-moods button:hover, .cp-moods button:focus-visible) .mood-orb[data-mood='poderoso'] svg {
+  animation-name: mood-zap;
+  animation-duration: 0.9s;
+}
+:is(.cp-moods button:hover, .cp-moods button:focus-visible) .mood-orb[data-mood='inspirado'] svg {
+  animation-name: mood-twinkle;
+}
+:is(.cp-moods button:hover, .cp-moods button:focus-visible) .mood-orb[data-mood='reflexivo'] svg {
+  animation-name: mood-rock;
+  animation-duration: 2s;
+}
+:is(.cp-moods button:hover, .cp-moods button:focus-visible)
+  .mood-orb[data-mood='nostalgico']
+  svg {
+  animation-name: mood-flip;
+  animation-duration: 1.4s;
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+:is(.cp-moods button:hover, .cp-moods button:focus-visible) .mood-orb[data-mood='neutral'] svg {
+  animation-name: mood-drift;
+  animation-duration: 2s;
+}
+:is(.cp-moods button:hover, .cp-moods button:focus-visible) .mood-orb[data-mood='cansado'] svg {
+  animation-name: mood-doze;
+  animation-duration: 1.8s;
+}
+:is(.cp-moods button:hover, .cp-moods button:focus-visible) .mood-orb[data-mood='inquieto'] svg {
+  animation-name: mood-heartbeat;
+  animation-duration: 1s;
+}
+:is(.cp-moods button:hover, .cp-moods button:focus-visible) .mood-orb[data-mood='triste'] svg {
+  animation-name: mood-droop;
+  animation-duration: 2.2s;
+}
+:is(.cp-moods button:hover, .cp-moods button:focus-visible) .mood-orb[data-mood='enojado'] svg {
+  animation-name: mood-fume;
+  animation-duration: 0.6s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mood-orb svg {
+    animation: none !important;
+  }
+}

@@ -1,5 +1,6 @@
 import type { Entry, Person, Place } from "../data";
-import { moods } from "../composer/controls";
+import { moodOf } from "../composer/moods";
+import { feelingsOf } from "../composer/MoodTrio";
 import { plainText } from "../components/RichText";
 import { commitmentKinds, commitmentOf, counterpartOf } from "./commitments";
 import {
@@ -62,7 +63,10 @@ export function entryFacts(
 ): Fact[] {
   const d = e.details;
   const out: Fact[] = [];
-  const mood = moods.find((m) => m.value === d.mood);
+  // Las entradas del diario pueden tener hasta tres ánimos, cada uno con su causa.
+  const feelings = feelingsOf(d)
+    .map((f) => ({ mood: moodOf(f.mood), why: f.why }))
+    .filter((f) => f.mood);
   const place = d.place ? (placeOf(e, ws.places)?.name ?? d.place) : "";
 
   switch (e.kind) {
@@ -72,6 +76,7 @@ export function entryFacts(
       break;
     case "Nota":
       if (place) out.push({ text: place });
+      if (d.where && d.where !== place) out.push({ text: `📍 ${d.where}` });
       break;
     case "Película":
       if (d.watch === "quiero") out.push({ text: "Por ver" });
@@ -116,7 +121,10 @@ export function entryFacts(
       break;
     }
   }
-  if (mood) out.push({ text: `${mood.emoji} ${mood.label}` });
+  for (const f of feelings)
+    out.push({
+      text: `${f.mood!.emoji} ${f.mood!.label}${f.why ? ` · ${f.why}` : ""}`,
+    });
   if ((e.kind === "Pendiente" || e.kind === "Trabajo") && d.due) {
     const open = e.status !== "completado";
     const late = open && d.due < today;

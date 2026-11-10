@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Hash, X } from 'lucide-react';
 
 const MAX_TAGS = 12;
@@ -16,6 +16,11 @@ export function TagInput({
   max?: number;
 }) {
   const [text, setText] = useState('');
+  const full = tags.length >= max;
+  // Al llenarse se descarta lo que quedara a medio escribir.
+  useEffect(() => {
+    if (full) setText('');
+  }, [full]);
 
   /** Agrega varias a la vez, sin repetidas ni vacías. */
   const addMany = (parts: string[]) => {
@@ -43,12 +48,14 @@ export function TagInput({
           </button>
         </span>
       ))}
-      <label className="cp-token-input">
+      <label className={'cp-token-input' + (full ? ' full' : '')}>
         <Hash size={14} />
         <input
-          value={text}
-          placeholder={placeholder}
-          aria-label="Añadir etiqueta"
+          value={full ? '' : text}
+          disabled={full}
+          placeholder={full ? `Máximo ${max} etiquetas` : placeholder}
+          aria-label={full ? `Llegaste al máximo de ${max} etiquetas` : 'Añadir etiqueta'}
+          title={full ? 'Quita una etiqueta para añadir otra' : undefined}
           onChange={(e) => {
             const parts = e.target.value.split(',');
             if (parts.length > 1) addMany(parts.slice(0, -1));

@@ -36,8 +36,14 @@ export type TextHistory = {
   redo: () => void;
   /** Cambio hecho por quien escribe: se agrupa con los anteriores si forma parte del mismo gesto. */
   change: (next: string) => void;
-  /** Textarea donde se recoloca el cursor al deshacer o rehacer. */
-  attach: (el: HTMLTextAreaElement | null) => void;
+  /**
+   * Textarea donde se recoloca el cursor al deshacer o rehacer. `toView` traduce una posición
+   * del texto a la del textarea, si este no muestra el texto tal cual (p. ej. marcas invisibles).
+   */
+  attach: (
+    el: HTMLTextAreaElement | null,
+    toView?: (text: string, at: number) => number,
+  ) => void;
   /** Olvida el historial y toma `text` como punto de partida (p. ej. al convertir en lista). */
   reset: (text: string) => void;
 };
@@ -59,6 +65,7 @@ export function useTextHistory(
     at: 0,
   });
   const el = useRef<HTMLTextAreaElement | null>(null);
+  const toView = useRef<((text: string, at: number) => number) | null>(null);
   const pendingCaret = useRef<number | null>(null);
   const emit = useRef(onChange);
   emit.current = onChange;
@@ -94,9 +101,10 @@ export function useTextHistory(
     if (at === null) return;
     pendingCaret.current = null;
     if (!node) return;
+    const pos = toView.current ? toView.current(known.current, at) : at;
     node.focus({ preventScroll: true });
-    node.setSelectionRange(at, at);
-    revealCaret(node, at);
+    node.setSelectionRange(pos, pos);
+    revealCaret(node, pos);
   }, [value]);
 
   const change = useCallback(
@@ -159,9 +167,16 @@ export function useTextHistory(
     () => travel(future.current, past.current),
     [travel],
   );
-  const attach = useCallback((node: HTMLTextAreaElement | null) => {
-    el.current = node;
-  }, []);
+  const attach = useCallback(
+    (
+      node: HTMLTextAreaElement | null,
+      map?: (text: string, at: number) => number,
+    ) => {
+      el.current = node;
+      toView.current = node ? (map ?? null) : null;
+    },
+    [],
+  );
   const reset = useCallback(
     (text: string) => {
       past.current = [];

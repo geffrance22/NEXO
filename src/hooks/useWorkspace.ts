@@ -24,10 +24,12 @@ import {
 import type { ConfirmFn } from '../components/ConfirmDialog';
 import { errorMessage, todayInputValue } from '../lib/format';
 import { prepareImage, uploadToImgbb } from '../lib/imgbb';
+import { moodValue } from '../composer/moods';
 import { relationMeta } from '../lib/people';
 import { ME, canonicalTie, tieKey } from '../lib/relations';
 import { forgetDismissed, hydrateDismissed, setDismissalSync } from '../relations/dismissed';
 import { mergedProfile } from '../lib/duplicates';
+import { isHiddenCapsule, isReady, isSpent } from '../diary/capsule';
 import type { Notify } from './useToast';
 
 export type TieInput = {
@@ -110,8 +112,11 @@ function normalizeEntry(e: Entry): Entry {
       ...(isHttps(img.medium) && { medium: img.medium }),
       ...(isHttps(img.thumb) && { thumb: img.thumb }),
     }));
-  const details =
+  const raw =
     e.details && typeof e.details === 'object' && !Array.isArray(e.details) ? e.details : {};
+  // Los ánimos de la lista anterior se leen como su equivalente actual.
+  const mood = moodValue(raw.mood);
+  const details = mood === raw.mood ? raw : { ...raw, mood };
   return { ...e, images, details };
 }
 
@@ -228,6 +233,10 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
   const [relationsMissing, setRelationsMissing] = useState(false);
   const [experiencesMissing, setExperiencesMissing] = useState(false);
   const [episodeExtrasMissing, setEpisodeExtrasMissing] = useState(false);
+  // Cápsulas del tiempo que aún no son entradas normales: van aparte para que no aparezcan en el
+  // diario, la búsqueda, las estadísticas ni lo que lee la IA.
+  const [capsules, setCapsules] = useState<Entry[]>([]);
+  const announcedCapsules = useRef(new Set<string>());
   const request = useRef(0);
 
   const reload = useCallback(async () => {
@@ -350,9 +359,35 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
             };
       });
       const placeIds = new Set(places.map((p) => p.id));
+      // Las de una sola vez que ya abriste (cerraste la pestaña mientras la leías) se borran.
+      const spent = clean.filter(isSpent);
+      if (spent.length) {
+        void supabase
+          .from('entries')
+          .delete()
+          .in(
+            'id',
+            spent.map((e) => e.id),
+          )
+          .then(({ error }) => {
+            if (error) console.warn('nexo: cápsula sin borrar', error.message);
+            else for (const e of spent) if (e.file_path) void removeAttachment(e.file_path);
+          });
+      }
+      const sealed = clean.filter((e) => isHiddenCapsule(e) && !isSpent(e));
+      setCapsules(sealed);
+      const ready = sealed.filter((e) => isReady(e) && !announcedCapsules.current.has(e.id));
+      if (ready.length) {
+        for (const e of ready) announcedCapsules.current.add(e.id);
+        notify(
+          ready.length === 1
+            ? 'Una cápsula del tiempo ya se puede abrir: está en tu diario.'
+            : `${ready.length} cápsulas del tiempo ya se pueden abrir: están en tu diario.`,
+        );
+      }
       setWorkspace({
         people,
-        entries: clean,
+        entries: clean.filter((e) => !isHiddenCapsule(e)),
         places,
         ties,
         groups: groups.map((g) => ({
@@ -371,6 +406,7 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
     } catch (e) {
       if (id !== request.current) return;
       setWorkspace(structuredClone(blank));
+      setCapsules([]);
       setError(errorMessage(e));
     } finally {
       if (id === request.current) setLoading(false);
@@ -413,6 +449,10 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
         });
         if (error) throw error;
         const saved = { ...entry, recorded_at: new Date().toISOString() };
+        if (isHiddenCapsule(saved)) {
+          setCapsules((c) => [saved, ...c]);
+          return saved;
+        }
         setWorkspace((w) => ({ ...w, entries: [saved, ...w.entries] }));
         if (!silent) notify('Recuerdo guardado y conexiones actualizadas.');
         return saved;
@@ -1245,6 +1285,56 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
     [notify, confirm],
   );
 
+  /**
+   * Abre una cápsula del tiempo ya lista: queda la fecha en que la abriste. Si se conserva, pasa
+   * a ser una entrada más del diario; si es de una sola vez, sigue aparte hasta que la cierres.
+   * Devuelve la cápsula abierta (null si falló).
+   */
+  const openCapsule = useCallback(
+    async (entry: Entry) => {
+      const capsule = entry.details.capsule;
+      if (!capsule || capsule.opensOn > todayInputValue()) return null;
+      if (capsule.seenAt) return entry;
+      const details = {
+        ...entry.details,
+        capsule: { ...capsule, seenAt: new Date().toISOString() },
+      };
+      const { data, error } = await supabase
+        .from('entries')
+        .update({ details })
+        .eq('id', entry.id)
+        .select('id');
+      if (error || !data?.length) {
+        notify(error ? errorMessage(error) : 'No se encontró la cápsula. Recarga la página.');
+        return null;
+      }
+      const opened = { ...entry, details };
+      if (capsule.once) {
+        setCapsules((c) => c.map((x) => (x.id === entry.id ? opened : x)));
+      } else {
+        setCapsules((c) => c.filter((x) => x.id !== entry.id));
+        setWorkspace((w) => ({ ...w, entries: [opened, ...w.entries] }));
+      }
+      return opened;
+    },
+    [notify],
+  );
+
+  /** Borra una cápsula para siempre (la de una sola vez al cerrarla, o una que rompes sin abrir). */
+  const burnCapsule = useCallback(
+    async (entry: Entry) => {
+      const { error } = await supabase.from('entries').delete().eq('id', entry.id);
+      if (error) {
+        notify(errorMessage(error));
+        return false;
+      }
+      if (entry.file_path) await removeAttachment(entry.file_path);
+      setCapsules((c) => c.filter((x) => x.id !== entry.id));
+      return true;
+    },
+    [notify],
+  );
+
   const openAttachment = useCallback(
     async (entry: Entry) => {
       if (!entry.file_path) return;
@@ -1297,5 +1387,8 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
     toggleEntry,
     removeEntry,
     openAttachment,
+    capsules,
+    openCapsule,
+    burnCapsule,
   };
 }

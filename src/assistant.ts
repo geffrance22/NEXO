@@ -132,6 +132,44 @@ export async function captureWithAssistant(
 const OUTDATED =
   'Esta función necesita la versión nueva de la IA. Despliega la función assistant: npx supabase functions deploy assistant --remote=imdvmlzdbmbvwkfoisgs --use-api --yes';
 
+/** Lo que la IA necesita para leer una entrada del diario y conectarla con lo que ya tienes. */
+export type DiaryReadInput = {
+  text: string;
+  title: string;
+  /** AAAA-MM-DD: el día del que habla la entrada. */
+  date: string;
+  /** Personas ya vinculadas a la entrada. */
+  linked: string[];
+  /** Ya elegiste cómo te sentías (la IA no lo propone). */
+  hasMood: boolean;
+  people: { id: string; name: string; alias?: string; kin?: string }[];
+  places: { id: string; name: string }[];
+  /** Pendientes abiertos. `people`: nombres, para reconocerlos. */
+  tasks: { id: string; title: string; due?: string; people?: string }[];
+  works: { id: string; title: string; stage: string; next?: string }[];
+  media: { id: string; type: string; title: string; status: string }[];
+};
+
+/**
+ * Lectura de una entrada del diario ya guardada: qué cumpliste, qué planeas, qué pasó con tu
+ * gente… Devuelve las piezas tal cual; `piecesFromAi` las valida antes de usarlas.
+ */
+export async function readDiaryWithAssistant(
+  input: DiaryReadInput,
+): Promise<{ summary: string; pieces: unknown[] }> {
+  const data = await callMode({
+    mode: 'diary-read',
+    today: localToday(),
+    ...input,
+    text: input.text.slice(0, 8000),
+  });
+  if (data?.mode !== 'diary-read') throw new Error(OUTDATED);
+  return {
+    summary: typeof data.summary === 'string' ? data.summary : '',
+    pieces: Array.isArray(data.pieces) ? data.pieces : [],
+  };
+}
+
 /** Llama a un modo nuevo: si la función desplegada es anterior, lo dice claro. */
 async function callMode(body: Record<string, unknown>) {
   try {

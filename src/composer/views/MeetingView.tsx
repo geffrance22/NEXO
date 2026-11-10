@@ -68,12 +68,12 @@ export function MeetingView({ c }: ViewProps) {
         onChange={(v) => c.setDetail('mood', v)}
       />
 
-      <Label hint="Selecciona texto para resaltar, tachar o vincular">Lo que quedó</Label>
+      <Label hint="Selecciona texto para darle formato o vincularlo">Lo que quedó</Label>
       <RichTextarea
         className="cp-soft-area"
         minRows={4}
         label="Lo que quedó"
-        placeholder="¿De qué hablaron? ¿Algo que quieras recordar?"
+        placeholder="¿De qué hablaron?"
         value={c.body}
         onChange={c.setBody}
         names={links.names}

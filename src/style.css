@@ -381,6 +381,11 @@ main {
   margin: auto;
   padding: var(--main-pt) 42px 0;
 }
+/* Agenda, Episodios, Finanzas, Conexiones y Lugares: menos aire entre la barra superior y el
+   título (igual que en Libroteca). */
+main:has(.lt-agenda, .ep-page, .ep-detail, .finance-summary, .cx, .pl-page, .pl-detail) {
+  --main-pt: 14px;
+}
 .page-heading {
   display: flex;
   align-items: center;

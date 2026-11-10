@@ -1,4 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowUp,
@@ -35,6 +41,12 @@ const QUICK = [
 const W = 380;
 const EDGE = 10;
 
+/** Mantiene la ventana entera dentro de la pantalla. */
+const clampPos = (left: number, top: number, w: number, h: number) => ({
+  left: Math.min(Math.max(left, EDGE), Math.max(EDGE, window.innerWidth - w - EDGE)),
+  top: Math.min(Math.max(top, EDGE), Math.max(EDGE, window.innerHeight - h - EDGE)),
+});
+
 /**
  * Panel para preguntarle o pedirle algo a la IA sobre lo que seleccionaste en la entrada.
  * Si la respuesta es el fragmento reescrito, se puede poner en su lugar; si es una reflexión,
@@ -65,19 +77,12 @@ export function AskSelection({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-
-  // Un toque fuera lo cierra (Esc también).
-  useEffect(() => {
-    const onDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) closeRef.current();
-    };
-    document.addEventListener("pointerdown", onDown, true);
-    return () => document.removeEventListener("pointerdown", onDown, true);
-  }, []);
+  const [dragging, setDragging] = useState(false);
+  /** Si la moviste a mano, ya no se recoloca sola junto a la selección. */
+  const moved = useRef(false);
 
   // Debajo de la selección si cabe; si no, encima. Se recoloca al crecer con la respuesta.
+  // Si la moviste, solo se asegura de que siga dentro de la ventana.
   useLayoutEffect(() => {
     const el = root.current;
     if (!el) return;
@@ -86,6 +91,10 @@ export function AskSelection({
       const vh = window.innerHeight;
       const w = Math.min(W, vw - EDGE * 2);
       const h = el.offsetHeight;
+      if (moved.current) {
+        setPos((p) => p && clampPos(p.left, p.top, w, h));
+        return;
+      }
       const left = Math.min(Math.max(point.x - w / 2, EDGE), vw - w - EDGE);
       const below = point.y + 26;
       const above = point.y - 14 - h;
@@ -98,8 +107,40 @@ export function AskSelection({
     place();
     const ro = new ResizeObserver(place);
     ro.observe(el);
-    return () => ro.disconnect();
+    window.addEventListener("resize", place);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", place);
+    };
   }, [point]);
+
+  /** Arrastrar desde el encabezado (ratón, lápiz o dedo). */
+  const startDrag = (e: ReactPointerEvent<HTMLElement>) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+    const el = root.current;
+    if (!el || !pos) return;
+    e.preventDefault();
+    const head = e.currentTarget;
+    head.setPointerCapture(e.pointerId);
+    const dx = e.clientX - pos.left;
+    const dy = e.clientY - pos.top;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    moved.current = true;
+    setDragging(true);
+    const onMove = (ev: PointerEvent) => {
+      setPos(clampPos(ev.clientX - dx, ev.clientY - dy, w, h));
+    };
+    const onUp = () => {
+      setDragging(false);
+      head.removeEventListener("pointermove", onMove);
+      head.removeEventListener("pointerup", onUp);
+      head.removeEventListener("pointercancel", onUp);
+    };
+    head.addEventListener("pointermove", onMove);
+    head.addEventListener("pointerup", onUp);
+    head.addEventListener("pointercancel", onUp);
+  };
 
   useEffect(() => {
     input.current?.focus({ preventScroll: true });
@@ -133,7 +174,7 @@ export function AskSelection({
   return createPortal(
     <div
       ref={root}
-      className="rt-ai"
+      className={"rt-ai" + (dragging ? " dragging" : "")}
       role="dialog"
       aria-label="Preguntar a la IA sobre la selección"
       style={
@@ -151,12 +192,22 @@ export function AskSelection({
       }}
       onPaste={(e) => e.stopPropagation()}
     >
-      <header className="rt-ai-head">
+      <header
+        className="rt-ai-head"
+        onPointerDown={startDrag}
+        title="Arrastra para mover"
+      >
         <span>
           <Sparkles size={13} /> Preguntar a Nexo
         </span>
-        <button type="button" aria-label="Cerrar" title="Cerrar (Esc)" onClick={onClose}>
-          <X size={14} />
+        <button
+          type="button"
+          className="rt-ai-close"
+          aria-label="Cerrar"
+          title="Cerrar (Esc)"
+          onClick={onClose}
+        >
+          <X size={15} />
         </button>
       </header>
       <blockquote className="rt-ai-quote" title={quote}>

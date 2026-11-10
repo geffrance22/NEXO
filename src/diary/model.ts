@@ -1,4 +1,5 @@
 import { plainText } from "../components/RichText";
+import { moodTone } from "../composer/moods";
 import type { Entry } from "../data";
 import { addDays, todayInputValue } from "../lib/format";
 
@@ -10,22 +11,8 @@ export const wordsOf = (e: Entry) => {
   return text ? text.split(/\s+/).length : 0;
 };
 
-/**
- * Los ocho ánimos guardados (ver `moods`) en cinco tonos, de lo más bajo a lo mejor. Los valores
- * guardados no van en orden: 6 «Tenso» queda por debajo de 3 «Normal», 8 «Divertido» arriba.
- */
-const valenceOf: Record<number, number> = {
-  1: 1,
-  6: 2,
-  2: 2,
-  3: 3,
-  7: 4,
-  4: 4,
-  8: 5,
-  5: 5,
-};
-export const valence = (mood?: number) =>
-  mood ? (valenceOf[mood] ?? null) : null;
+/** El tono (1–5) de un ánimo guardado (ver `moods`), de lo más bajo a lo mejor. */
+export const valence = (mood?: number) => moodTone(mood);
 
 export type DayStat = {
   date: string;

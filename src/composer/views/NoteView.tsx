@@ -1,14 +1,99 @@
-import { useState } from "react";
-import { AtSign, Hash, MapPin, Redo2, Undo2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  AtSign,
+  Hash,
+  LoaderCircle,
+  LocateFixed,
+  MapPin,
+  Redo2,
+  Undo2,
+  X,
+} from "lucide-react";
 import { askEntry } from "../../assistant";
-import { MoodPicker } from "../controls";
+import { clampWhere, whereAmI } from "../../diary/where";
 import { DateChips } from "../DateChips";
 import { PeopleField, PlaceField, useLinks } from "../LinkFields";
+import { moodOf } from "../moods";
+import { feelingsOf, MoodTrio, type Feeling } from "../MoodTrio";
 import { PhotoButton, PhotoStrip } from "../PhotoBlocks";
 import { RichTextarea } from "../RichTextarea";
 import { TagInput } from "../TagInput";
 import { historyKeys, useTextHistory } from "../useTextHistory";
 import { DocBlock, type ViewProps } from "./shared";
+
+/** Preguntas para empezar según cómo te sientes (mientras la hoja sigue en blanco). */
+const MOOD_PROMPTS: Record<string, string[]> = {
+  alegre: [
+    "¿Qué te alegró el día?",
+    "Cuenta ese momento que te hizo reír…",
+    "¿A quién le contarías esto primero?",
+  ],
+  poderoso: [
+    "¿Qué lograste hoy?",
+    "¿Qué te hizo sentir imparable?",
+    "Anota lo que hiciste bien, para no olvidarlo",
+  ],
+  inspirado: [
+    "¿Qué idea te ronda?",
+    "¿Qué te encendió la chispa hoy?",
+    "Escríbela antes de que se escape…",
+  ],
+  reflexivo: [
+    "¿En qué has estado pensando?",
+    "¿Qué entendiste hoy que antes no veías?",
+    "Una pregunta que te quedó dando vueltas…",
+  ],
+  nostalgico: [
+    "¿Qué recuerdo volvió hoy?",
+    "¿A quién o qué extrañas?",
+    "Cuéntale a tu yo de antes…",
+  ],
+  neutral: [
+    "Un día tranquilo también se cuenta: ¿qué pasó?",
+    "¿Qué hiciste hoy, a grandes rasgos?",
+    "Lo de siempre… ¿o hubo algo distinto?",
+  ],
+  cansado: [
+    "¿Qué te quitó la energía hoy?",
+    "¿Qué necesitas para descansar de verdad?",
+    "Suelta aquí lo que pesa, sin orden…",
+  ],
+  inquieto: [
+    "¿Qué te tiene inquieto?",
+    "¿Qué es lo que más te preocupa ahora?",
+    "Ponlo en palabras: ¿qué podría salir bien?",
+  ],
+  triste: [
+    "¿Qué pasó? Aquí puedes contarlo con calma",
+    "¿Qué te dolió hoy?",
+    "¿Qué te haría sentir un poco mejor?",
+  ],
+  enojado: [
+    "¿Qué te hizo enojar?",
+    "Desahógate: nadie más lo va a leer",
+    "¿Qué te habría gustado decir?",
+  ],
+};
+
+/** Frases cortas para invitar a escribir; cada vez sale una distinta. */
+const PROMPTS = [
+  "¿Cómo estuvo tu día?",
+  "¿Qué te hizo sonreír hoy?",
+  "Escribe sin pensarlo mucho…",
+  "¿Qué te ronda la cabeza?",
+  "Un momento de hoy para recordar",
+  "¿Cómo empezó tu día?",
+  "Lo pequeño también cuenta…",
+  "¿Qué aprendiste hoy?",
+  "Si hoy fuera un capítulo…",
+  "¿En quién pensaste hoy?",
+  "Respira y escribe lo que sientes",
+  "¿Qué agradeces hoy?",
+  "Lo que no dijiste en voz alta…",
+  "¿Qué te sorprendió hoy?",
+  "Hoy, en pocas palabras…",
+  "¿Qué quieres recordar de esta semana?",
+];
 
 /**
  * Entrada del diario: una hoja en blanco para escribir sin distracciones. Al seleccionar texto
@@ -18,6 +103,37 @@ export function NoteView({ c }: ViewProps) {
   const links = useLinks(c);
   const history = useTextHistory(c.body, c.setBody);
   const [showTags, setShowTags] = useState(c.tags.length > 0);
+  const [prompt] = useState(
+    () => PROMPTS[Math.floor(Math.random() * PROMPTS.length)],
+  );
+  // Una tirada al azar por vista: cada ánimo muestra siempre la misma pregunta mientras escribes.
+  const [seed] = useState(() => Math.floor(Math.random() * 3));
+  const feelings = feelingsOf(c.details);
+  const setFeelings = (next: Feeling[]) => {
+    c.setDetail("feelings", next.length ? next : undefined);
+    c.setDetail("mood", next[0]?.mood);
+  };
+  // La hoja en blanco pregunta según el último ánimo que elegiste.
+  const lastMood = moodOf(feelings[feelings.length - 1]?.mood);
+  const placeholder = useMemo(() => {
+    const list = lastMood && MOOD_PROMPTS[lastMood.key];
+    return list ? list[seed % list.length] : prompt;
+  }, [lastMood, seed, prompt]);
+  const [locating, setLocating] = useState(false);
+  const [whereError, setWhereError] = useState("");
+  const locate = async () => {
+    if (locating) return;
+    setLocating(true);
+    setWhereError("");
+    try {
+      c.setDetail("where", clampWhere(await whereAmI()));
+    } catch (e) {
+      setWhereError(e instanceof Error ? e.message : "No se pudo ubicar.");
+      window.setTimeout(() => setWhereError(""), 4000);
+    } finally {
+      setLocating(false);
+    }
+  };
   const words = c.body.trim() ? c.body.trim().split(/\s+/).length : 0;
   const hasPeople =
     c.people.selected.length > 0 ||
@@ -32,20 +148,26 @@ export function NoteView({ c }: ViewProps) {
 
   return (
     <div className="cp-note">
-      <input
-        className="cp-title-input"
-        placeholder="Título (opcional)"
-        maxLength={180}
-        value={c.title}
-        onChange={(e) => c.setTitle(e.target.value)}
-        aria-label="Título"
-      />
+      <div className="cp-title-wrap">
+        <input
+          className="cp-title-input"
+          maxLength={180}
+          value={c.title}
+          onChange={(e) => c.setTitle(e.target.value)}
+          aria-label="Título (opcional)"
+        />
+        {!c.title && (
+          <span className="cp-title-ph" aria-hidden="true">
+            Título <small>opcional</small>
+          </span>
+        )}
+      </div>
       <div className="cp-note-page">
         <RichTextarea
           className="cp-writing"
           minRows={9}
           label="Tu entrada"
-          placeholder="¿Qué pasó hoy? Escribe con calma… Selecciona texto para resaltarlo, vincular a alguien o preguntarle a la IA."
+          placeholder={placeholder}
           value={c.body}
           onChange={c.setBody}
           names={links.names}
@@ -61,17 +183,13 @@ export function NoteView({ c }: ViewProps) {
         </div>
       )}
       {c.uploads.items.length > 0 ? (
-        <PhotoStrip uploads={c.uploads} />
+        <PhotoStrip uploads={c.uploads} visible={3} />
       ) : (
         c.uploads.notice && <p className="cp-notice">{c.uploads.notice}</p>
       )}
       <div className="cp-note-mood">
         <span>¿Cómo te sientes?</span>
-        <MoodPicker
-          label="Ánimo"
-          value={c.details.mood}
-          onChange={(v) => c.setDetail("mood", v)}
-        />
+        <MoodTrio value={feelings} onChange={setFeelings} />
       </div>
       <div className="cp-tray">
         <PhotoButton uploads={c.uploads} label="Foto" />
@@ -145,6 +263,39 @@ export function NoteView({ c }: ViewProps) {
             value={c.date}
             onChange={c.setDate}
           />
+          {c.details.where ? (
+            <span className="cp-where" title="Dónde estabas">
+              <MapPin size={13} />
+              {c.details.where}
+              <button
+                type="button"
+                aria-label="Quitar la ubicación"
+                onClick={() => c.setDetail("where", undefined)}
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              className={"cp-where-btn" + (locating ? " busy" : "")}
+              onClick={() => void locate()}
+              aria-label="Poner dónde estás"
+              title="Poner dónde estás"
+              disabled={locating}
+            >
+              {locating ? (
+                <LoaderCircle className="spin" size={15} />
+              ) : (
+                <LocateFixed size={15} />
+              )}
+            </button>
+          )}
+          {whereError && (
+            <small className="cp-where-error" role="status">
+              {whereError}
+            </small>
+          )}
         </div>
         <DocBlock c={c} />
       </div>

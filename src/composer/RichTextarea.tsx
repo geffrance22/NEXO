@@ -1,14 +1,17 @@
 import {
   useEffect,
   useLayoutEffect,
+  useReducer,
   useRef,
   useState,
+  type ClipboardEvent,
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import {
   AtSign,
+  Bold,
   Check,
   Highlighter,
   MapPin,
@@ -16,7 +19,14 @@ import {
   Strikethrough,
   Type,
 } from "lucide-react";
-import { renderRich } from "../components/RichText";
+import {
+  HIDDEN,
+  fromHidden,
+  renderRich,
+  stripHidden,
+  toHidden,
+  type MarkKind,
+} from "../components/RichText";
 import { AskSelection, type AskResult } from "./AskSelection";
 import { caretPoint, revealCaret } from "./caret";
 import { useTextHistory, type TextHistory } from "./useTextHistory";
@@ -31,6 +41,30 @@ export type RichActions = {
 
 type Selection = { start: number; end: number; x: number; y: number };
 type AskTarget = Selection & { text: string };
+
+const MOD = /Mac|iPhone|iPad/.test(globalThis.navigator?.userAgent ?? "")
+  ? "⌘"
+  : "Ctrl+";
+
+const isHidden = (ch: string | undefined) =>
+  ch === HIDDEN.b || ch === HIDDEN.h || ch === HIDDEN.s;
+
+/** Posición en el texto guardado → posición en el textarea (con marcas invisibles). */
+function toViewOffset(text: string, at: number) {
+  const pin = "\uE000";
+  const shown = toHidden(text.slice(0, at) + pin + text.slice(at));
+  const i = shown.indexOf(pin);
+  return i >= 0 ? i : Math.min(at, toHidden(text).length);
+}
+
+/** Tramos `[inicio, fin)` marcados con `mk`, incluidas las dos marcas. */
+function spansOf(text: string, mk: string): [number, number][] {
+  const re = new RegExp(`${mk}[^\\n${mk}]+${mk}`, "g");
+  return Array.from(text.matchAll(re), (m) => [
+    m.index ?? 0,
+    (m.index ?? 0) + m[0].length,
+  ]);
+}
 
 /** El contenedor con scroll vertical más cercano (el que se mueve cuando el texto crece). */
 function scrollParent(el: HTMLElement) {
@@ -53,8 +87,10 @@ function historyShortcut(e: KeyboardEvent): "undo" | "redo" | null {
 
 /**
  * Área de texto que crece sola y entiende marcas: al seleccionar texto aparece, junto al puntero,
- * una barra para resaltar, tachar, vincular a una persona, marcar el lugar o usarlo como título.
- * Detrás del textarea hay un «espejo» que dibuja los resaltados con el mismo tamaño de letra.
+ * una barra para poner en negrita, resaltar, tachar, vincular a una persona, marcar el lugar o
+ * usarlo como título. Detrás del textarea hay un «espejo» que dibuja el formato con el mismo
+ * tamaño de letra. Las marcas se guardan como `**`, `==` y `~~`, pero en el campo son caracteres
+ * invisibles: el texto se ve limpio.
  */
 export function RichTextarea({
   value,
@@ -85,14 +121,46 @@ export function RichTextarea({
   const [sel, setSel] = useState<Selection | null>(null);
   const [asking, setAsking] = useState<AskTarget | null>(null);
   const [flash, setFlash] = useState("");
+  const [, rerender] = useReducer((n: number) => n + 1, 0);
   const pendingSelection = useRef<[number, number] | null>(null);
   const own = useTextHistory(value, onChange);
   const h = history ?? own;
   const hRef = useRef(h);
   hRef.current = h;
 
+  // Lo que muestra el textarea: el texto con marcas invisibles. Se conserva lo escrito mientras
+  // equivalga al valor (así el cursor no salta); si el valor cambió desde fuera, se recalcula.
+  const shownRef = useRef<string | null>(null);
+  if (shownRef.current === null || fromHidden(shownRef.current) !== value)
+    shownRef.current = toHidden(value);
+  const shown = shownRef.current;
+
+  /**
+   * Cambio en el textarea: se guarda con las marcas de siempre. Si quedó una marca suelta o se
+   * escribió `**así**` a mano, el campo se ordena al momento y el cursor se queda donde estaba.
+   */
+  const commit = (next: string, caret?: number) => {
+    const stored = fromHidden(next);
+    let view = next;
+    const clean = toHidden(stored);
+    if (clean !== next && caret !== undefined) {
+      const pin = "\uE000";
+      const pinned = toHidden(
+        fromHidden(next.slice(0, caret) + pin + next.slice(caret)),
+      );
+      const at = pinned.indexOf(pin);
+      if (at >= 0 && pinned.slice(0, at) + pinned.slice(at + 1) === clean) {
+        view = clean;
+        pendingSelection.current = [at, at];
+      }
+    }
+    shownRef.current = view;
+    rerender();
+    h.change(stored);
+  };
+
   useLayoutEffect(() => {
-    h.attach(ta.current);
+    h.attach(ta.current, toViewOffset);
     return () => h.attach(null);
   }, [h.attach]);
 
@@ -131,7 +199,7 @@ export function RichTextarea({
     }
     if (document.activeElement === el && el.offsetHeight !== before)
       revealCaret(el, el.selectionEnd);
-  }, [value]);
+  }, [shown]);
 
   useEffect(() => {
     if (!sel) return;
@@ -148,7 +216,7 @@ export function RichTextarea({
     const el = ta.current;
     if (!el) return;
     const { selectionStart: start, selectionEnd: end } = el;
-    if (start === end || !el.value.slice(start, end).trim())
+    if (start === end || !stripHidden(el.value.slice(start, end)).trim())
       return setSel(null);
     const p = point ?? caretPoint(el, start);
     setSel({ start, end, x: p.x, y: p.y });
@@ -169,40 +237,48 @@ export function RichTextarea({
     const ok = document.execCommand("insertText", false, text);
     if (!ok) {
       el.setRangeText(text, from, to, "end");
-      h.change(el.value);
+      commit(el.value);
     }
   };
 
-  const toggle = (marker: "==" | "~~") => {
-    if (!sel) return;
-    const { start, end } = sel;
-    const v = value;
-    const inner = v.slice(start, end);
-    if (
-      v.slice(start - 2, start) === marker &&
-      v.slice(end, end + 2) === marker
-    ) {
-      replace(start - 2, end + 2, inner, [start - 2, end - 2]);
-    } else if (
-      inner.length >= 4 &&
-      inner.startsWith(marker) &&
-      inner.endsWith(marker)
-    ) {
-      replace(start, end, inner.slice(2, -2), [start, end - 4]);
+  /** Pone o quita negrita, resaltado o tachado en lo seleccionado. */
+  const toggle = (kind: MarkKind) => {
+    const el = ta.current;
+    if (!el) return;
+    let { selectionStart: start, selectionEnd: end } = el;
+    if (start === end) return;
+    const mk = HIDDEN[kind];
+    const v = shown;
+    const spans = spansOf(v, mk);
+    const inside = spans.find(([a, b]) => start >= a && end <= b);
+    if (inside) {
+      // Ya tiene ese formato: se quita solo de lo seleccionado.
+      const [a, b] = inside;
+      const s = Math.max(start, a + 1);
+      const e = Math.min(end, b - 1);
+      const wrap = (t: string) => (t.trim() ? mk + t + mk : t);
+      const before = wrap(v.slice(a + 1, s));
+      const mid = v.slice(s, e);
+      const text = before + mid + wrap(v.slice(e, b - 1));
+      replace(a, b, text, [a + before.length, a + before.length + mid.length]);
     } else {
+      // Si toca otros tramos con el mismo formato, se unen en uno.
+      for (const [a, b] of spans) {
+        if (start > a && start < b) start = a;
+        if (end > a && end < b) end = b;
+      }
+      const inner = v.slice(start, end).split(mk).join("");
       // Cada línea por separado: las marcas no cruzan saltos de línea.
       const wrapped = inner
         .split("\n")
         .map((line) => {
           const t = line.trim();
-          if (!t) return line;
+          if (!stripHidden(t)) return line;
           const lead = line.slice(0, line.indexOf(t));
-          return (
-            lead + marker + t + marker + line.slice(lead.length + t.length)
-          );
+          return lead + mk + t + mk + line.slice(lead.length + t.length);
         })
         .join("\n");
-      replace(start, end, wrapped, [start + 2, start + wrapped.length - 2]);
+      replace(start, end, wrapped, [start + 1, start + wrapped.length - 1]);
     }
     setSel(null);
   };
@@ -212,7 +288,7 @@ export function RichTextarea({
     done: string,
   ) => {
     if (!sel || !fn) return;
-    const text = value.slice(sel.start, sel.end).replace(/==|~~/g, "").trim();
+    const text = stripHidden(shown.slice(sel.start, sel.end)).trim();
     const linked = fn(text);
     setSel(null);
     if (linked !== false) {
@@ -229,7 +305,7 @@ export function RichTextarea({
     if (e.shiftKey || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a"))
       read();
   };
-  const onKeyDown = (e: KeyboardEvent) => {
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     const step = historyShortcut(e);
     if (step) {
       e.preventDefault();
@@ -237,10 +313,43 @@ export function RichTextarea({
       h[step]();
       return;
     }
+    const el = e.currentTarget;
+    const mod = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
+    if (mod && (e.key.toLowerCase() === "b" || e.code === "KeyB")) {
+      e.preventDefault();
+      toggle("b");
+      return;
+    }
     if (e.key === "Escape" && sel) {
       e.stopPropagation();
       setSel(null);
+      return;
     }
+    // Las marcas no se ven: el cursor las salta, y borrar actúa sobre la letra de al lado.
+    const { selectionStart: s, selectionEnd: end, value: v } = el;
+    if (s !== end || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "Backspace" || e.key === "ArrowLeft") {
+      let p = s;
+      while (p > 0 && isHidden(v[p - 1])) p--;
+      if (p !== s) el.setSelectionRange(p, p);
+    } else if (e.key === "Delete" || e.key === "ArrowRight") {
+      let p = s;
+      while (p < v.length && isHidden(v[p])) p++;
+      if (p !== s) el.setSelectionRange(p, p);
+    }
+  };
+  /** Al copiar no viajan las marcas invisibles. */
+  const onCopy = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    const raw = el.value.slice(el.selectionStart, el.selectionEnd);
+    if (raw === stripHidden(raw)) return;
+    e.preventDefault();
+    e.clipboardData.setData("text/plain", stripHidden(raw));
+    if (e.type === "cut")
+      replace(el.selectionStart, el.selectionEnd, "", [
+        el.selectionStart,
+        el.selectionStart,
+      ]);
   };
 
   const left = sel
@@ -250,13 +359,13 @@ export function RichTextarea({
 
   /** Dónde está hoy el fragmento por el que se preguntó (pudo moverse si el texto cambió). */
   const spanOf = (t: AskTarget): [number, number] | null => {
-    if (value.slice(t.start, t.end) === t.text) return [t.start, t.end];
-    const i = value.indexOf(t.text);
+    if (shown.slice(t.start, t.end) === t.text) return [t.start, t.end];
+    const i = shown.indexOf(t.text);
     return i >= 0 ? [i, i + t.text.length] : null;
   };
   const openAsk = () => {
     if (!sel) return;
-    setAsking({ ...sel, text: value.slice(sel.start, sel.end) });
+    setAsking({ ...sel, text: shown.slice(sel.start, sel.end) });
     setSel(null);
   };
   const askReplace = (text: string) => {
@@ -271,10 +380,10 @@ export function RichTextarea({
   };
   const askInsert = (text: string) => {
     if (!asking) return;
-    const at = spanOf(asking)?.[1] ?? value.length;
+    const at = spanOf(asking)?.[1] ?? shown.length;
     // Al final del párrafo donde está la selección, como un párrafo propio.
-    const nl = value.indexOf("\n", at);
-    const end = nl < 0 ? value.length : nl;
+    const nl = shown.indexOf("\n", at);
+    const end = nl < 0 ? shown.length : nl;
     const block = "\n\n" + text.trim();
     replace(end, end, block, [end + 2, end + block.length]);
     setAsking(null);
@@ -282,71 +391,85 @@ export function RichTextarea({
     window.setTimeout(() => setFlash(""), 1400);
   };
 
+  type Tool = {
+    key: string;
+    icon: typeof AtSign;
+    label: string;
+    /** Se ve el nombre junto al ícono (solo «Título», que con el ícono solo parece «fuente»). */
+    text?: boolean;
+    onClick: () => void;
+  };
   const tools = [
     actions.ask && {
       key: "ai",
       icon: Sparkles,
-      label: "IA",
+      label: "Preguntar o pedir algo a la IA",
       onClick: openAsk,
     },
-    actions.person && {
-      key: "p",
-      icon: AtSign,
-      label: "Persona",
-      onClick: () => run(actions.person, "Persona vinculada"),
+    {
+      key: "b",
+      icon: Bold,
+      label: `Negrita (${MOD}B)`,
+      onClick: () => toggle("b"),
     },
     {
       key: "h",
       icon: Highlighter,
       label: "Resaltar",
-      onClick: () => toggle("=="),
+      onClick: () => toggle("h"),
     },
     {
       key: "s",
       icon: Strikethrough,
       label: "Tachar",
-      onClick: () => toggle("~~"),
+      onClick: () => toggle("s"),
+    },
+    actions.person && {
+      key: "p",
+      icon: AtSign,
+      label: "Vincular a una persona",
+      onClick: () => run(actions.person, "Persona vinculada"),
     },
     actions.place && {
       key: "l",
       icon: MapPin,
-      label: "Lugar",
+      label: "Usar como lugar",
       onClick: () => run(actions.place, "Lugar asignado"),
     },
     actions.title && {
       key: "t",
       icon: Type,
       label: "Título",
+      text: true,
       onClick: () => run(actions.title, "Título actualizado"),
     },
-  ].filter(Boolean) as {
-    key: string;
-    icon: typeof AtSign;
-    label: string;
-    onClick: () => void;
-  }[];
+  ].filter(Boolean) as Tool[];
+
+  const askQuote = asking ? stripHidden(asking.text).trim() : "";
 
   return (
     <div className="rt">
       <div className={"rt-mirror " + className} aria-hidden="true">
-        {renderRich(value, { names, showMarkers: true })}
+        {renderRich(shown, { names, editor: true })}
         {"\u200b"}
       </div>
       <textarea
         ref={ta}
         className={className}
         rows={minRows}
-        value={value}
+        value={shown}
         placeholder={placeholder}
         aria-label={label}
         data-autofocus={autoFocusTarget || undefined}
         onChange={(e) => {
           setSel(null);
-          h.change(e.target.value);
+          commit(e.target.value, e.target.selectionEnd);
         }}
         onMouseUp={onMouseUp}
         onKeyUp={onKeyUp}
         onKeyDown={onKeyDown}
+        onCopy={onCopy}
+        onCut={onCopy}
         onBlur={() => window.setTimeout(() => setSel(null), 120)}
       />
       {flash && (
@@ -367,16 +490,15 @@ export function RichTextarea({
               <button
                 type="button"
                 key={t.key}
-                className={t.key === "ai" ? "ai" : undefined}
+                className={
+                  t.key === "ai" ? "ai" : t.text ? "with-text" : undefined
+                }
                 onClick={t.onClick}
-                title={t.key === "ai" ? "Preguntar o pedir algo a la IA" : t.label}
+                title={t.label}
+                aria-label={t.text ? undefined : t.label}
               >
-                <t.icon size={15} />
-                {t.key === "ai" ? (
-                  <span className="rt-sr">Preguntar a la IA</span>
-                ) : (
-                  <span>{t.label}</span>
-                )}
+                <t.icon size={16} strokeWidth={t.key === "b" ? 2.6 : 2} />
+                {t.text && <span>{t.label}</span>}
               </button>
             ))}
           </div>,
@@ -384,11 +506,9 @@ export function RichTextarea({
         )}
       {asking && actions.ask && (
         <AskSelection
-          quote={asking.text.replace(/==|~~/g, "").trim()}
+          quote={askQuote}
           point={asking}
-          onAsk={(prompt) =>
-            actions.ask!(asking.text.replace(/==|~~/g, "").trim(), prompt)
-          }
+          onAsk={(prompt) => actions.ask!(askQuote, prompt)}
           onReplace={askReplace}
           onInsert={askInsert}
           onClose={() => setAsking(null)}

@@ -3,7 +3,7 @@ import type { Direction, Entry, EntryDetails, EntryInput, Kind } from "../data";
 
 /** Qué detalles se guardan según el tipo: lo que sobre (p. ej. al cambiar de tipo) se descarta. */
 export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
-  Nota: ["mood", "place", "placeId"],
+  Nota: ["mood", "feelings", "where", "place", "placeId"],
   Encuentro: ["mood", "place", "placeId", "activity"],
   Película: [
     "movieInfo",

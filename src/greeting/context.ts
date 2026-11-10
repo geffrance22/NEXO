@@ -1,6 +1,7 @@
 import type { Entry, MyRecord, Workspace } from '../data';
 import { agendaFor, defaultAgendaPrefs } from '../lib/agenda';
 import { isOpenTask } from '../lib/commitments';
+import { moodTone } from '../composer/moods';
 import { addDays, todayInputValue } from '../lib/format';
 import { ageOf, closenessOf, daysBetween, daysToBirthday, relativeDay } from '../lib/people';
 import { isActive, progressOf } from '../library/progress';
@@ -161,7 +162,7 @@ export function buildGreetingInput(
   const weekAgo = addDays(today, -6);
   const moods = lately
     .filter((e) => dayOf(e.created_at) >= addDays(today, -14))
-    .map((e) => e.details.mood)
+    .map((e) => moodTone(e.details.mood))
     .filter((m): m is number => typeof m === 'number');
   const openTasks = ws.entries.filter(isOpenTask);
   const dueIn = (e: Entry) => (e.details.due ? daysBetween(today, e.details.due) : null);
@@ -271,7 +272,7 @@ export function buildGreetingInput(
         cuando: relativeDay(dayOf(e.created_at), today).toLowerCase(),
       })),
       animo_reciente: moods.length
-        ? Math.round((10 * moods.reduce((s, m) => s + Math.min(5, m), 0)) / moods.length) / 10
+        ? Math.round((10 * moods.reduce((s, m) => s + m, 0)) / moods.length) / 10
         : undefined,
       pendientes_abiertos: openTasks.length,
       vencen_hoy: openTasks.filter((e) => dueIn(e) === 0).length,

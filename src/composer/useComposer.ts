@@ -10,6 +10,7 @@ import type {
   Tie,
 } from "../data";
 import { todayInputValue } from "../lib/format";
+import type { DiaryDraft } from "../diary/drafts";
 import {
   cueOptions,
   cueQuestion,
@@ -42,6 +43,8 @@ type ComposerInit = {
   links: string[];
   details?: EntryDetails;
   episodeId?: string;
+  /** Borrador del diario desde el que se retoma (no es un recuerdo guardado). */
+  draft?: DiaryDraft;
 };
 
 /**
@@ -55,6 +58,7 @@ export function useComposer(
     links,
     details: initialDetails,
     episodeId: initialEpisode,
+    draft,
   }: ComposerInit,
   people: Person[],
   ties: Tie[] = [],
@@ -71,15 +75,19 @@ export function useComposer(
   );
 
   const [kind, setKindRaw] = useState<Kind>(entry?.kind ?? initialKind);
-  const [title, setTitleRaw] = useState(entry?.title ?? "");
-  const [body, setBodyRaw] = useState(entry?.body ?? "");
-  const [tags, setTagsRaw] = useState<string[]>(entry?.tags ?? []);
+  const [title, setTitleRaw] = useState(entry?.title ?? draft?.title ?? "");
+  const [body, setBodyRaw] = useState(entry?.body ?? draft?.body ?? "");
+  const [tags, setTagsRaw] = useState<string[]>(
+    entry?.tags ?? draft?.tags ?? [],
+  );
   const [personIds, setPersonIdsRaw] = useState<string[]>(
-    entry?.person_ids ?? links,
+    entry?.person_ids ?? draft?.personIds ?? links,
   );
   const [dismissed, setDismissed] = useState<string[]>([]);
-  const [date, setDateRaw] = useState(() =>
-    todayInputValue(entry ? new Date(entry.created_at) : undefined),
+  const [date, setDateRaw] = useState(
+    () =>
+      draft?.date ??
+      todayInputValue(entry ? new Date(entry.created_at) : undefined),
   );
   const [amount, setAmountRaw] = useState(entry?.amount ?? 0);
   const [direction, setDirectionRaw] = useState<Direction>(
@@ -87,7 +95,7 @@ export function useComposer(
   );
   const [status, setStatusRaw] = useState<Status>(entry?.status ?? "pendiente");
   const [details, setDetailsRaw] = useState<EntryDetails>(
-    entry?.details ?? initialDetails ?? {},
+    entry?.details ?? draft?.details ?? initialDetails ?? {},
   );
   const [docFile, setDocFileRaw] = useState<File | null>(null);
   const [docNotice, setDocNotice] = useState("");
@@ -95,7 +103,7 @@ export function useComposer(
   const [episodeId, setEpisodeIdRaw] = useState<string | null>(
     entry ? (entry.episode_id ?? null) : (initialEpisode ?? null),
   );
-  const uploads = useImageUploads(entry?.images ?? []);
+  const uploads = useImageUploads(entry?.images ?? draft?.images ?? []);
   // Libros: fotos aparte de la portada (tu ejemplar, páginas, dedicatorias…).
   const photos = useImageUploads(entry?.details.bookPhotos ?? [], 12);
   /**
@@ -300,6 +308,16 @@ export function useComposer(
   return {
     editing,
     entry,
+    /** Lo que llevas escrito, tal como se guarda en un borrador del diario. */
+    snapshot: (): Omit<DiaryDraft, "id" | "updated_at"> => ({
+      title,
+      body,
+      tags,
+      personIds,
+      date,
+      details,
+      images: uploads.images,
+    }),
     kind,
     setKind,
     title,

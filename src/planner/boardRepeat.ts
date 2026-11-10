@@ -107,12 +107,19 @@ export function nextWeekday(day: number, today = todayInputValue()) {
 const DAY_RE = '(lunes|martes|miercoles|jueves|viernes|sabados?|domingos?)';
 const DAY_INDEX: Record<string, number> = {
   domingo: 0,
+  domingos: 0,
   lunes: 1,
   martes: 2,
   miercoles: 3,
   jueves: 4,
   viernes: 5,
   sabado: 6,
+  sabados: 6,
+};
+/** AAAA-MM-DD de verdad (sin NaN ni días que no existen). */
+const isDate = (d: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+  return Boolean(m && +m[3] >= 1 && +m[3] <= lastDay(+m[1], +m[2]));
 };
 
 /**
@@ -126,13 +133,13 @@ export function parseRepeat(title: string, today = todayInputValue()) {
       new RegExp(`\\b(?:cada|todos los|todas las) (?:2|dos) semanas?(?: (?:el|los) ${DAY_RE})?`),
       (m) => ({
         rule: 'biweekly',
-        due: m[1] ? nextWeekday(DAY_INDEX[m[1].replace(/s$/, '')], today) : today,
+        due: m[1] ? nextWeekday(DAY_INDEX[m[1]], today) : today,
       }),
     ],
     [/\b(?:cada|todos los) (?:15|quince) dias\b/, () => ({ rule: 'biweekly', due: today })],
     [
       new RegExp(`\\b(?:cada|todos los|los) ${DAY_RE}\\b`),
-      (m) => ({ rule: 'weekly', due: nextWeekday(DAY_INDEX[m[1].replace(/s$/, '')], today) }),
+      (m) => ({ rule: 'weekly', due: nextWeekday(DAY_INDEX[m[1]], today) }),
     ],
     [
       /\b(?:de lunes a viernes|entre semana|dias habiles|cada dia habil)\b/,
@@ -151,6 +158,8 @@ export function parseRepeat(title: string, today = todayInputValue()) {
     const m = n.match(re);
     if (!m || m.index === undefined) continue;
     const { rule, due } = make(m);
+    // Si no sale una fecha válida, no es una repetición: el texto se queda como está.
+    if (!isDate(due)) continue;
     // normalizeText conserva las posiciones: se quita la frase del título original.
     const clean =
       n.length === title.length

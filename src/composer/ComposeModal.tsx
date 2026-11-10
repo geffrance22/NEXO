@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -10,14 +11,31 @@ import {
 } from "react";
 import {
   Check,
+  ChevronDown,
   ChevronLeft,
+  FilePen,
+  Hourglass,
   ImagePlus,
   LoaderCircle,
+  Trash2,
   Tv,
   X,
 } from "lucide-react";
 import { useApp } from "../AppContext";
+import { readDiaryWithAssistant } from "../assistant";
 import { Sheet } from "../components/Sheet";
+import {
+  draftHasContent,
+  removeDraft,
+  saveDraft,
+  useDrafts,
+  type DiaryDraft,
+} from "../diary/drafts";
+import { piecesFromAi, readingInput } from "../diary/reader/pieces";
+import { capsuleDay, countdown } from "../diary/capsule";
+import { CapsuleDialog } from "./CapsuleDialog";
+import { useDismiss } from "../hooks/useDismiss";
+import { plainText } from "../components/RichText";
 import { CollectionsPicker } from "../cuadernos/AddToNotebook";
 import { hasRef, type Notebook } from "../cuadernos/model";
 import {
@@ -32,6 +50,7 @@ import type {
   Kind,
   Person,
   PersonUpdate,
+  TimeCapsule,
 } from "../data";
 import { todayInputValue } from "../lib/format";
 import { KindPicker } from "./KindPicker";
@@ -74,6 +93,8 @@ export type ComposeInit = {
   details?: EntryDetails;
   /** Episodio en el que arranca (p. ej. si se abre desde su ficha). */
   episodeId?: string;
+  /** Borrador del diario que se retoma. */
+  draft?: DiaryDraft;
 };
 
 type ComposeModalProps = {
@@ -88,8 +109,16 @@ type ComposeModalProps = {
 
 /** Ventana para crear o editar un recuerdo: primero eliges el tipo, luego escribes. */
 export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
-  const { workspace, confirm, openPerson, notify, createPerson, patchPerson } =
-    useApp();
+  const {
+    user,
+    workspace,
+    confirm,
+    openPerson,
+    notify,
+    createPerson,
+    patchPerson,
+    readDiary,
+  } = useApp();
   const c = useComposer(
     {
       entry: init.entry,
@@ -97,10 +126,61 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
       links: init.links,
       details: init.details,
       episodeId: init.episodeId,
+      draft: init.draft,
     },
     workspace.people,
     workspace.ties,
   );
+  // Entrada nueva del diario: se guarda sola como borrador mientras escribes (si cierras la
+  // ventana, queda en «Borradores») y al guardarla la IA la lee en segundo plano.
+  const diary = c.kind === "Nota" && !c.editing;
+  const [draftId] = useState(() => init.draft?.id ?? crypto.randomUUID());
+  const drafts = useDrafts(user.id);
+  const storedDraft = drafts.some((d) => d.id === draftId);
+  const snap = diary ? c.snapshot() : null;
+  const snapKey = snap ? JSON.stringify(snap) : "";
+  const hasDraftContent = Boolean(snap && draftHasContent(snap));
+  const latestSnap = useRef(snap);
+  latestSnap.current = snap;
+  const draftTimer = useRef<number | undefined>(undefined);
+  // Al publicar o descartar, el autoguardado ya no debe volver a crear el borrador.
+  const draftDone = useRef(false);
+  const flushDraft = useCallback(() => {
+    window.clearTimeout(draftTimer.current);
+    const s = latestSnap.current;
+    if (draftDone.current || !s) return false;
+    if (!draftHasContent(s)) {
+      removeDraft(user.id, draftId);
+      return false;
+    }
+    saveDraft(user.id, {
+      ...s,
+      id: draftId,
+      updated_at: new Date().toISOString(),
+    });
+    return true;
+  }, [user.id, draftId]);
+  useEffect(() => {
+    // Solo si cambiaste algo: abrir un borrador sin tocarlo no lo reordena.
+    if (!snapKey || !c.dirty) return;
+    window.clearTimeout(draftTimer.current);
+    draftTimer.current = window.setTimeout(flushDraft, 700);
+    return () => window.clearTimeout(draftTimer.current);
+  }, [snapKey, c.dirty, flushDraft]);
+  // Si la pestaña se cierra con la ventana abierta, lo escrito queda en el borrador.
+  useEffect(() => {
+    if (!diary) return;
+    const onHide = () => {
+      if (latestSnap.current && c.dirty) flushDraft();
+    };
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+  }, [diary, c.dirty, flushDraft]);
+  const [saveMenu, setSaveMenu] = useState(false);
+  const saveMenuRef = useRef<HTMLSpanElement>(null);
+  const closeSaveMenu = useCallback(() => setSaveMenu(false), []);
+  useDismiss(saveMenu, saveMenuRef, closeSaveMenu);
+  const [capsuleOpen, setCapsuleOpen] = useState(false);
   // Cuadernos elegidos en el pie: se aplican al guardar (null = no los tocaste).
   const { list: notebooks } = useCuadernos();
   const [picked, setPicked] = useState<Set<string> | null>(null);
@@ -150,7 +230,36 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
     return () => window.clearTimeout(timer);
   }, [stage, c.kind]);
 
+  /** Descarta lo que escribiste: el borrador que retomabas vuelve a como estaba; uno nuevo se borra. */
+  const discardChanges = () => {
+    draftDone.current = true;
+    window.clearTimeout(draftTimer.current);
+    if (init.draft) saveDraft(user.id, init.draft);
+    else removeDraft(user.id, draftId);
+  };
+
   const requestClose = async () => {
+    // Diario: se pregunta si dejarlo en borradores, descartarlo o seguir editando.
+    if (diary && c.dirty && hasDraftContent) {
+      const choice = await confirm({
+        title: "¿Guardar como borrador?",
+        message: "Podrás retomar esta entrada desde los borradores del diario.",
+        confirmLabel: "Guardar borrador",
+        altLabel: "Descartar",
+        cancelLabel: "Seguir editando",
+        icon: "question",
+      });
+      if (choice === true) {
+        flushDraft();
+        draftDone.current = true;
+        notify("Guardado en borradores del diario.");
+        onClose();
+      } else if (choice === "alt") {
+        discardChanges();
+        onClose();
+      }
+      return;
+    }
     if (c.dirty || picked) {
       const discard = await confirm({
         title: "¿Descartar lo que escribiste?",
@@ -161,15 +270,18 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
         icon: "warning",
       });
       if (!discard) return;
+      if (diary) discardChanges();
     }
     onClose();
   };
 
-  async function submit(e?: FormEvent) {
+  async function submit(e?: FormEvent, capsule?: TimeCapsule) {
     e?.preventDefault();
     if (c.problem || busy) return;
     setBusy(true);
     const input = c.toInput();
+    // Cápsula del tiempo: queda sellada (ni la IA la lee ni se vincula a cuadernos hasta abrirla).
+    if (capsule) input.details = { ...input.details, capsule };
     if (input.kind === "Película") {
       const poster = input.details.tmdbPoster,
         year = input.details.year || "",
@@ -251,12 +363,87 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
     const savedId = await onSave(input, into);
     setBusy(false);
     if (!savedId) return;
+    if (diary) {
+      // Ya es una entrada oficial: el borrador se va y la IA la lee en segundo plano.
+      draftDone.current = true;
+      window.clearTimeout(draftTimer.current);
+      removeDraft(user.id, draftId);
+      if (capsule)
+        notify(
+          `Cápsula sellada · se abre el ${capsuleDay(capsule.opensOn)} (${countdown(capsule.opensOn)}).`,
+        );
+      else startReading(savedId, input);
+    }
     // En su ficha queda la novedad del préstamo (solo si es nuevo: al editar no se repite).
     const before = init.entry ?? into;
     if (lender && before?.details.lentById !== lender.id)
       void noteLoan(lender, input, savedId);
-    if (picked) void fileInNotebooks(savedId, picked);
+    if (picked && !capsule) void fileInNotebooks(savedId, picked);
     onClose();
+  }
+
+  /** Guarda lo escrito en borradores del diario y cierra (no cuenta ni se vincula a nadie). */
+  function saveAsDraft() {
+    setSaveMenu(false);
+    if (!hasDraftContent || !snap) return;
+    window.clearTimeout(draftTimer.current);
+    saveDraft(user.id, {
+      ...snap,
+      id: draftId,
+      updated_at: new Date().toISOString(),
+    });
+    draftDone.current = true;
+    notify("Guardado en borradores del diario.");
+    onClose();
+  }
+
+  async function discardDraft() {
+    setSaveMenu(false);
+    const ok = await confirm({
+      title: "¿Eliminar este borrador?",
+      message: "Lo que escribiste en él se perderá.",
+      confirmLabel: "Eliminar",
+      cancelLabel: "Seguir escribiendo",
+      danger: true,
+      icon: "warning",
+    });
+    if (!ok) return;
+    draftDone.current = true;
+    window.clearTimeout(draftTimer.current);
+    removeDraft(user.id, draftId);
+    onClose();
+  }
+
+  /**
+   * La IA lee la entrada recién guardada y propone piezas (pendientes cumplidos, planes,
+   * novedades de tu gente…). Corre aparte: la ventana ya se cerró y la entrada ya está guardada.
+   */
+  function startReading(entryId: string, input: EntryInput) {
+    const text = plainText(input.body).trim();
+    if (text.split(/\s+/).length < 4) return;
+    const ws = workspace;
+    const reading = readDiaryWithAssistant(readingInput(input, ws)).then(
+      (r) => ({
+        summary: r.summary,
+        pieces: piecesFromAi(
+          r.pieces,
+          {
+            personIds: input.personIds,
+            date: input.date,
+            placeId: input.details.placeId,
+            hasMood: Boolean(
+              input.details.feelings?.length || input.details.mood,
+            ),
+          },
+          ws,
+        ),
+      }),
+    );
+    readDiary({
+      entryId,
+      title: input.title.trim() || text.slice(0, 48) || "Tu entrada",
+      reading,
+    });
   }
 
   /** «Me prestó el libro «Dune»» en las novedades de quien te lo prestó. */
@@ -439,6 +626,11 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
               <strong>{series ? "Serie" : meta.label}</strong>
             </button>
             {c.editing && <span className="cp-editing">Editando</span>}
+            {diary && storedDraft && (
+              <span className="cp-editing cp-draft-tag" title="Se guarda solo mientras escribes">
+                <FilePen size={12} /> Borrador
+              </span>
+            )}
             <button
               type="button"
               className="cp-close"
@@ -465,7 +657,10 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
               className={"cp-status" + (c.problem ? " problem" : "")}
               role="status"
             >
-              {c.problem ?? "Ctrl + Enter para guardar"}
+              {c.problem ??
+                (diary && storedDraft
+                  ? "Borrador guardado · Ctrl + Enter para publicar"
+                  : "Ctrl + Enter para guardar")}
             </span>
             <button
               type="button"
@@ -474,22 +669,102 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
             >
               Cancelar
             </button>
-            <button
-              className="cp-btn cta"
-              disabled={Boolean(c.problem) || busy}
+            <span
+              className={"cp-split" + (diary ? " on" : "")}
+              ref={saveMenuRef}
             >
-              {busy ? (
-                <LoaderCircle className="spin" size={17} />
-              ) : (
-                <Check size={17} />
+              <button
+                className="cp-btn cta"
+                disabled={Boolean(c.problem) || busy}
+              >
+                {busy ? (
+                  <LoaderCircle className="spin" size={17} />
+                ) : (
+                  <Check size={17} />
+                )}
+                {c.editing
+                  ? "Guardar cambios"
+                  : series
+                    ? "Guardar serie"
+                    : meta.saveLabel}
+              </button>
+              {diary && (
+                <button
+                  type="button"
+                  className="cp-btn cta cp-split-more"
+                  aria-label="Más formas de guardar"
+                  aria-haspopup="menu"
+                  aria-expanded={saveMenu && !c.problem}
+                  disabled={Boolean(c.problem) || busy}
+                  onClick={() => setSaveMenu((v) => !v)}
+                >
+                  <ChevronDown size={16} />
+                </button>
               )}
-              {c.editing
-                ? "Guardar cambios"
-                : series
-                  ? "Guardar serie"
-                  : meta.saveLabel}
-            </button>
+              {diary && saveMenu && !c.problem && (
+                <span className="cp-split-menu" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!hasDraftContent}
+                    onClick={saveAsDraft}
+                  >
+                    <FilePen size={16} />
+                    <span>
+                      <b>Guardar como borrador</b>
+                      <small>
+                        {hasDraftContent
+                          ? "No cuenta ni se vincula a nadie hasta publicarlo"
+                          : "Escribe algo primero"}
+                      </small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!hasDraftContent}
+                    onClick={() => {
+                      setSaveMenu(false);
+                      setCapsuleOpen(true);
+                    }}
+                  >
+                    <Hourglass size={16} />
+                    <span>
+                      <b>Cápsula del tiempo</b>
+                      <small>
+                        {hasDraftContent
+                          ? "Se sella y se abre en una fecha futura"
+                          : "Escribe algo primero"}
+                      </small>
+                    </span>
+                  </button>
+                  {storedDraft && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="danger"
+                      onClick={() => void discardDraft()}
+                    >
+                      <Trash2 size={16} />
+                      <span>
+                        <b>Eliminar borrador</b>
+                      </span>
+                    </button>
+                  )}
+                </span>
+              )}
+            </span>
           </footer>
+
+          {capsuleOpen && (
+            <CapsuleDialog
+              onClose={() => setCapsuleOpen(false)}
+              onSeal={(capsule) => {
+                setCapsuleOpen(false);
+                void submit(undefined, capsule);
+              }}
+            />
+          )}
 
           {dragging && (
             <div className="cp-drop" aria-hidden="true">

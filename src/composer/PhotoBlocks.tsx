@@ -1,4 +1,4 @@
-import type { CSSProperties, ChangeEvent, ClipboardEvent } from "react";
+import { useState, type CSSProperties, type ChangeEvent, type ClipboardEvent } from "react";
 import {
   FileText,
   ImagePlus,
@@ -33,15 +33,26 @@ function Progress({ item }: { item: UploadItem }) {
 export function PhotoStrip({
   uploads,
   addLabel = "Añadir fotos",
+  visible,
 }: {
   uploads: ImageUploads;
   addLabel?: string;
+  /**
+   * Cuántas miniaturas mostrar antes de agrupar: la última visible lleva «+N» con las demás
+   * (al tocarla se ven todas). Sin valor, se muestran todas.
+   */
+  visible?: number;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const failed = uploads.items.find((i) => i.status === "error");
+  const total = uploads.items.length;
+  const folded = visible !== undefined && !expanded && total > visible;
+  const shown = folded ? uploads.items.slice(0, visible) : uploads.items;
+  const hidden = total - shown.length;
   return (
     <div className="cp-photos-wrap">
       <div className="cp-photos">
-        {uploads.items.map((item) => (
+        {shown.map((item, i) => (
           <div className={"cp-photo " + item.status} key={item.id}>
             <img src={item.preview} alt="" loading="lazy" />
             {item.status === "uploading" && <Progress item={item} />}
@@ -55,14 +66,26 @@ export function PhotoStrip({
                 <RotateCw size={18} />
               </button>
             )}
-            <button
-              type="button"
-              className="cp-photo-x"
-              aria-label="Quitar foto"
-              onClick={() => uploads.remove(item.id)}
-            >
-              <X size={13} />
-            </button>
+            {folded && i === shown.length - 1 ? (
+              <button
+                type="button"
+                className="cp-photo-more"
+                aria-label={`Ver las ${total} fotos`}
+                title="Ver todas"
+                onClick={() => setExpanded(true)}
+              >
+                +{hidden}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="cp-photo-x"
+                aria-label="Quitar foto"
+                onClick={() => uploads.remove(item.id)}
+              >
+                <X size={13} />
+              </button>
+            )}
           </div>
         ))}
         {uploads.items.length < uploads.max && (
@@ -79,6 +102,15 @@ export function PhotoStrip({
           </label>
         )}
       </div>
+      {expanded && visible !== undefined && total > visible && (
+        <button
+          type="button"
+          className="cp-photos-less"
+          onClick={() => setExpanded(false)}
+        >
+          Ver menos
+        </button>
+      )}
       {uploads.notice && <p className="cp-notice">{uploads.notice}</p>}
       {failed && <p className="cp-notice error">{failed.error}</p>}
     </div>

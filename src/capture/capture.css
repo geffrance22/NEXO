@@ -370,7 +370,7 @@
 /* Ánimo */
 .xp-mood .cp-moods {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 4px;
 }
 .xp-mood .cp-moods button {
@@ -378,6 +378,16 @@
   padding: 6px 2px;
   border-radius: 12px;
   background: #fafbfc;
+}
+.xp-mood .cp-moods button.on {
+  background: color-mix(in srgb, var(--mood) 9%, #fff);
+}
+.xp-mood .cp-mood-label {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Preguntas por resolver: homónimos, parentescos y personas nuevas */
@@ -1163,7 +1173,7 @@ html[data-theme='dark'] .xp-help-backdrop {
     padding-left: 12px;
   }
   .xp-mood .cp-moods {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
   .xp-ai::after {
     display: none;

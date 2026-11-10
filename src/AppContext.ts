@@ -25,6 +25,8 @@ import type {
 import type { PersonSection } from './lib/people';
 import type { TieInput } from './hooks/useWorkspace';
 import type { Notify } from './hooks/useToast';
+import type { DiaryDraft } from './diary/drafts';
+import type { DiaryJob } from './diary/reader/DiaryReader';
 
 /** Accesos rápidos para alimentar la ficha de una persona sin abrir el formulario completo. */
 export type QuickMode = 'nota' | 'novedad' | 'dar' | 'recibir' | 'dato';
@@ -47,6 +49,10 @@ export type AppContextValue = {
    * `links` son las personas que arrancan vinculadas (por defecto, la persona abierta).
    */
   openEntry: (kind?: Kind, links?: string[], details?: EntryDetails) => void;
+  /** Retoma un borrador del diario en la ventana de escribir. */
+  openDraft: (draft: DiaryDraft) => void;
+  /** Lectura con IA de una entrada del diario recién guardada (corre en segundo plano). */
+  readDiary: (job: DiaryJob) => void;
   /** Abre el visor de fotos en la imagen indicada. */
   openImages: (images: StoredImage[], index?: number) => void;
   /** Pregunta con una ventana propia (en lugar del `confirm` del navegador). */
@@ -156,6 +162,12 @@ export type AppContextValue = {
   /** Abre «Unir fichas»: con `other`, ya con la pareja elegida; sin él, para buscarla. */
   openMerge: (person: Person, other?: Person) => void;
   openAttachment: (entry: Entry) => void;
+  /** Cápsulas del tiempo selladas o aún sin abrir (no están en `workspace.entries`). */
+  capsules: Entry[];
+  /** Abre una cápsula que ya llegó a su fecha; devuelve la cápsula abierta (null si falló). */
+  openCapsule: (entry: Entry) => Promise<Entry | null>;
+  /** Borra una cápsula para siempre. */
+  burnCapsule: (entry: Entry) => Promise<boolean>;
 };
 
 const AppContext = createContext<AppContextValue | null>(null);

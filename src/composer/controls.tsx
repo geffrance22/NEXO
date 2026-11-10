@@ -7,6 +7,7 @@ import {
   type TextareaHTMLAttributes,
 } from 'react';
 import { Star } from 'lucide-react';
+import { MoodIcon, moods, moodValue } from './moods';
 
 /** Área de texto que crece con lo que escribes. */
 export function AutoTextarea({
@@ -138,22 +139,12 @@ export function Stars({
   );
 }
 
-/**
- * Ocho estados, de lo más difícil a lo mejor. Los valores 1–5 son los originales (se conservan
- * para los recuerdos ya guardados); 6–8 son los nuevos.
- */
-export const moods = [
-  { value: 1, emoji: '😢', label: 'Triste' },
-  { value: 6, emoji: '😤', label: 'Tenso' },
-  { value: 2, emoji: '😕', label: 'Raro' },
-  { value: 3, emoji: '😐', label: 'Normal' },
-  { value: 7, emoji: '😌', label: 'Tranquilo' },
-  { value: 4, emoji: '🙂', label: 'Bien' },
-  { value: 8, emoji: '😂', label: 'Divertido' },
-  { value: 5, emoji: '🤩', label: 'Genial' },
-];
+export { moods, moodOf, moodTone, moodValue, MoodIcon, type Mood } from './moods';
 
-/** Caritas para el ánimo. Pulsar la elegida la quita. */
+/**
+ * Los ánimos, cada uno con su ícono y un tooltip con su nombre. Pulsar el elegido lo quita.
+ * Un valor antiguo (de la lista anterior) se muestra como su equivalente actual.
+ */
 export function MoodPicker({
   value,
   onChange,
@@ -165,23 +156,38 @@ export function MoodPicker({
   label: string;
   large?: boolean;
 }) {
+  const current = moodValue(value);
   return (
-    <div className={'cp-moods' + (large ? ' large' : '')} role="radiogroup" aria-label={label}>
-      {moods.map((m) => (
-        <button
-          type="button"
-          role="radio"
-          aria-checked={value === m.value}
-          key={m.value}
-          className={value === m.value ? 'on' : ''}
-          onClick={() => onChange(value === m.value ? undefined : m.value)}
-        >
-          <span className="cp-mood-emoji" aria-hidden="true">
-            {m.emoji}
-          </span>
-          <span className="cp-mood-label">{m.label}</span>
-        </button>
-      ))}
+    <div
+      className={
+        'cp-moods' + (large ? ' large' : '') + (current !== undefined ? ' has-value' : '')
+      }
+      role="radiogroup"
+      aria-label={label}
+    >
+      {moods.map((m) => {
+        const on = current === m.value;
+        return (
+          <button
+            type="button"
+            role="radio"
+            aria-checked={on}
+            aria-label={m.label}
+            key={m.value}
+            className={on ? 'on' : ''}
+            style={{ '--mood': m.color } as CSSProperties}
+            onClick={() => onChange(on ? undefined : m.value)}
+          >
+            <MoodIcon mood={m} solid={on} className="cp-mood-icon" />
+            <span className="cp-mood-label" aria-hidden="true">
+              {m.label}
+            </span>
+            <span className="cp-mood-tip" aria-hidden="true">
+              {m.label}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }

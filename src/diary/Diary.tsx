@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import {
   ArrowUpRight,
   CalendarDays,
+  FilePen,
   Feather,
   Flame,
   History,
@@ -11,13 +12,17 @@ import {
   X,
 } from "lucide-react";
 import { useApp } from "../AppContext";
-import { moods } from "../composer/controls";
+import { MoodIcon, moods } from "../composer/controls";
+import { moodOf as moodFor } from "../composer/moods";
+import { feelingsOf } from "../composer/MoodTrio";
 import { plainText } from "../components/RichText";
 import { Sheet } from "../components/Sheet";
 import { LoadMore, useInfinite } from "../components/LoadMore";
 import type { Entry, Person } from "../data";
 import { addDays, friendlyDate, todayInputValue } from "../lib/format";
 import { Avatar } from "../people/Avatar";
+import { removeDraft, useDrafts, type DiaryDraft } from "./drafts";
+import { Capsules } from "./Capsules";
 import {
   agoLabel,
   buildDays,
@@ -38,7 +43,10 @@ import {
 } from "./model";
 import "./diary.css";
 
-const moodOf = (n?: number | null) => moods.find((m) => m.value === n);
+const moodOf = (n?: number | null) => moodFor(n);
+/** ¿La entrada tiene este ánimo (entre los hasta tres que puede tener)? */
+const hasMood = (e: Entry, value: number) =>
+  feelingsOf(e.details).some((f) => f.mood === value);
 const plural = (n: number, one: string, many: string) =>
   `${n.toLocaleString("es-CO")} ${n === 1 ? one : many}`;
 const WEEK = ["L", "M", "X", "J", "V", "S", "D"];
@@ -72,7 +80,7 @@ export function Diary({
 
   const found = useMemo(() => entries.filter(matches), [entries, matches]);
   const moodChips = useMemo(
-    () => moods.filter((m) => found.some((e) => e.details.mood === m.value)),
+    () => moods.filter((m) => found.some((e) => hasMood(e, m.value))),
     [found],
   );
   const list = useMemo(() => {
@@ -82,7 +90,7 @@ export function Diary({
         : filter === "fotos"
           ? (e) => e.images.length > 0
           : filter.startsWith("m:")
-            ? (e) => e.details.mood === Number(filter.slice(2))
+            ? (e) => hasMood(e, Number(filter.slice(2)))
             : () => true;
     return found
       .filter((e) => (!day || dayOf(e) === day) && test(e))
@@ -112,6 +120,8 @@ export function Diary({
           onYear={entries.length ? () => setYearOpen(true) : undefined}
         />
       )}
+      {!searching && <Drafts />}
+      {!searching && <Capsules />}
       {yearOpen &&
         createPortal(
           <Sheet
@@ -189,7 +199,7 @@ export function Diary({
                 className={"mood" + (filter === id ? " on" : "")}
                 onClick={() => setFilter(filter === id ? "todas" : id)}
               >
-                {m.emoji}
+                <MoodIcon mood={m} solid={filter === id} size={22} />
               </button>
             );
           })}
@@ -673,6 +683,81 @@ function DiaryMap({
   );
 }
 
+/* ───────── Borradores ───────── */
+
+const draftAgo = (iso: string) => {
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "ahora";
+  if (mins < 60) return `hace ${mins} min`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `hace ${hours} h`;
+  return friendlyDate(todayInputValue(new Date(iso))).toLowerCase();
+};
+
+/**
+ * Entradas a medio escribir. No cuentan para la racha ni se vinculan a nadie: solo al
+ * publicarlas pasan a ser entradas del diario.
+ */
+function Drafts() {
+  const { user, openDraft, confirm } = useApp();
+  const drafts = useDrafts(user.id);
+  if (!drafts.length) return null;
+  const drop = async (d: DiaryDraft) => {
+    const ok = await confirm({
+      title: "¿Eliminar este borrador?",
+      message: "Lo que escribiste en él se perderá.",
+      confirmLabel: "Eliminar",
+      cancelLabel: "Conservar",
+      danger: true,
+      icon: "warning",
+    });
+    if (ok) removeDraft(user.id, d.id);
+  };
+  return (
+    <section className="dy-drafts" aria-label="Borradores">
+      <h3>
+        <FilePen size={14} /> Borradores
+        <small>{drafts.length}</small>
+        <span className="dy-drafts-hint">Solo en este dispositivo · no cuentan hasta publicarlos</span>
+      </h3>
+      <div className="dy-drafts-list">
+        {drafts.map((d) => {
+          const text = plainText(d.body).replace(/\s+/g, " ").trim();
+          const feelings = feelingsOf(d.details);
+          return (
+            <article key={d.id} className="dy-draft">
+              <button
+                type="button"
+                className="dy-draft-open"
+                onClick={() => openDraft(d)}
+              >
+                <small>
+                  {feelings.slice(0, 3).map((f) => {
+                    const m = moodOf(f.mood);
+                    return m ? <MoodIcon key={f.mood} mood={m} size={16} /> : null;
+                  })}
+                  {longDay(d.date)} · {draftAgo(d.updated_at)}
+                </small>
+                <strong>{d.title.trim() || text.slice(0, 60) || "Sin título"}</strong>
+                {text && <span>{d.title.trim() ? text : text.slice(60)}</span>}
+              </button>
+              <button
+                type="button"
+                className="dy-draft-x"
+                aria-label="Eliminar borrador"
+                title="Eliminar"
+                onClick={() => void drop(d)}
+              >
+                <X size={13} />
+              </button>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 /* ───────── Un día como hoy ───────── */
 
 function Recall({
@@ -792,7 +877,9 @@ const MAX_FACES = 3;
 const DiaryCard = memo(function DiaryCard({ entry }: { entry: Entry }) {
   const { workspace, viewEntry, editEntry, openImages } = useApp();
   const { title, text } = excerpt(entry);
-  const mood = moodOf(entry.details.mood);
+  const feelings = feelingsOf(entry.details)
+    .map((f) => ({ mood: moodOf(f.mood), why: f.why }))
+    .filter((f) => f.mood);
   const people = entry.person_ids
     .map((id) => workspace.people.find((p) => p.id === id))
     .filter((p): p is Person => Boolean(p));
@@ -807,14 +894,34 @@ const DiaryCard = memo(function DiaryCard({ entry }: { entry: Entry }) {
         onClick={() => viewEntry(entry)}
       >
         <span className="dy-card-meta">
-          {mood && (
-            <span className="dy-mood">
-              {mood.emoji} {mood.label}
+          {feelings.length > 0 && (
+            <span
+              className="dy-mood"
+              title={feelings
+                .map((f) => f.mood!.label + (f.why ? ` · ${f.why}` : ""))
+                .join("\n")}
+            >
+              {feelings.map((f) => (
+                <MoodIcon key={f.mood!.value} mood={f.mood!} size={18} solid />
+              ))}
+              {feelings.length === 1 ? (
+                <>
+                  {feelings[0].mood!.label}
+                  {feelings[0].why && <em> · {feelings[0].why}</em>}
+                </>
+              ) : (
+                feelings.map((f) => f.mood!.label).join(", ")
+              )}
             </span>
           )}
           {entry.details.place && (
             <span>
               <MapPin size={12} /> {entry.details.place}
+            </span>
+          )}
+          {entry.details.where && entry.details.where !== entry.details.place && (
+            <span title="Dónde estabas">
+              <MapPin size={12} /> {entry.details.where}
             </span>
           )}
           <span className="dy-card-len">

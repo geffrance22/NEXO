@@ -250,6 +250,13 @@ export type Ritual = {
 export type EntryDetails = {
   /** Ánimo del 1 (mal) al 5 (genial): notas y encuentros. */
   mood?: number;
+  /**
+   * Entradas del diario: hasta tres ánimos a la vez, cada uno con su causa opcional. El primero
+   * se copia en `mood` para que todo lo demás (rachas, resúmenes, filtros) siga funcionando.
+   */
+  feelings?: { mood: number; why?: string }[];
+  /** Dónde estabas al escribir (máximo dos palabras, p. ej. «Laureles, Medellín»). */
+  where?: string;
   /** Nombre del lugar (se guarda también para mostrarlo si el lugar se borra). */
   place?: string;
   placeId?: string;
@@ -369,7 +376,15 @@ export type EntryDetails = {
   confidence?: number;
   apply?: string;
   method?: string;
+  /**
+   * Cápsula del tiempo (entradas del diario): queda sellada y oculta hasta `opensOn`
+   * (AAAA-MM-DD). `once`: se ve una sola vez y se borra al cerrarla. `seenAt` (ISO): cuándo la
+   * abriste por primera vez.
+   */
+  capsule?: TimeCapsule;
 };
+
+export type TimeCapsule = { opensOn: string; once?: boolean; seenAt?: string };
 
 export type Entry = {
   id: string;

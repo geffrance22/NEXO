@@ -1,5 +1,5 @@
 import { supabase } from '../backend';
-import { moods } from '../composer/controls';
+import { moods, moodTone } from '../composer/controls';
 import type {
   Entry,
   Episode,
@@ -34,8 +34,8 @@ export type PlaceVisit = {
   isNew: boolean;
 };
 
-/** Puesto de un ánimo de peor (0) a mejor (7), para comparar. */
-const moodRank = (v: number) => moods.findIndex((m) => m.value === v);
+/** Puesto de un ánimo de peor (1) a mejor (5), para comparar; 0 si no se reconoce. */
+const moodRank = (v: number) => moodTone(v) ?? 0;
 export const moodOf = (v: number) => moods.find((m) => m.value === v) ?? null;
 
 /** Todo lo de la semana que sale de tu espacio (las lecturas se piden aparte). */

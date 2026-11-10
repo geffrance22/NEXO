@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LoaderCircle, Lock } from "lucide-react";
 import {
   AppProvider,
@@ -54,6 +54,7 @@ import { parseHash, toHash, type Route } from "../lib/route";
 import { ConnectionsPage } from "../pages/ConnectionsPage";
 import { Agenda, Libroteca } from "../library/Libroteca";
 import { NoteReminders } from "../notes/reminders";
+import { DiaryReader, type DiaryJob } from "../diary/reader/DiaryReader";
 import { ProgressSheet } from "../library/ProgressSheet";
 import { ClosingRitual } from "../ritual/ClosingRitual";
 import { isFinished } from "../ritual/learning";
@@ -178,6 +179,9 @@ export function AppShell({ user }: { user: AppUser }) {
     personId: string;
     otherId?: string;
   } | null>(null);
+  // Una entrada del diario recién guardada que la IA está leyendo.
+  const [diaryJob, setDiaryJob] = useState<DiaryJob | null>(null);
+  const closeDiaryJob = useCallback(() => setDiaryJob(null), []);
 
   const { workspace } = data;
   const { page } = route;
@@ -254,7 +258,8 @@ export function AppShell({ user }: { user: AppUser }) {
     before?: Entry,
   ) => {
     const saved = await ok;
-    if (saved) void learnTastes(input, before);
+    // Una cápsula del tiempo sellada no le enseña nada a las fichas hasta abrirla.
+    if (saved && !input.details.capsule) void learnTastes(input, before);
     return saved;
   };
   /**
@@ -385,6 +390,12 @@ export function AppShell({ user }: { user: AppUser }) {
           episodeId: page === "Episodios" ? selectedEpisode?.id : undefined,
         },
       }),
+    openDraft: (draft) =>
+      setModal({
+        type: "compose",
+        init: { kind: "Nota", links: draft.personIds, draft },
+      }),
+    readDiary: setDiaryJob,
     openImages: (images, index = 0) => setViewer({ images, index }),
     confirm,
     notify,
@@ -487,6 +498,9 @@ export function AppShell({ user }: { user: AppUser }) {
     openMerge: (person, other) =>
       setMerge({ personId: person.id, otherId: other?.id }),
     openAttachment: (entry) => void data.openAttachment(entry),
+    capsules: data.capsules,
+    openCapsule: data.openCapsule,
+    burnCapsule: data.burnCapsule,
   };
 
   const closeModal = () => setModal(null);
@@ -615,6 +629,14 @@ export function AppShell({ user }: { user: AppUser }) {
         </div>
         <Toast message={message} action={action} onClose={clear} />
         <NoteReminders />
+        {diaryJob && (
+          <DiaryReader
+            key={diaryJob.entryId}
+            job={diaryJob}
+            hold={Boolean(modal)}
+            onDone={closeDiaryJob}
+          />
+        )}
         {modal?.type === "person" && (
           <PersonSheet
             person={editingPerson}
@@ -669,6 +691,7 @@ export function AppShell({ user }: { user: AppUser }) {
         )}
         {composing && (
           <ComposeModal
+            key={composing.draft?.id ?? composing.entry?.id ?? "new"}
             init={composing}
             onSave={(input, into) => {
               // Un libro que ya tenías en tu estantería: se actualiza esa ficha.

@@ -6,11 +6,17 @@ export type ConfirmOptions = {
   message?: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  /** Tercera opción (p. ej. «Descartar»): si se elige, la promesa devuelve "alt". */
+  altLabel?: string;
   /** Acción destructiva: el botón se pinta de rojo y el foco empieza en «cancelar». */
   danger?: boolean;
   icon?: 'trash' | 'warning' | 'question';
 };
-export type ConfirmFn = (options: ConfirmOptions) => Promise<boolean>;
+type ConfirmResult = boolean | 'alt';
+export type ConfirmFn = {
+  (options: ConfirmOptions & { altLabel: string }): Promise<ConfirmResult>;
+  (options: ConfirmOptions): Promise<boolean>;
+};
 
 const icons = { trash: Trash2, warning: TriangleAlert, question: CircleHelp };
 
@@ -19,9 +25,10 @@ function ConfirmDialog({
   onResult,
 }: {
   options: ConfirmOptions;
-  onResult: (accepted: boolean) => void;
+  onResult: (result: ConfirmResult) => void;
 }) {
   const cancel = useRef<HTMLButtonElement>(null);
+  const alt = useRef<HTMLButtonElement>(null);
   const accept = useRef<HTMLButtonElement>(null);
   const result = useRef(onResult);
   result.current = onResult;
@@ -38,7 +45,12 @@ function ConfirmDialog({
         result.current(false);
       } else if (e.key === 'Tab') {
         e.preventDefault();
-        (document.activeElement === cancel.current ? accept : cancel).current?.focus();
+        const buttons = [cancel, alt, accept]
+          .map((r) => r.current)
+          .filter((b): b is HTMLButtonElement => Boolean(b));
+        const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        const step = e.shiftKey ? -1 : 1;
+        buttons[(at + step + buttons.length) % buttons.length]?.focus();
       }
     };
     document.addEventListener('keydown', onKey, true);
@@ -56,7 +68,9 @@ function ConfirmDialog({
       }}
     >
       <div
-        className={'confirm' + (options.danger ? ' danger' : '')}
+        className={
+          'confirm' + (options.danger ? ' danger' : '') + (options.altLabel ? ' has-alt' : '')
+        }
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-title"
@@ -78,6 +92,16 @@ function ConfirmDialog({
           >
             {options.cancelLabel ?? 'Cancelar'}
           </button>
+          {options.altLabel && (
+            <button
+              ref={alt}
+              type="button"
+              className="cp-btn ghost confirm-alt"
+              onClick={() => onResult('alt')}
+            >
+              {options.altLabel}
+            </button>
+          )}
           <button ref={accept} type="button" className="cp-btn cta" onClick={() => onResult(true)}>
             {options.confirmLabel ?? 'Aceptar'}
           </button>
@@ -87,16 +111,19 @@ function ConfirmDialog({
   );
 }
 
-/** Reemplaza a `confirm()` del navegador: `await confirm({...})` devuelve true o false. */
+/**
+ * Reemplaza a `confirm()` del navegador: `await confirm({...})` devuelve true o false
+ * (o "alt" si se pidió una tercera opción con `altLabel` y se eligió).
+ */
 export function useConfirm() {
   const [request, setRequest] = useState<{
     options: ConfirmOptions;
-    resolve: (accepted: boolean) => void;
+    resolve: (result: ConfirmResult) => void;
   } | null>(null);
 
-  const confirm = useCallback<ConfirmFn>(
-    (options) =>
-      new Promise<boolean>((resolve) => {
+  const confirm = useCallback(
+    (options: ConfirmOptions) =>
+      new Promise<ConfirmResult>((resolve) => {
         // Si ya había una pregunta abierta, se da por cancelada.
         setRequest((current) => {
           current?.resolve(false);
@@ -104,13 +131,13 @@ export function useConfirm() {
         });
       }),
     [],
-  );
+  ) as ConfirmFn;
 
   const dialog = request ? (
     <ConfirmDialog
       options={request.options}
-      onResult={(accepted) => {
-        request.resolve(accepted);
+      onResult={(result) => {
+        request.resolve(result);
         setRequest(null);
       }}
     />

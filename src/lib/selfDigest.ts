@@ -1,4 +1,5 @@
 import type { Entry, MyProfile, Person, Workspace } from '../data';
+import { moodTone } from '../composer/moods';
 import { addDays, todayInputValue } from './format';
 import { genderOf } from './gender';
 import { relationMeta, relationOf } from './people';
@@ -99,7 +100,7 @@ export function buildSelfDigest(
     Math.round(
       plata.filter((e) => e.direction === dir).reduce((s, e) => s + Number(e.amount || 0), 0),
     );
-  const moods = recent.map((e) => e.details.mood).filter((m): m is number => typeof m === 'number');
+  const moods = recent.map((e) => moodTone(e.details.mood)).filter((m): m is number => typeof m === 'number');
 
   const digest = {
     hoy: today,
@@ -147,7 +148,7 @@ export function buildSelfDigest(
           con: e.person_ids.flatMap((id) => (byId.has(id) ? [nameOf(byId.get(id)!)] : [])),
         })),
       animo_promedio_90_dias: moods.length
-        ? Math.round((10 * moods.reduce((s, m) => s + Math.min(5, m), 0)) / moods.length) / 10
+        ? Math.round((10 * moods.reduce((s, m) => s + m, 0)) / moods.length) / 10
         : undefined,
     },
     libros,

@@ -386,6 +386,30 @@
 .cp-title-input:focus {
   border-bottom-color: var(--soft);
 }
+/* Marcador propio del título de la entrada: «Título» grande y «opcional» pequeño y suave. */
+.cp-title-wrap {
+  position: relative;
+}
+.cp-title-ph {
+  position: absolute;
+  top: 6px;
+  left: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font:
+    700 28px/1.25 "Manrope",
+    sans-serif;
+  letter-spacing: -0.7px;
+  color: #c3c9ba;
+  pointer-events: none;
+}
+.cp-title-ph small {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  color: #d3d8cb;
+}
 .cp-ghost-input,
 .cp-soft-area {
   width: 100%;
@@ -597,51 +621,143 @@
   gap: 8px;
 }
 .cp-moods button {
+  position: relative;
   display: flex;
   min-width: 64px;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   padding: 8px 10px;
   border: 1px solid transparent;
   border-radius: 16px;
   background: #f6f8f2;
   transition:
-    background 0.15s,
-    border-color 0.15s;
+    background 0.2s,
+    border-color 0.2s;
 }
-.cp-mood-emoji {
-  font-size: 24px;
-  opacity: 0.7;
-  filter: grayscale(0.7);
+/* Íconos: se levantan un poco al pasar el cursor y el elegido se pinta lleno. */
+.cp-moods .cp-mood-icon {
+  --mood-size: 36px;
+  transform-origin: 50% 80%;
   transition:
-    transform 0.2s,
+    transform 0.3s cubic-bezier(0.34, 1.6, 0.5, 1),
     opacity 0.2s,
-    filter 0.2s;
+    filter 0.2s,
+    background 0.25s,
+    box-shadow 0.25s,
+    color 0.25s;
 }
-.cp-moods button:hover .cp-mood-emoji {
-  opacity: 1;
-  filter: none;
+/* Con uno elegido, los demás se apagan un poco. */
+.cp-moods.has-value button:not(.on) .cp-mood-icon {
+  opacity: 0.5;
+  filter: saturate(0.3);
+}
+.cp-moods button:hover .cp-mood-icon,
+.cp-moods button:focus-visible .cp-mood-icon {
+  opacity: 1 !important;
+  filter: none !important;
+  transform: translateY(-2px) scale(1.1);
+}
+.cp-moods button:active .cp-mood-icon {
+  transform: translateY(-1px) scale(1.04);
+  transition-duration: 0.1s;
 }
 .cp-moods button.on {
-  border-color: var(--accent);
-  background: var(--soft);
+  border-color: color-mix(in srgb, var(--mood) 35%, transparent);
+  background: color-mix(in srgb, var(--mood) 9%, #fff);
 }
-.cp-moods button.on .cp-mood-emoji {
-  opacity: 1;
-  filter: none;
-  transform: scale(1.25);
+.cp-moods button.on .cp-mood-icon {
+  transform: scale(1.06);
+}
+.cp-moods button.on:hover .cp-mood-icon {
+  transform: translateY(-2px) scale(1.1);
 }
 .cp-mood-label {
   font-size: 12px;
   color: #7b8573;
+  transition: color 0.15s;
+}
+.cp-moods button:hover .cp-mood-label {
+  color: #3f4937;
+}
+.cp-moods button.on .cp-mood-label {
+  color: color-mix(in srgb, var(--mood) 70%, #2f382b);
+  font-weight: 600;
+}
+/* Tooltip con el nombre del ánimo. */
+.cp-mood-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px 6px 9px;
+  border-radius: 10px;
+  background: rgba(30, 35, 28, 0.94);
+  box-shadow:
+    0 10px 24px -10px rgba(20, 25, 18, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px) scale(0.94);
+  transform-origin: 50% 100%;
+  transition:
+    opacity 0.14s,
+    transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.25);
+}
+.cp-mood-tip::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mood);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mood) 30%, transparent);
+}
+.cp-mood-tip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  border: 5px solid transparent;
+  border-top-color: rgba(30, 35, 28, 0.94);
+  transform: translateX(-50%);
+}
+.cp-moods button:hover .cp-mood-tip,
+.cp-moods button:focus-visible .cp-mood-tip {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+  transition-delay: 0.12s;
+}
+/* En pantallas táctiles no hay cursor: el nombre ya va debajo o en el botón. */
+@media (hover: none) {
+  .cp-mood-tip {
+    display: none;
+  }
 }
 .cp-moods.large button {
   min-width: 84px;
   padding: 14px 12px;
 }
-.cp-moods.large .cp-mood-emoji {
-  font-size: 32px;
+.cp-moods.large .cp-mood-icon {
+  --mood-size: 46px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-mood-icon,
+  .cp-mood-tip {
+    transition: none;
+  }
+  .cp-moods button:hover .cp-mood-icon,
+  .cp-moods button.on .cp-mood-icon {
+    transform: none;
+  }
 }
 
 /* Personas */
@@ -826,6 +942,18 @@
   font-size: 14px;
   color: #2f382b;
 }
+/* Ya no caben más etiquetas: el campo queda quieto y lo dice. */
+.cp-token-input.full {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+.cp-token-input.full input {
+  cursor: not-allowed;
+}
+.cp-token-input.full input::placeholder {
+  color: #a2aa98;
+  font-size: 13px;
+}
 .cp-results {
   display: flex;
   flex-direction: column;
@@ -911,6 +1039,36 @@
   display: grid;
   place-items: center;
   color: #fff;
+}
+/* La última miniatura visible cuando hay más fotos: «+N». */
+.cp-photo-more {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  background: rgba(30, 38, 26, 0.55);
+  font:
+    700 22px/1 "Manrope",
+    sans-serif;
+  letter-spacing: -0.3px;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.cp-photo-more:hover,
+.cp-photo-more:focus-visible {
+  background: rgba(30, 38, 26, 0.68);
+}
+.cp-photos-less {
+  margin-top: 6px;
+  padding: 2px 0;
+  font-size: 12.5px;
+  color: #7b8573;
+  cursor: pointer;
+}
+.cp-photos-less:hover {
+  color: var(--ink);
 }
 .cp-photo-add {
   display: flex;
@@ -1237,9 +1395,14 @@
     serif;
   color: #2b2a24;
 }
-.cp-composer[data-kind='Nota'] .cp-title-input {
+.cp-composer[data-kind='Nota'] .cp-title-input,
+.cp-composer[data-kind='Nota'] .cp-title-ph {
   font-family: 'Newsreader', Georgia, serif;
   font-weight: 500;
+}
+.cp-composer[data-kind='Nota'] .cp-title-ph small {
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 400;
 }
 .cp-writing::placeholder {
   color: #c3c9ba;
@@ -1256,13 +1419,22 @@
   font-size: 13.5px;
   color: #7b8573;
 }
+.cp-note-mood .cp-moods {
+  gap: 4px;
+}
 .cp-note-mood .cp-moods button {
   min-width: 0;
-  padding: 6px 9px;
+  padding: 5px 6px;
   background: transparent;
 }
+.cp-note-mood .cp-moods .cp-mood-icon {
+  --mood-size: 31px;
+}
+.cp-note-mood .cp-moods button:hover {
+  background: #f6f8f2;
+}
 .cp-note-mood .cp-moods button.on {
-  background: var(--soft);
+  background: color-mix(in srgb, var(--mood) 9%, #fff);
 }
 .cp-note-mood .cp-mood-label {
   display: none;
@@ -1438,6 +1610,358 @@
 .cp-note-foot .cp-doc svg {
   width: 13px;
   height: 13px;
+}
+
+/* Hasta tres ánimos: el orden en que los elegiste y una sacudida si ya hay tres. */
+.cp-trio {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+.cp-mood-order {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: grid;
+  place-items: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--mood);
+  box-shadow: 0 0 0 2px #fff;
+  font:
+    700 9.5px/1 'Manrope',
+    sans-serif;
+  font-style: normal;
+  color: #fff;
+  animation: cp-why-in 0.22s cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+.cp-moods.full button:not(.on) .cp-mood-icon {
+  opacity: 0.32;
+}
+.cp-moods button.nudge .cp-mood-icon {
+  animation: cp-nudge 0.4s ease-in-out;
+}
+@keyframes cp-nudge {
+  20%,
+  60% {
+    transform: translateX(-3px);
+  }
+  40%,
+  80% {
+    transform: translateX(3px);
+  }
+}
+
+/* «¿Por qué?» de cada ánimo: fichas pequeñas que solo aparecen al elegir un ánimo. */
+/* Las tres fichas van siempre en una sola línea: si falta sitio, se encogen y recortan el texto. */
+.cp-whys {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.cp-why {
+  position: relative;
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+  animation: cp-why-in 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+@keyframes cp-why-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.92);
+  }
+}
+.cp-why-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 170px;
+  height: 30px;
+  padding: 0 11px 0 5px;
+  border: 1px dashed color-mix(in srgb, var(--mood) 35%, #dfe4d6);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 12.5px;
+  font-style: italic;
+  color: #9aa391;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.cp-why-btn .mood-orb {
+  --mood-size: 20px !important;
+  flex: none;
+  border-radius: 7px;
+}
+.cp-why-btn span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cp-why-btn:hover,
+.cp-why.open .cp-why-btn {
+  border-color: color-mix(in srgb, var(--mood) 55%, transparent);
+  background: color-mix(in srgb, var(--mood) 7%, #fff);
+  color: color-mix(in srgb, var(--mood) 70%, #2f382b);
+}
+.cp-why.set .cp-why-btn {
+  padding-right: 22px;
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--mood) 30%, transparent);
+  background: color-mix(in srgb, var(--mood) 10%, #fff);
+  font-style: normal;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--mood) 72%, #2f382b);
+}
+.cp-why-clear {
+  position: absolute;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: color-mix(in srgb, var(--mood) 60%, #6a745f);
+  opacity: 0.6;
+  cursor: pointer;
+}
+.cp-why-clear:hover {
+  background: rgba(255, 255, 255, 0.85);
+  opacity: 1;
+}
+.cp-why-pop {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 268px;
+  max-width: calc(100vw - 32px);
+  padding: 10px;
+  border: 1px solid #ebeee5;
+  border-top: 3px solid var(--mood);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow:
+    0 20px 40px -16px rgba(30, 40, 25, 0.35),
+    0 2px 6px rgba(30, 40, 25, 0.06);
+  animation: rt-pop 0.16s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.cp-why-causes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.cp-why-causes button {
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #f4f7ef;
+  font-size: 12px;
+  color: #5d6753;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.cp-why-causes button:hover {
+  background: color-mix(in srgb, var(--mood) 12%, #fff);
+  color: color-mix(in srgb, var(--mood) 70%, #2f382b);
+}
+.cp-why-causes button.on {
+  background: var(--mood);
+  color: #fff;
+}
+.cp-why-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #e4e8dc;
+  border-radius: 10px;
+  outline: 0;
+  font-size: 13px;
+  color: #2f382b;
+}
+.cp-why-input:focus {
+  border-color: var(--mood);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mood) 14%, transparent);
+}
+
+/* Dónde estabas: un ícono en la línea de la fecha; solo se pide al tocarlo. */
+.cp-where-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  color: #a2aa98;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.cp-where-btn:hover:not(:disabled),
+.cp-where-btn:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+}
+.cp-where-btn.busy {
+  color: var(--accent);
+  cursor: progress;
+}
+.cp-where {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 4px 0 9px;
+  border-radius: 999px;
+  background: var(--soft);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  animation: cp-why-in 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.cp-where button {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+}
+.cp-where button:hover {
+  background: rgba(255, 255, 255, 0.8);
+  opacity: 1;
+}
+.cp-where-error {
+  font-size: 12px;
+  color: #a8644d;
+  animation: cp-why-in 0.2s ease-out;
+}
+
+/* Guardar con más opciones (diario): «Guardar como borrador». */
+.cp-split {
+  position: relative;
+  display: inline-flex;
+}
+.cp-split.on > .cp-btn.cta:first-child {
+  border-radius: 12px 0 0 12px;
+}
+.cp-split-more {
+  padding: 9px 10px !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 0 12px 12px 0 !important;
+}
+.cp-split-more[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+.cp-split-more svg {
+  transition: transform 0.2s;
+}
+.cp-split-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 264px;
+  padding: 6px;
+  border: 1px solid #ebeee5;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow:
+    0 20px 44px -16px rgba(30, 40, 25, 0.35),
+    0 2px 6px rgba(30, 40, 25, 0.06);
+  animation: rt-pop 0.16s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.cp-split-menu button {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  text-align: left;
+  color: #2f382b;
+  cursor: pointer;
+}
+.cp-split-menu button > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+}
+.cp-split-menu button span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cp-split-menu b {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.cp-split-menu small {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: #8a9380;
+}
+.cp-split-menu button:hover:not(:disabled) {
+  background: var(--soft);
+}
+.cp-split-menu button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.cp-split-menu button.danger > svg,
+.cp-split-menu button.danger b {
+  color: #b8412f;
+}
+.cp-split-menu button.danger:hover {
+  background: #fbe9e4;
+}
+.cp-draft-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-style: dashed;
+}
+@media (max-width: 720px) {
+  .cp-foot .cp-split {
+    flex: 1;
+  }
+  .cp-foot .cp-split .cp-btn.cp-split-more {
+    flex: none;
+  }
+  .cp-why-pop {
+    width: min(268px, calc(100vw - 48px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-why,
+  .cp-where,
+  .cp-mood-order,
+  .cp-why-pop,
+  .cp-split-menu,
+  .cp-moods button.nudge .cp-mood-icon {
+    animation: none;
+  }
 }
 @media (max-width: 640px) {
   .cp-composer[data-kind='Nota'] .cp-scroll {
@@ -2537,12 +3061,49 @@
   line-height: 1.5;
   color: #7b8573;
 }
+.confirm.has-alt {
+  width: min(460px, 100%);
+}
+/* Botones en una sola fila, del mismo ancho y con altura cómoda para el dedo.
+   Si no caben, se parte el texto dentro del botón, nunca la fila. */
 .confirm-actions {
   display: flex;
   grid-column: 1 / -1;
-  justify-content: flex-end;
+  flex-wrap: nowrap;
   gap: 8px;
-  margin-top: 14px;
+  margin-top: 16px;
+}
+.confirm-actions .cp-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  line-height: 1.2;
+  text-align: center;
+}
+.confirm-actions .cp-btn.ghost {
+  background: #f3f5ee;
+}
+.confirm-actions .cp-btn.ghost:hover {
+  background: #e8ecdf;
+}
+@media (max-width: 420px) {
+  .confirm-backdrop {
+    padding: 12px;
+  }
+  .confirm {
+    padding: 18px 16px 14px;
+  }
+  .confirm-actions {
+    gap: 6px;
+  }
+  .confirm-actions .cp-btn {
+    padding: 10px 8px;
+    font-size: 13.5px;
+  }
+}
+.confirm-actions .confirm-alt {
+  color: #c0553f;
 }
 @media (prefers-reduced-motion: reduce) {
   .confirm,
@@ -2589,8 +3150,12 @@
 .rt:focus-within .rt-mirror.cp-soft-area {
   background: #fff;
 }
-.rt-mk {
-  color: #cdd3c4;
+.rt-b {
+  /* Negrita sin cambiar el ancho de las letras: así el espejo sigue alineado con el cursor. */
+  -webkit-text-stroke: 0.04em currentColor;
+}
+.rt-strong {
+  font-weight: 700;
 }
 .rt-hl,
 .note-card mark,
@@ -2652,8 +3217,10 @@
 .rt-bar button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 7px 10px;
+  min-width: 32px;
+  padding: 7px 8px;
   border-radius: 10px;
   font-size: 12.5px;
   font-weight: 600;
@@ -2666,6 +3233,9 @@
 }
 .rt-bar button svg {
   color: #b9d29a;
+}
+.rt-bar button.with-text {
+  padding: 7px 10px 7px 9px;
 }
 .rt-bar button.ai {
   position: relative;
@@ -2712,10 +3282,24 @@
   color: #2b2620;
   animation: rt-pop 0.16s cubic-bezier(0.2, 0.9, 0.25, 1);
 }
+.rt-ai.dragging {
+  box-shadow:
+    0 32px 60px -18px rgba(40, 32, 18, 0.38),
+    0 2px 8px rgba(40, 32, 18, 0.08);
+  user-select: none;
+}
 .rt-ai-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin: -12px -12px 0;
+  padding: 10px 8px 4px 12px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.rt-ai.dragging .rt-ai-head {
+  cursor: grabbing;
 }
 .rt-ai-head span {
   display: inline-flex;
@@ -2731,10 +3315,14 @@
 .rt-ai-head button {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
-  color: #a39b8c;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: #b3ab9c;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 .rt-ai-head button:hover {
   background: #f5f1e8;
@@ -3560,4 +4148,154 @@
 .cp-reread-add:hover {
   opacity: 1;
   background: var(--soft);
+}
+
+/* ───────── Cápsula del tiempo (sellar) ───────── */
+.pk.cps {
+  --accent: #6f639a;
+  --soft: #ece9f5;
+  --ink: #3f3766;
+  width: min(460px, 100%);
+  max-height: min(88vh, 720px);
+}
+.cps-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 14px 8px 20px;
+}
+.cps-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--soft);
+  color: var(--accent);
+}
+.cps-head h3 {
+  font:
+    750 18px "Manrope",
+    sans-serif;
+  color: #27301f;
+}
+.cps-head p {
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #7b8573;
+}
+.cps-head .cp-close {
+  flex: none;
+  width: 32px;
+  height: 32px;
+}
+.cps-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 20px 16px;
+  overflow: auto;
+}
+.cps-label {
+  margin-top: 6px;
+  font:
+    700 10.5px "Manrope",
+    sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #a2aa98;
+}
+.cps-presets .cp-chip {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.cps-date {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: #6a745f;
+}
+.cps-date input {
+  padding: 7px 10px;
+  border: 1px solid #e2e7da;
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  color: #2f382b;
+}
+.cps-date input:focus {
+  outline: 0;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--soft);
+}
+.cps-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--soft);
+  font-size: 13px;
+  color: var(--ink);
+}
+.cps-when.bad {
+  background: #fbeee9;
+  color: #a8644d;
+}
+.cps-modes {
+  display: grid;
+  gap: 8px;
+}
+.cps-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid #e2e7da;
+  border-radius: 14px;
+  background: #fff;
+  text-align: left;
+  color: #7b8573;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.cps-mode:hover {
+  border-color: var(--accent);
+}
+.cps-mode.on {
+  border-color: var(--accent);
+  background: var(--soft);
+  color: var(--accent);
+}
+.cps-mode svg {
+  flex: none;
+  margin-top: 1px;
+}
+.cps-mode span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cps-mode b {
+  font-size: 14px;
+  color: #2f382b;
+}
+.cps-mode small {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #7b8573;
+}
+.cps-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid #eef1e8;
+  background: #fbfcf9;
 }

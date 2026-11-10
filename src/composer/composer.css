@@ -1439,6 +1439,59 @@
 .cp-note-mood .cp-mood-label {
   display: none;
 }
+/* Sueño y ejercicio: una línea discreta bajo el ánimo. */
+.cp-note-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 2px 0 4px;
+  font-size: 13.5px;
+  color: #7b8573;
+}
+.cp-note-body > svg {
+  color: #a2aa98;
+}
+.cp-sleep {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 999px;
+  background: #f4f7ef;
+}
+.cp-sleep button,
+.cp-move {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #7b8573;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    box-shadow 0.15s;
+}
+.cp-sleep button:hover,
+.cp-move:hover {
+  color: var(--ink);
+}
+.cp-sleep button.on {
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(40, 50, 30, 0.14);
+  color: var(--ink);
+}
+.cp-move {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f4f7ef;
+}
+.cp-move.on {
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--ink);
+}
 .cp-tray {
   display: flex;
   flex-wrap: wrap;

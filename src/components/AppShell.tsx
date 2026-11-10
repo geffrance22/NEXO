@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoaderCircle, Lock } from "lucide-react";
 import {
   AppProvider,
@@ -55,6 +55,7 @@ import { ConnectionsPage } from "../pages/ConnectionsPage";
 import { Agenda, Libroteca } from "../library/Libroteca";
 import { NoteReminders } from "../notes/reminders";
 import { DiaryReader, type DiaryJob } from "../diary/reader/DiaryReader";
+import { isVaulted, useDiaryVault } from "../diary/vault";
 import { ProgressSheet } from "../library/ProgressSheet";
 import { ClosingRitual } from "../ritual/ClosingRitual";
 import { isFinished } from "../ritual/learning";
@@ -185,6 +186,22 @@ export function AppShell({ user }: { user: AppUser }) {
 
   const { workspace } = data;
   const { page } = route;
+  // Las entradas de la bóveda del diario no salen en ninguna otra parte: solo en su carpeta.
+  const diaryVault = useDiaryVault(
+    workspace.entries,
+    data.patchEntry,
+    () => void data.reload(),
+  );
+  const shownWorkspace = useMemo(
+    () =>
+      workspace.entries.some(isVaulted)
+        ? {
+            ...workspace,
+            entries: workspace.entries.filter((e) => !isVaulted(e)),
+          }
+        : workspace,
+    [workspace],
+  );
   // Siempre lo último (para lo que corre después de un guardado).
   const latest = useRef(workspace);
   latest.current = workspace;
@@ -373,7 +390,7 @@ export function AppShell({ user }: { user: AppUser }) {
 
   const context: AppContextValue = {
     user,
-    workspace,
+    workspace: shownWorkspace,
     page,
     selected,
     selectedPlace,
@@ -454,7 +471,12 @@ export function AppShell({ user }: { user: AppUser }) {
     },
     createEntry: data.createEntry,
     createEntries: data.createEntries,
-    patchEntry: data.patchEntry,
+    // Una entrada de la bóveda se vuelve a cifrar en vez de guardarse en claro.
+    patchEntry: (entry, changes) =>
+      isVaulted(entry)
+        ? diaryVault.patch(entry, changes)
+        : data.patchEntry(entry, changes),
+    diaryVault,
     linkEntries: data.linkEntries,
     saveEpisode: data.saveEpisode,
     updateEpisode: data.updateEpisode,
@@ -506,10 +528,15 @@ export function AppShell({ user }: { user: AppUser }) {
   const closeModal = () => setModal(null);
   const composing = modal?.type === "compose" ? modal.init : undefined;
   // La ficha lee el recuerdo vivo: refleja cambios (completar, editar) y se cierra si se borra.
-  const viewing =
+  const viewingRow =
     modal?.type === "entry"
       ? workspace.entries.find((e) => e.id === modal.entryId)
       : undefined;
+  // Las de la bóveda se ven descifradas; con la bóveda cerrada, la ficha se cierra.
+  const viewing =
+    viewingRow && isVaulted(viewingRow)
+      ? diaryVault.entries?.find((e) => e.id === viewingRow.id)
+      : viewingRow;
   const editingPerson = modal?.type === "person" ? modal.person : undefined;
   const quickTarget = quick
     ? workspace.people.find((p) => p.id === quick.personId)
@@ -697,7 +724,27 @@ export function AppShell({ user }: { user: AppUser }) {
               // Un libro que ya tenías en tu estantería: se actualiza esa ficha.
               const before = composing.entry ?? into;
               if (!before) return savedThen(saveNew(input), input);
+              // En la bóveda: se vuelve a cifrar y no se le enseña nada a las fichas.
+              if (composing.entry && isVaulted(composing.entry)) {
+                const entry = composing.entry;
+                return diaryVault.saveEdit(entry, input).then((ok) => {
+                  if (ok) notify("Cambios guardados en la bóveda.");
+                  return ok ? entry.id : null;
+                });
+              }
               if (!composing.entry) input = mergeIntoShelfBook(before, input);
+              // El formulario solo conoce los detalles del tipo: se conserva dónde está la entrada.
+              else if (before.kind === "Nota") {
+                const { folder, archived } = before.details;
+                input = {
+                  ...input,
+                  details: {
+                    ...input.details,
+                    ...(folder && { folder }),
+                    ...(archived && { archived }),
+                  },
+                };
+              }
               return savedThen(
                 data.updateEntry(before, input),
                 input,

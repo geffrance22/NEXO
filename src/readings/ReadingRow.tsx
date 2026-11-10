@@ -103,7 +103,11 @@ export const ReadingRow = memo(function ReadingRow({
       </button>
       <button
         className={
-          "read-row" + (current ? " current" : "") + (done ? " read" : "")
+          "read-row" +
+          (current ? " current" : "") +
+          (done ? " read" : "") +
+          // Sin la migración `opened_at` no viene: la tarjeta se ve como siempre.
+          (a.opened_at === null ? " unopened" : a.opened_at ? " opened" : "")
         }
         aria-pressed={selecting ? picked : undefined}
         onMouseDown={(e) => e.shiftKey && e.preventDefault()}

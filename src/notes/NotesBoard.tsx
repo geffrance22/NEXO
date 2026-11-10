@@ -204,7 +204,10 @@ export function NotesBoard({
   // (siguientes tandas) cuentan como vecinas, para no saltar por encima de ellas.
   const byId = useMemo(() => new Map(all.map((n) => [n.id, n])), [all]);
   const groups = useRef<Record<string, string[]>>({});
-  groups.current = { pinned: pinned.map((n) => n.id), others: others.map((n) => n.id) };
+  groups.current = {
+    pinned: pinned.map((n) => n.id),
+    others: others.map((n) => n.id),
+  };
   const { drag, start } = useDragSort((group, dropped, moved) => {
     const inView = new Set(dropped);
     const order = [...dropped, ...(groups.current[group] ?? []).filter((id) => !inView.has(id))];
@@ -247,7 +250,7 @@ export function NotesBoard({
       title: '¿Restablecer la bóveda?',
       message: `Sin el PIN no se pueden abrir sus notas. Se eliminarán ${
         sealedCount === 1 ? 'la nota' : `las ${sealedCount} notas`
-      } de la bóveda y podrás crear un PIN nuevo. Esta acción es permanente.`,
+      } de la bóveda (y las entradas del diario que guardaste en ella) y podrás crear un PIN nuevo. Esta acción es permanente.`,
       confirmLabel: 'Eliminar y restablecer',
       danger: true,
       icon: 'warning',

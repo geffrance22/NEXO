@@ -20,6 +20,7 @@ import {
   type TieNature,
   type StoredImage,
   type Workspace,
+  type EntryPatch,
 } from '../data';
 import type { ConfirmFn } from '../components/ConfirmDialog';
 import { errorMessage, todayInputValue } from '../lib/format';
@@ -88,6 +89,15 @@ const MERGE_HINT =
   'Para unir personas ejecuta la migración 202611080002_merge_people.sql en el SQL Editor de Supabase.';
 const MIGRATION_HINT =
   'Falta ejecutar la migración 202611060004_images_details.sql en el SQL Editor de Supabase.';
+const UNTITLED_HINT =
+  'Para guardar entradas sin título ejecuta la migración 202611100001_untitled_entries.sql en el SQL Editor de Supabase.';
+/** La base aún exige título (falta la migración de entradas sin título). */
+const isTitleRequired = (e: unknown) => /entries_title_check/.test(errorMessage(e));
+const saveError = (e: unknown) =>
+  isMissingColumn(e) ? MIGRATION_HINT : isTitleRequired(e) ? UNTITLED_HINT : errorMessage(e);
+/** Una entrada del diario (Nota) puede quedar sin título; los demás tipos usan el suyo. */
+const titleOf = (input: EntryInput) =>
+  input.title.trim().slice(0, 180) || (input.kind === 'Nota' ? '' : input.kind);
 
 /** ¿El error indica que la tabla no tiene las columnas `images` o `details`? */
 function isMissingColumn(e: unknown) {
@@ -381,8 +391,8 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
         for (const e of ready) announcedCapsules.current.add(e.id);
         notify(
           ready.length === 1
-            ? 'Una cápsula del tiempo ya se puede abrir: está en tu diario.'
-            : `${ready.length} cápsulas del tiempo ya se pueden abrir: están en tu diario.`,
+            ? 'Una cápsula del tiempo ya se puede abrir: la tienes en Hoy y en tu diario.'
+            : `${ready.length} cápsulas del tiempo ya se pueden abrir: las tienes en Hoy y en tu diario.`,
         );
       }
       setWorkspace({
@@ -429,7 +439,7 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
         if (input.file) uploaded = await uploadAttachment(user.id, input.file);
         const entry: Entry = {
           id: crypto.randomUUID(),
-          title: input.title.trim().slice(0, 180) || input.kind,
+          title: titleOf(input),
           body: input.body.trim(),
           kind: input.kind,
           tags: input.tags,
@@ -458,7 +468,7 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
         return saved;
       } catch (e) {
         if (uploaded) await removeAttachment(uploaded);
-        notify(isMissingColumn(e) ? MIGRATION_HINT : errorMessage(e));
+        notify(saveError(e));
         return null;
       }
     },
@@ -479,7 +489,7 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
       for (let i = 0; i < inputs.length; i += 100) {
         const rows: Entry[] = inputs.slice(i, i + 100).map((input) => ({
           id: crypto.randomUUID(),
-          title: input.title.trim().slice(0, 180) || input.kind,
+          title: titleOf(input),
           body: input.body.trim(),
           kind: input.kind,
           tags: input.tags,
@@ -498,7 +508,7 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
           })),
         );
         if (error) {
-          notify(isMissingColumn(error) ? MIGRATION_HINT : errorMessage(error));
+          notify(saveError(error));
           return null;
         }
         const now = new Date().toISOString();
@@ -705,7 +715,7 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
         return true;
       } catch (e) {
         if (uploaded) await removeAttachment(uploaded);
-        notify(isMissingColumn(e) ? MIGRATION_HINT : errorMessage(e));
+        notify(saveError(e));
         return false;
       }
     },
@@ -714,10 +724,7 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
 
   /** Cambia solo los detalles o el estado de un recuerdo (posponer, marcar seguimiento…). */
   const patchEntry = useCallback(
-    async (
-      entry: Entry,
-      changes: Partial<Pick<Entry, 'details' | 'status' | 'person_ids' | 'body' | 'title'>>,
-    ) => {
+    async (entry: Entry, changes: EntryPatch) => {
       const next = { ...entry, ...changes };
       setWorkspace((w) => ({
         ...w,
@@ -733,7 +740,7 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
           ...w,
           entries: w.entries.map((x) => (x.id === entry.id ? entry : x)),
         }));
-        notify(error ? errorMessage(error) : 'No se encontró el recuerdo. Recarga la página.');
+        notify(error ? saveError(error) : 'No se encontró el recuerdo. Recarga la página.');
         return false;
       }
       return true;

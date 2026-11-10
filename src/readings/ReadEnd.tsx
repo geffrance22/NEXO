@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, CheckCheck, X } from "lucide-react";
+import { Brain, Check, CheckCheck, X } from "lucide-react";
 
 const when = (iso: string) => {
   const days = Math.floor((Date.now() - Date.parse(iso)) / 86400000);
@@ -20,10 +20,13 @@ export function ReadEnd({
   readAt,
   onToggle,
   onReachEnd,
+  onLearn,
 }: {
   readAt?: string | null;
   onToggle: (done: boolean) => void;
   onReachEnd?: () => void;
+  /** Anotar lo que aprendiste (va a Aprendizajes). */
+  onLearn?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const done = Boolean(readAt);
@@ -93,23 +96,44 @@ export function ReadEnd({
         </span>
         {done && readAt && <small>{when(readAt)}</small>}
       </button>
+      {onLearn && (
+        <button
+          type="button"
+          className="rd-end-learn"
+          title="Anotar lo que aprendí y enviarlo a Aprendizajes"
+          onClick={onLearn}
+        >
+          <span className="rd-end-icon" aria-hidden="true">
+            <Brain size={28} strokeWidth={1.9} />
+          </span>
+          <span className="rd-end-label">Lo que aprendí</span>
+        </button>
+      )}
     </div>
   );
 }
 
 /**
- * Sugerencia flotante al terminar un artículo: «Mover a leídos» con un chulito o una X. Va fija
- * en la parte inferior del lector (no se desplaza con el texto).
+ * Sugerencia flotante al terminar un artículo: «Mover a leídos» con un chulito o una X, y un
+ * cerebro para anotar lo que aprendiste. Al responder se van el chulito y la X; el cerebro se
+ * queda hasta que cambias de artículo (o pulsas Esc). Va fija en la parte inferior del lector.
  */
 export function FinishPrompt({
+  asking,
   onYes,
   onNo,
+  onLearn,
+  onClose,
 }: {
+  /** Aún pregunta si moverlo a leídos (no está leído ni lo descartaste). */
+  asking: boolean;
   onYes: () => void;
   onNo: () => void;
+  onLearn: () => void;
+  onClose: () => void;
 }) {
-  const live = useRef({ onYes, onNo });
-  live.current = { onYes, onNo };
+  const live = useRef({ asking, onYes, onNo, onClose });
+  live.current = { asking, onYes, onNo, onClose };
   // Enter acepta y Esc descarta, si no estás escribiendo en otra parte.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -128,8 +152,9 @@ export function FinishPrompt({
       )
         return;
       if (window.getSelection()?.isCollapsed === false) return;
-      if (e.key === "Escape") live.current.onNo();
-      else if (e.key === "Enter") live.current.onYes();
+      const { asking, onYes, onNo, onClose } = live.current;
+      if (e.key === "Escape") (asking ? onNo : onClose)();
+      else if (e.key === "Enter" && asking) onYes();
       else return;
       e.preventDefault();
       e.stopPropagation();
@@ -143,27 +168,46 @@ export function FinishPrompt({
       role="dialog"
       aria-label="Terminaste el artículo"
     >
-      <div className="rd-finish-pill">
-        <CheckCheck size={15} className="rd-finish-ico" aria-hidden="true" />
-        <span>Mover a leídos</span>
+      <div className={"rd-finish-pill" + (asking ? "" : " learn-only")}>
         <button
           type="button"
-          className="yes"
-          title="Mover a leídos (Enter)"
-          aria-label="Sí, mover a leídos"
-          onClick={onYes}
+          className="learn"
+          title="Anotar lo que aprendí y enviarlo a Aprendizajes"
+          aria-label="Anotar lo que aprendí"
+          onClick={onLearn}
         >
-          <Check size={15} strokeWidth={2.6} />
+          <Brain size={19} strokeWidth={1.9} />
+          {!asking && <span>Lo que aprendí</span>}
         </button>
-        <button
-          type="button"
-          className="no"
-          title="Ahora no (Esc)"
-          aria-label="Ahora no"
-          onClick={onNo}
-        >
-          <X size={15} strokeWidth={2.4} />
-        </button>
+        {asking && (
+          <>
+            <i className="rd-finish-sep" aria-hidden="true" />
+            <CheckCheck
+              size={15}
+              className="rd-finish-ico"
+              aria-hidden="true"
+            />
+            <span>Mover a leídos</span>
+            <button
+              type="button"
+              className="yes"
+              title="Mover a leídos (Enter)"
+              aria-label="Sí, mover a leídos"
+              onClick={onYes}
+            >
+              <Check size={15} strokeWidth={2.6} />
+            </button>
+            <button
+              type="button"
+              className="no"
+              title="Ahora no (Esc)"
+              aria-label="Ahora no"
+              onClick={onNo}
+            >
+              <X size={15} strokeWidth={2.4} />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

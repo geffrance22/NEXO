@@ -3978,3 +3978,270 @@
   border-color: #72aeb6;
   background: var(--rd-tint);
 }
+
+/* ── Encabezado: la colección no ocupa toda la fila; a su lado, el botón de RSS ── */
+.rd-side-head .rd-view {
+  flex: 0 1 158px;
+  /* Los botones van al extremo derecho de la fila. */
+  margin-right: auto;
+}
+.readings .rd-side-head .rd-rss-btn {
+  color: #c4682a;
+}
+.readings .rd-side-head .rd-rss-btn:hover,
+.readings .rd-side-head .rd-rss-btn[aria-pressed='true'] {
+  background: color-mix(in srgb, #e07b39 12%, transparent);
+}
+
+/* ── Lista: lo que nunca abriste va en negrita; lo ya abierto, apenas atenuado ── */
+.readings .read-row.unopened strong {
+  font-weight: 750;
+}
+.readings .read-row.opened strong {
+  font-weight: 560;
+}
+.readings .read-row.opened:not(.read):not(.current) {
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+.readings .rd-row:hover .read-row.opened,
+.readings .read-row.opened:focus-visible {
+  opacity: 1;
+}
+
+/* ── Cerebro: «Lo que aprendí», sin recuadro ── */
+.readings .rd-finish-pill .learn {
+  display: inline-flex;
+  gap: 7px;
+  width: auto;
+  min-width: 32px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: none;
+  color: #cfe9d6;
+  font: inherit;
+  transition:
+    color 0.15s,
+    transform 0.15s,
+    filter 0.15s;
+}
+.readings .rd-finish-pill .learn:hover {
+  color: #fff;
+  filter: drop-shadow(0 0 6px rgba(160, 230, 185, 0.55));
+}
+.readings .rd-finish-pill .learn svg {
+  flex: none;
+}
+.rd-finish-pill.learn-only {
+  padding: 0 16px 0 12px;
+}
+.readings .rd-finish-pill.learn-only .learn span {
+  color: #fff;
+}
+.rd-finish-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Al final del artículo, junto a «Completado». */
+.rd-end {
+  gap: 28px;
+}
+.readings .rd-end .rd-end-learn,
+.readings .rd-end.done .rd-end-learn {
+  color: color-mix(in srgb, currentColor 42%, transparent);
+}
+.readings .rd-end .rd-end-learn:hover,
+.readings .rd-end.done .rd-end-learn:hover {
+  color: #7a5bb5;
+}
+.rd-end-learn .rd-end-icon svg {
+  transition: transform 0.2s;
+}
+.rd-end-learn:hover .rd-end-icon svg {
+  transform: scale(1.08) rotate(-4deg);
+}
+
+/* ── Diálogos: botón principal ── */
+.reader-dialog .rd-dlg-btn.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #355d51;
+  box-shadow:
+    0 1px 2px rgba(20, 50, 40, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.reader-dialog .rd-dlg-btn.primary:hover:not(:disabled) {
+  background: #2a4c41;
+}
+.reader-dialog .rd-dlg-btn.primary:disabled {
+  opacity: 0.45;
+  box-shadow: none;
+  cursor: default;
+}
+.reader-dialog .rd-dlg-btn.ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* ── Lo que aprendí ── */
+.reader-dialog.rd-learn {
+  width: min(480px, calc(100vw - 24px));
+}
+.rd-learn-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rd-learn-from {
+  margin: 0;
+  overflow: hidden;
+  color: #6b7566;
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.reader-dialog .rd-learn-form textarea {
+  min-height: 120px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.rd-learn-form small,
+.rd-feeds-hint {
+  color: #7d8678;
+  font-size: 12px;
+}
+.rd-learn-form .rd-dlg-foot {
+  margin-top: 10px;
+}
+
+/* ── Newsletters (RSS) ── */
+.reader-dialog.rd-feeds {
+  width: min(500px, calc(100vw - 24px));
+}
+.rd-feeds-add {
+  display: flex;
+  gap: 8px;
+}
+.reader-dialog .rd-feeds-add input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+}
+.rd-feeds-hint {
+  display: block;
+  margin: 8px 0 14px;
+}
+.rd-feeds-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  color: #7d8678;
+  font-size: 13px;
+}
+.rd-feeds-count {
+  margin: 0 0 4px;
+  color: #7d8678;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.rd-feeds-list {
+  display: flex;
+  flex-direction: column;
+  max-height: min(340px, 50vh);
+  margin: 0;
+  padding: 0 4px 0 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(30, 45, 25, 0.18) transparent;
+}
+.rd-feeds-list::-webkit-scrollbar {
+  width: 6px;
+}
+.rd-feeds-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.rd-feeds-list::-webkit-scrollbar-thumb {
+  border-radius: 10px;
+  background: rgba(30, 45, 25, 0.18);
+}
+.rd-feeds-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(30, 45, 25, 0.32);
+}
+.rd-feeds-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 4px;
+  border-bottom: 1px solid #eef1eb;
+}
+.rd-feeds-list li:last-child {
+  border-bottom: 0;
+}
+.rd-feeds-ico {
+  flex: none;
+  color: #c4682a;
+}
+.rd-feeds-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.rd-feeds-text strong,
+.rd-feeds-text small {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rd-feeds-text strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.rd-feeds-text small {
+  color: #7d8678;
+  font-size: 12px;
+}
+.reader-dialog .rd-feeds-act {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 9px;
+  color: #8a9384;
+  opacity: 0.7;
+}
+.reader-dialog .rd-feeds-act:hover:not(:disabled) {
+  background: color-mix(in srgb, #e07b39 12%, transparent);
+  color: #c4682a;
+  opacity: 1;
+}
+.reader-dialog .rd-feeds-act:disabled {
+  opacity: 0.35;
+}
+.reader-dialog .rd-feeds-act:has(.spin) {
+  color: #c4682a;
+  opacity: 1;
+}
+.reader-dialog .rd-feeds-del:hover:not(:disabled) {
+  background: #fbeeee;
+  color: #b8412f;
+  opacity: 1;
+}
+.rd-feeds .rd-dlg-foot {
+  justify-content: flex-start;
+  margin-top: 12px;
+}

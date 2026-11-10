@@ -9,3 +9,6 @@ verify_jwt = false
 
 [functions.image-upload]
 verify_jwt = false
+
+[functions.feed-fetch]
+verify_jwt = false

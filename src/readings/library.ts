@@ -19,6 +19,11 @@ export type Card = {
   pinned_at?: string | null;
   /** Lo marcaste como completado (migración 202611070012). */
   read_at?: string | null;
+  /**
+   * La primera vez que lo abriste (migración 202611100002): vacío si nunca lo abriste; sin la
+   * migración no viene.
+   */
+  opened_at?: string | null;
 };
 type Change = Partial<Card> | ((c: Card) => Partial<Card>);
 
@@ -79,7 +84,10 @@ export function useLibrary(view: string, query: string, revision: number, filter
     if (view === 'marks') return;
     const t = setTimeout(
       async () => {
-        const { data, error } = await supabase.rpc('reading_pinned', { scope: view, needle });
+        const { data, error } = await supabase.rpc('reading_pinned', {
+          scope: view,
+          needle,
+        });
         if (live && !error) setPinned(data as Card[]);
       },
       needle ? 180 : 0,

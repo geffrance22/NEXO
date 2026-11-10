@@ -192,6 +192,8 @@ export type MyProfile = {
   about?: string;
   /** Meta de lectura de cada año: cuántos libros quieres terminar («2026»: 24). */
   readingGoals?: Record<string, number>;
+  /** Carpetas propias del diario (en el orden en que se muestran). */
+  diaryFolders?: DiaryFolder[];
 };
 
 /** Tu ficha guardada y la lectura que hace la IA de todo lo que hay de ti en Nexo. */
@@ -255,9 +257,12 @@ export type EntryDetails = {
    * se copia en `mood` para que todo lo demás (rachas, resúmenes, filtros) siga funcionando.
    */
   feelings?: { mood: number; why?: string }[];
-  /** Dónde estabas al escribir (máximo dos palabras, p. ej. «Laureles, Medellín»). */
+  /**
+   * Desde dónde escribiste (máximo dos palabras, p. ej. «Laureles, Medellín»). Solo informativo:
+   * no es un lugar de Nexo ni cuenta como visita.
+   */
   where?: string;
-  /** Nombre del lugar (se guarda también para mostrarlo si el lugar se borra). */
+  /** Lugar de Nexo vinculado: su nombre (para mostrarlo si el lugar se borra) y su id. */
   place?: string;
   placeId?: string;
   /** Qué hicieron en un encuentro: café, comida, llamada… */
@@ -363,6 +368,12 @@ export type EntryDetails = {
    * película de la que nació un aprendizaje.
    */
   sourceId?: string;
+  /**
+   * Aprendizaje que nació de un artículo de Lecturas: su id (enlaza mientras el artículo exista)
+   * y un resumen muy breve del artículo, que se conserva aunque lo borres.
+   */
+  readingId?: string;
+  readingSummary?: string;
   /** Ritual de cierre de un libro, una película o una serie terminados. */
   ritual?: Ritual;
   /**
@@ -382,6 +393,57 @@ export type EntryDetails = {
    * abriste por primera vez.
    */
   capsule?: TimeCapsule;
+  /**
+   * Entradas del diario: el contexto en que escribiste (hora, luz del día, clima). Se guarda
+   * solo al publicar; sirve para cruzarlo con el ánimo.
+   */
+  ctx?: EntryContext;
+  /** Entradas del diario: cómo dormiste anoche. */
+  sleep?: "poco" | "regular" | "bien";
+  /** Entradas del diario: si hiciste ejercicio ese día. */
+  exercise?: boolean;
+  /** Entradas del diario: id de la carpeta propia en la que la guardaste. */
+  folder?: string;
+  /** Entradas del diario: archivada (sale de la línea de tiempo y queda en «Archivados»). */
+  archived?: boolean;
+  /**
+   * Entradas del diario en la bóveda: todo su contenido va cifrado aquí con el PIN de la bóveda
+   * (`v1.iv.datos`). En la base, título, texto, etiquetas, personas y fotos quedan vacíos.
+   */
+  vault?: string;
+};
+
+/** Una carpeta propia del diario. */
+export type DiaryFolder = { id: string; name: string; color: string };
+
+/** Lo que se puede cambiar de un recuerdo sin pasar por el formulario completo. */
+export type EntryPatch = Partial<
+  Pick<
+    Entry,
+    | "details"
+    | "status"
+    | "person_ids"
+    | "body"
+    | "title"
+    | "tags"
+    | "images"
+    | "created_at"
+  >
+>;
+
+/** Lo que se sabe del momento en que escribiste una entrada del diario. */
+export type EntryContext = {
+  /** Hora local (0–23) en que la escribiste; solo si la escribiste el mismo día. */
+  hour?: number;
+  /** «dia», «noche», «amanecer» o «atardecer», según el sol de donde estabas. */
+  light?: "amanecer" | "dia" | "atardecer" | "noche";
+  /** Código del clima (WMO, Open-Meteo) y temperatura en °C. */
+  weather?: number;
+  temp?: number;
+  /** Horas de luz de ese día (de la salida a la puesta del sol). */
+  daylight?: number;
+  /** ISO: cuándo se tomó. */
+  at: string;
 };
 
 export type TimeCapsule = { opensOn: string; once?: boolean; seenAt?: string };

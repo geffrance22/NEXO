@@ -6,7 +6,6 @@ import {
   Pencil,
   Plus,
   Search,
-  Sparkles,
   Star,
   Trash2,
   Users,
@@ -16,7 +15,6 @@ import type { Place, PlaceKind } from '../data';
 import { normalizeText, shortDate } from '../lib/format';
 import { relativeDay } from '../lib/people';
 import {
-  detectedPlaces,
   placeKindList,
   placeKinds,
   placeSearchText,
@@ -191,7 +189,7 @@ function PlaceDetail({ place }: { place: Place }) {
 }
 
 export function PlacesPage() {
-  const { workspace, selectedPlace, go, openPlace, savePlace } = useApp();
+  const { workspace, selectedPlace, go, openPlace } = useApp();
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<PlaceKind | 'todos'>('todos');
   const rows = useMemo(
@@ -205,7 +203,6 @@ export function PlacesPage() {
         ),
     [workspace],
   );
-  const detected = useMemo(() => detectedPlaces(workspace.entries, workspace.places), [workspace]);
 
   if (selectedPlace) return <PlaceDetail place={selectedPlace} />;
 
@@ -248,35 +245,6 @@ export function PlacesPage() {
             </button>
           ))}
         </nav>
-      )}
-
-      {detected.length > 0 && (
-        <section className="pl-detected">
-          <span>
-            <Sparkles size={14} /> Lugares en tus recuerdos sin ficha
-          </span>
-          <div>
-            {detected.slice(0, 10).map((d) => (
-              <button
-                type="button"
-                key={d.name}
-                onClick={() =>
-                  void savePlace({
-                    name: d.name,
-                    kind: 'otro',
-                    city: '',
-                    address: '',
-                    story: '',
-                    images: [],
-                    favorite: false,
-                  })
-                }
-              >
-                <Plus size={13} /> {d.name} <i>{d.n}</i>
-              </button>
-            ))}
-          </div>
-        </section>
       )}
 
       <div className="pl-grid">

@@ -35,6 +35,7 @@ import { aimBoard } from '../planner/boardView';
 import { dismiss, undismiss, useDismissed } from '../relations/dismissed';
 import { WeeklyAgendaCard } from '../weekly/WeeklyDigest';
 import { ReviewAgendaCard } from './Review';
+import { CapsuleAgendaCard } from './CapsuleCard';
 import './agenda.css';
 
 const looks: Record<AgendaKind, { icon: LucideIcon; color: string; soft: string }> = {
@@ -162,8 +163,9 @@ export function TodayAgenda() {
         </div>
       )}
 
-      {/* Repaso de lecturas y periódico semanal: se muestran solo cuando tocan. */}
+      {/* Cápsulas que llegaron, repaso de lecturas y periódico semanal: solo cuando tocan. */}
       <div className="ag-list ag-extra">
+        <CapsuleAgendaCard />
         <WeeklyAgendaCard />
         <ReviewAgendaCard />
       </div>

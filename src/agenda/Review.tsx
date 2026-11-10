@@ -16,6 +16,7 @@ import {
   Clock,
   Eye,
   Globe,
+  Layers,
   LoaderCircle,
   Sparkles,
   X,
@@ -35,6 +36,7 @@ import {
 import {
   cardFaces,
   fromHighlight,
+  fromFlashcard,
   fromLearning,
   fromQuote,
   fromWord,
@@ -47,6 +49,7 @@ import { dueLearnings } from "../review/learnings";
 import { modeOf, planSession, type Mode } from "../review/links";
 import { dueQuotes } from "../review/quotes";
 import { dueWords, saveWordNote, type DueWord } from "../review/words";
+import { dueFlashcards, type DueFlashcard } from "../review/flashcards";
 
 const SNOOZE = "nexo-review-snooze";
 const look = { color: "#5a49b8", soft: "#eeebfa" };
@@ -66,6 +69,11 @@ export function ReviewAgendaCard() {
     items: [],
     total: 0,
   });
+  // Flashcards de Lecturas (sin la migración 202611100003 no hay).
+  const [flash, setFlash] = useState<{
+    items: DueFlashcard[];
+    total: number;
+  }>({ items: [], total: 0 });
   // Las tarjetas de esta sesión: se fijan al abrir, aunque lo de debajo cambie mientras repasas.
   const [session, setSession] = useState<ReviewCard[] | null>(null);
   const [snoozed, setSnoozed] = useState(
@@ -77,6 +85,9 @@ export function ReviewAgendaCard() {
     void dueReviews().then((r) => setMarks(r ?? { items: [], total: 0 }));
     void dueWords(DAILY_REVIEWS).then((r) =>
       setWords(r ?? { items: [], total: 0 }),
+    );
+    void dueFlashcards(DAILY_REVIEWS).then((r) =>
+      setFlash(r ?? { items: [], total: 0 }),
     );
   }, []);
   useEffect(load, [load]);
@@ -95,15 +106,17 @@ export function ReviewAgendaCard() {
         ? interleave(
             learnings.map(fromLearning),
             marks.items.map(fromHighlight),
+            flash.items.map(fromFlashcard),
             words.items.map(fromWord),
             [...quotes.due, ...quotes.fresh].map(fromQuote),
           ).slice(0, DAILY_REVIEWS)
         : [],
-    [marks, words, quotes, learnings],
+    [marks, words, flash, quotes, learnings],
   );
   const total =
     (marks?.total ?? 0) +
     words.total +
+    flash.total +
     quotes.due.length +
     quotes.fresh.length +
     learnings.length;
@@ -117,8 +130,10 @@ export function ReviewAgendaCard() {
   const articles = cards.some((c) => c.source === "resaltado");
   const learned = cards.some((c) => c.source === "aprendizaje");
   const dictionary = cards.some((c) => c.source === "palabra");
+  const flashcards = cards.some((c) => c.source === "flashcard");
   const sources = [
     articles && "tus lecturas",
+    flashcards && "tus flashcards",
     books && "tus libros",
     learned && "tus aprendizajes",
     dictionary && "tu diccionario",
@@ -288,7 +303,7 @@ function ReviewDialog({
     if (!card) return;
     onClose();
     if (card.source === "resaltado") go("Lecturas", { id: card.from.id });
-    else if (card.source === "palabra")
+    else if (card.source === "palabra" || card.source === "flashcard")
       go("Lecturas", card.from.id ? { id: card.from.id } : null);
     else if (card.source === "aprendizaje")
       viewEntry(card.origin ?? card.entry);
@@ -338,9 +353,10 @@ function ReviewDialog({
                 className="rv-source"
                 title={
                   card.source === "resaltado" ||
-                  (card.source === "palabra" && card.from.id)
+                  ((card.source === "palabra" || card.source === "flashcard") &&
+                    card.from.id)
                     ? "Abrir el artículo"
-                    : card.source === "palabra"
+                    : card.source === "palabra" || card.source === "flashcard"
                       ? "Abrir Lecturas"
                       : card.source === "cita" || card.origin?.kind === "Libro"
                         ? "Abrir el libro"
@@ -352,6 +368,8 @@ function ReviewDialog({
               >
                 {card.source === "palabra" ? (
                   <BookA size={13} />
+                ) : card.source === "flashcard" ? (
+                  <Layers size={13} />
                 ) : (
                   <BookOpen size={13} />
                 )}

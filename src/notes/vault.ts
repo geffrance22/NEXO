@@ -78,6 +78,30 @@ export async function unseal<T>(key: CryptoKey, secret: string): Promise<T> {
 type VaultRow = { salt: string; iterations: number; verifier: string };
 export type VaultStatus = 'loading' | 'missing' | 'none' | 'locked' | 'open';
 
+/** Filtro de las entradas del diario guardadas en la bóveda (su contenido va en `details.vault`). */
+const DIARY_SEALED = 'details->>vault';
+/** Las entradas de la bóveda del diario cambiaron por fuera (PIN nuevo o bóveda restablecida). */
+export const DIARY_VAULT_CHANGED = 'nexo:diary-vault-changed';
+
+/**
+ * Borra la bóveda: sus notas, las entradas del diario guardadas en ella y el PIN (si lo
+ * olvidaste). Después se puede crear un PIN nuevo.
+ */
+export async function resetVault() {
+  const del = await supabase.from('quick_notes').delete().eq('vaulted', true);
+  if (del.error && !missingColumn(del.error)) return false;
+  const entries = await supabase.from('entries').delete().not(DIARY_SEALED, 'is', null);
+  if (entries.error) return false;
+  const { error } = await supabase.from('note_vaults').delete().not('owner_id', 'is', null);
+  if (error) return false;
+  session.row = null;
+  session.key = null;
+  emit();
+  window.dispatchEvent(new Event(NOTES_CHANGED));
+  window.dispatchEvent(new Event(DIARY_VAULT_CHANGED));
+  return true;
+}
+
 // La clave vive solo en memoria (se pierde al recargar) y se comparte entre las vistas.
 const session: {
   row: VaultRow | null | undefined;
@@ -428,6 +452,41 @@ export function useVaultStore(store: NotesStore, key: CryptoKey | null): VaultSt
       }
       done.push({ id: n.id, secret: n.secret });
     }
+    // Las entradas del diario en la bóveda usan la misma clave: también se vuelven a cifrar.
+    const entriesDone: { id: string; details: Record<string, unknown> }[] = [];
+    const undoEntries = async () => {
+      for (const d of entriesDone)
+        await supabase.from('entries').update({ details: d.details }).eq('id', d.id);
+    };
+    const sealedEntries = await supabase
+      .from('entries')
+      .select('id,details')
+      .not(DIARY_SEALED, 'is', null);
+    if (sealedEntries.error) {
+      await undo();
+      return 'No se pudo cambiar el PIN. Tus notas siguen con el PIN anterior.';
+    }
+    for (const row of (sealedEntries.data ?? []) as {
+      id: string;
+      details: Record<string, unknown>;
+    }[]) {
+      const old = row.details?.vault;
+      if (typeof old !== 'string' || !old) continue;
+      let value: unknown;
+      try {
+        value = await unseal<unknown>(oldKey, old);
+      } catch {
+        continue;
+      }
+      const details = { ...row.details, vault: await seal(newKey, value) };
+      const { error } = await supabase.from('entries').update({ details }).eq('id', row.id);
+      if (error) {
+        await undoEntries();
+        await undo();
+        return 'No se pudo cambiar el PIN. Tus notas siguen con el PIN anterior.';
+      }
+      entriesDone.push({ id: row.id, details: row.details });
+    }
     const fresh = {
       salt,
       iterations: ITERATIONS,
@@ -438,6 +497,7 @@ export function useVaultStore(store: NotesStore, key: CryptoKey | null): VaultSt
       .update({ ...fresh, updated_at: new Date().toISOString() })
       .not('owner_id', 'is', null);
     if (error) {
+      await undoEntries();
       await undo();
       return 'No se pudo cambiar el PIN. Tus notas siguen con el PIN anterior.';
     }
@@ -446,19 +506,8 @@ export function useVaultStore(store: NotesStore, key: CryptoKey | null): VaultSt
     session.used = Date.now();
     emit();
     window.dispatchEvent(new Event(NOTES_CHANGED));
+    if (entriesDone.length) window.dispatchEvent(new Event(DIARY_VAULT_CHANGED));
     return null;
-  };
-
-  const reset = async () => {
-    const del = await supabase.from('quick_notes').delete().eq('vaulted', true);
-    if (del.error && !missingColumn(del.error)) return false;
-    const { error } = await supabase.from('note_vaults').delete().not('owner_id', 'is', null);
-    if (error) return false;
-    session.row = null;
-    session.key = null;
-    emit();
-    window.dispatchEvent(new Event(NOTES_CHANGED));
-    return true;
   };
 
   return {
@@ -471,6 +520,6 @@ export function useVaultStore(store: NotesStore, key: CryptoKey | null): VaultSt
     adopt,
     release,
     changePin,
-    reset,
+    reset: resetVault,
   };
 }

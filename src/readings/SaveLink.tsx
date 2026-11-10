@@ -94,7 +94,7 @@ function findLinks(text: string) {
 }
 
 /** Guarda un enlace en Lecturas. Si ya estaba, devuelve el que había. `links`: con hipervínculos. */
-async function store(
+export async function store(
   link: string,
   manual: { title: string; content: string } | null,
   step: (s: Step) => void,

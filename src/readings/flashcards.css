@@ -1,0 +1,185 @@
+/* ════════════════ Flashcards de Lecturas (sobre los estilos del diccionario) ════════════════ */
+.dc.fc {
+  --dc-accent: #5a49b8;
+  --dc-soft: #eeebfa;
+}
+
+/* Selección de artículos */
+.fc-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 10px;
+  font-size: 0.82rem;
+  color: var(--dc-muted);
+}
+.fc-bulk > span {
+  flex: 1;
+  min-width: 0;
+}
+.dc .fc-article {
+  align-items: center;
+}
+.dc .fc-article .dc-check {
+  margin-top: 0;
+  border-radius: 7px;
+}
+.dc .fc-article.on {
+  border-color: color-mix(in srgb, var(--dc-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--dc-accent) 5%, var(--dc-card));
+}
+.dc .fc-article.on .dc-check {
+  border-color: var(--dc-accent);
+  background: var(--dc-accent);
+  color: #fff;
+}
+.fc-title {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font:
+    600 1rem/1.35 Georgia,
+    serif;
+  color: var(--text, CanvasText);
+}
+.dc .dc-main:hover .fc-title {
+  color: var(--dc-accent);
+}
+.dc-meta .fc-has {
+  font-weight: 650;
+  color: var(--dc-accent);
+}
+.fc-error {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #b64d40;
+}
+.fc-status {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  font-size: 0.74rem;
+  color: var(--dc-muted);
+}
+.fc-status i {
+  font-style: normal;
+}
+.fc-ok {
+  color: var(--dc-done);
+}
+
+/* Tarjetas agrupadas por artículo */
+.fc-groups {
+  display: grid;
+  gap: 22px;
+}
+.fc-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+.fc-group h3 > button,
+.fc-group h3 > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fc-group h3 > button:hover {
+  color: var(--dc-accent);
+}
+.fc-group h3 > .fc-fold {
+  flex: none;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: -4px;
+  border-radius: 6px;
+  color: var(--dc-muted, inherit);
+  cursor: pointer;
+}
+.fc-group h3 > .fc-fold:hover:not(:disabled) {
+  background: var(--dc-soft);
+}
+.fc-group h3 > .fc-fold:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.fc-fold svg {
+  transition: transform 0.18s;
+}
+.fc-group.shut .fc-fold svg {
+  transform: rotate(-90deg);
+}
+.fc-group.shut h3 {
+  margin-bottom: 0;
+}
+.fc-group h3 small {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--dc-soft);
+  font-size: 0.72rem;
+  color: var(--dc-accent);
+}
+.fc-faces {
+  display: grid;
+  flex: 1;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.fc-faces:hover strong {
+  color: var(--dc-accent);
+}
+.fc-faces:focus-visible {
+  border-radius: 6px;
+  outline: 2px solid var(--dc-accent);
+  outline-offset: 4px;
+}
+.fc-group h3 > .fc-play {
+  flex: none;
+  gap: 4px;
+  margin-left: auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--dc-soft);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--dc-accent);
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.fc-group h3 > .fc-play:hover {
+  background: var(--dc-accent);
+  color: #fff;
+}
+.fc-faces strong {
+  font:
+    600 1rem/1.4 Georgia,
+    serif;
+}
+.fc-faces p {
+  margin: 0;
+  padding-left: 9px;
+  border-left: 2px solid color-mix(in srgb, var(--dc-accent) 45%, transparent);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.fc-card.off {
+  opacity: 0.6;
+}

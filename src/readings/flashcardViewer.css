@@ -1,0 +1,315 @@
+/* ════════════════ Modo estudio de las flashcards (ventana translúcida) ════════════════ */
+.fcv {
+  --fcv-accent: #5a49b8;
+  --fcv-ink: #fff;
+  --fcv-glass: rgba(255, 255, 255, 0.1);
+  --fcv-glass-line: rgba(255, 255, 255, 0.22);
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgba(20, 16, 40, 0.55);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  color: var(--fcv-ink);
+  animation: fcv-fade 0.22s ease-out;
+}
+/* Modo oscuro: la página se invierte entera; se guardan los complementarios. */
+html[data-theme="dark"] .fcv {
+  --fcv-ink: #000;
+  --fcv-glass: rgba(0, 0, 0, 0.08);
+  --fcv-glass-line: rgba(0, 0, 0, 0.2);
+  background: rgba(235, 239, 215, 0.55);
+}
+
+.fcv-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(720px, 100%);
+  height: min(620px, 100%);
+  padding: 14px 16px 16px;
+  border: 1px solid var(--fcv-glass-line);
+  border-radius: 28px;
+  background: var(--fcv-glass);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.3);
+  animation: fcv-rise 0.32s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+
+/* Cabecera: artículo de origen y acciones */
+.fcv-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.fcv-source {
+  flex: 1;
+  min-width: 0;
+  padding-left: 6px;
+  overflow: hidden;
+  font:
+    600 0.95rem/1.3 Georgia,
+    serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.92;
+}
+.fcv-icon,
+.fcv-nav {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--fcv-ink);
+  transition:
+    background 0.15s,
+    opacity 0.15s,
+    transform 0.15s;
+}
+.fcv-icon {
+  width: 36px;
+  height: 36px;
+  opacity: 0.8;
+}
+.fcv-icon:hover:not(:disabled),
+.fcv-icon.on {
+  background: var(--fcv-glass-line);
+  opacity: 1;
+}
+.fcv-icon:disabled,
+.fcv-nav:disabled {
+  cursor: default;
+  opacity: 0.3;
+}
+.fcv-icon:focus-visible,
+.fcv-nav:focus-visible {
+  outline: 2px solid var(--fcv-ink);
+  outline-offset: 2px;
+}
+
+.fcv-progress {
+  flex: none;
+  height: 3px;
+  margin: 0 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--fcv-glass-line);
+}
+.fcv-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--fcv-ink);
+  transition: width 0.35s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+
+/* La tarjeta: ocupa el espacio que queda y gira en 3D */
+.fcv-stage {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  perspective: 1600px;
+}
+.fcv-slot {
+  min-height: 0;
+}
+.fcv-slot.in-next {
+  animation: fcv-in-next 0.34s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.fcv-slot.in-prev {
+  animation: fcv-in-prev 0.34s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.fcv-card {
+  height: 100%;
+  border-radius: 22px;
+  outline: none;
+  cursor: pointer;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.fcv-card:focus-visible {
+  box-shadow: 0 0 0 3px var(--fcv-ink);
+}
+.fcv-inner {
+  position: relative;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.3, 1.25, 0.4, 1);
+}
+.fcv-card.flipped .fcv-inner {
+  transform: rotateY(180deg);
+}
+.fcv-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 30px 30px;
+  overflow: hidden;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 18px 50px rgba(15, 10, 40, 0.28);
+  color: #24203a;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  transition: box-shadow 0.2s;
+}
+.fcv-card:hover .fcv-face {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 24px 60px rgba(15, 10, 40, 0.34);
+}
+.fcv-face.back {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(90, 73, 184, 0.14), transparent 55%),
+    rgba(246, 244, 255, 0.96);
+  transform: rotateY(180deg);
+}
+.fcv-label {
+  flex: none;
+  align-self: center;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: rgba(90, 73, 184, 0.1);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fcv-accent);
+}
+.back .fcv-label {
+  background: var(--fcv-accent);
+  color: #fff;
+}
+.fcv-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+/* margin auto: centrado vertical sin cortar el principio si el texto es largo */
+.fcv-text p {
+  margin: auto 0;
+  overflow-wrap: anywhere;
+  text-align: center;
+  text-wrap: pretty;
+  white-space: pre-wrap;
+}
+.front .fcv-text p {
+  font-family: Georgia, serif;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.back .fcv-text p {
+  line-height: 1.55;
+}
+
+/* Pie: flechas y contador */
+.fcv-foot {
+  display: grid;
+  flex: none;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+.fcv-nav {
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--fcv-glass-line);
+  background: var(--fcv-glass);
+}
+.fcv-nav:hover:not(:disabled) {
+  background: var(--fcv-glass-line);
+  transform: scale(1.06);
+}
+.fcv-nav:active:not(:disabled) {
+  transform: scale(0.95);
+}
+.fcv-mid {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.fcv-count {
+  font-size: 1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.fcv-count i {
+  font-style: normal;
+  opacity: 0.55;
+}
+.fcv-hint {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+@keyframes fcv-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes fcv-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+}
+@keyframes fcv-in-next {
+  from {
+    opacity: 0;
+    transform: translateX(56px) rotate(1.5deg);
+  }
+}
+@keyframes fcv-in-prev {
+  from {
+    opacity: 0;
+    transform: translateX(-56px) rotate(-1.5deg);
+  }
+}
+
+@media (max-width: 600px) {
+  .fcv-panel {
+    gap: 10px;
+    padding: 10px 10px 12px;
+    border-radius: 22px;
+  }
+  .fcv-face {
+    padding: 18px 18px 22px;
+    border-radius: 18px;
+  }
+  .fcv-nav {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fcv,
+  .fcv-panel,
+  .fcv-slot.in-next,
+  .fcv-slot.in-prev {
+    animation: none;
+  }
+  .fcv-inner,
+  .fcv-progress span {
+    transition: none;
+  }
+}

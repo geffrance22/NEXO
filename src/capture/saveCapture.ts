@@ -295,8 +295,10 @@ export async function saveCapture(
   if (enc) {
     const details: EntryDetails = {};
     if (enc.activity) details.activity = enc.activity;
-    if (placeName) details.place = placeName;
-    if (encPlace.id) details.placeId = encPlace.id;
+    if (encPlace.id) {
+      details.placeId = encPlace.id;
+      if (placeName) details.place = placeName;
+    }
     if (mood) details.mood = mood;
     origin = keep(
       await app.createEntry(
@@ -635,9 +637,10 @@ export async function saveCapture(
       }
       case "visita": {
         const details: EntryDetails = {};
-        if (visitPlace.name || p.placeName)
+        if (visitPlace.id) {
+          details.placeId = visitPlace.id;
           details.place = visitPlace.name || p.placeName;
-        if (visitPlace.id) details.placeId = visitPlace.id;
+        }
         if (mood) details.mood = mood;
         keep(
           await app.createEntry(

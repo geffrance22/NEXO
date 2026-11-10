@@ -67,7 +67,7 @@ export function entryFacts(
   const feelings = feelingsOf(d)
     .map((f) => ({ mood: moodOf(f.mood), why: f.why }))
     .filter((f) => f.mood);
-  const place = d.place ? (placeOf(e, ws.places)?.name ?? d.place) : "";
+  const place = d.placeId ? (placeOf(e, ws.places)?.name ?? d.place ?? "") : "";
 
   switch (e.kind) {
     case "Encuentro":
@@ -76,7 +76,7 @@ export function entryFacts(
       break;
     case "Nota":
       if (place) out.push({ text: place });
-      if (d.where && d.where !== place) out.push({ text: `📍 ${d.where}` });
+      if (d.where) out.push({ text: `Escrito desde ${d.where}` });
       break;
     case "Película":
       if (d.watch === "quiero") out.push({ text: "Por ver" });

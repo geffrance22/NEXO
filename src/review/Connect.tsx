@@ -120,7 +120,9 @@ export function Connect({
                 ? "aprendizaje propio (lo que se llevó de un libro o una película)"
                 : card.source === "palabra"
                   ? `palabra o concepto de su diccionario: «${card.word.term}»`
-                  : "resaltado de un artículo",
+                  : card.source === "flashcard"
+                    ? `flashcard de un artículo. Pregunta: «${card.card.front}». Respuesta: «${card.card.back}»`
+                    : "resaltado de un artículo",
         },
         link: primary
           ? {

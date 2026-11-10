@@ -270,6 +270,26 @@
   color: var(--dy-accent);
   transform: translate(2px, -2px);
 }
+/* «Mapa de ánimo», junto al año: solo el último botón redondea la esquina. */
+.dy-year-btn:not(:last-child) {
+  border-bottom-right-radius: 0;
+}
+.dy-mood-ic {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--dy-accent);
+  box-shadow:
+    0 0 0 1px #f0ebe0,
+    0 4px 10px -6px rgba(80, 60, 20, 0.3);
+  transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.dy-mood-btn:hover .dy-mood-ic {
+  transform: translateY(-1px) scale(1.04);
+}
 
 /* ───────── Encabezado de las entradas ───────── */
 .dy-list-head {
@@ -277,8 +297,9 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px 16px;
-  margin-top: 8px;
+  gap: 6px 12px;
+  /* Pegado a la barra de carpetas: sin título, no necesita aire propio. */
+  margin-top: -8px;
   scroll-margin-top: calc(var(--topbar-h, 0px) + 60px);
 }
 .dy-list-head h3 {
@@ -295,8 +316,222 @@
   letter-spacing: 0;
   color: var(--dy-faint);
 }
-.dy-list-head .dy-toolbar {
+/* Filtros a la izquierda y herramientas a la derecha, en la misma fila. */
+.dy-list-head > .dy-toolbar {
+  order: -1;
+  flex: 1 1 auto;
+  min-width: 0;
   margin-top: 0;
+}
+.dy-list-head:empty {
+  display: none;
+}
+.dy-list-head > .dy-tools {
+  margin-left: auto;
+}
+.dy-seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.dy-tagseg button span {
+  max-width: 140px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dy-toolbar:not(:has(button)) {
+  display: none;
+}
+/* Herramientas de la lista: por etiqueta y PDF. Discretas, a la derecha del título. */
+.dy-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dy-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 220px;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--dy-line);
+  border-radius: 9px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dy-muted) !important;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    box-shadow 0.15s;
+}
+.dy-tool span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dy-tool svg {
+  flex: none;
+}
+.dy-tool:hover,
+.dy-tool[aria-expanded="true"] {
+  border-color: #dccfb5;
+  box-shadow: 0 4px 12px -8px rgba(80, 60, 20, 0.4);
+  color: var(--dy-ink) !important;
+}
+.dy-tool.on {
+  border-color: var(--dy-accent);
+  background: var(--dy-soft);
+  color: var(--dy-accent-ink) !important;
+}
+.dy-export {
+  position: relative;
+}
+.dy-export-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: 240px;
+  padding: 6px;
+  border: 1px solid var(--dy-line);
+  border-radius: 14px;
+  background: rgba(255, 253, 248, 0.97);
+  box-shadow: 0 18px 40px -16px rgba(45, 35, 15, 0.35);
+  backdrop-filter: blur(12px);
+  animation: dy-pop 0.16s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+@keyframes dy-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+.dy-export-menu > small {
+  padding: 6px 10px 4px;
+  font:
+    700 9.5px/1 "Manrope",
+    sans-serif;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--dy-faint);
+}
+.dy-export-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+}
+.dy-export-menu button svg {
+  color: var(--dy-accent);
+}
+.dy-export-menu button span {
+  display: flex;
+  flex: 1;
+  justify-content: space-between;
+}
+.dy-export-menu button i {
+  font-style: normal;
+  color: var(--dy-faint);
+}
+.dy-export-menu button:hover {
+  background: var(--dy-soft);
+}
+.dy-export-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 9px 10px 5px;
+  border-top: 1px solid var(--dy-line);
+  font-size: 12.5px;
+  color: var(--dy-muted);
+  cursor: pointer;
+}
+.dy-export-opt input {
+  accent-color: var(--dy-accent);
+}
+.dy-active {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+/* Barra flotante mientras eliges entradas. */
+.dy-selbar {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 24px);
+  padding: 6px 6px 6px 16px;
+  border-radius: 16px;
+  background: rgba(43, 38, 32, 0.94);
+  box-shadow: 0 18px 40px -12px rgba(30, 22, 10, 0.5);
+  font-size: 13px;
+  color: #f5efe3;
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
+  animation: dy-rise 0.22s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+@keyframes dy-rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+}
+.dy-selbar > span {
+  margin-right: 6px;
+  white-space: nowrap;
+}
+.dy-selbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 11px;
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #f5efe3;
+}
+.dy-selbar .ghost:hover,
+.dy-selbar .x:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.dy-selbar .go {
+  background: #e3b367;
+  color: #2b2620;
+}
+.dy-selbar .go:hover {
+  background: #edc27c;
+}
+.dy-selbar .go:disabled {
+  opacity: 0.5;
+}
+.dy-selbar .x {
+  width: 34px;
+  padding: 0;
+  justify-content: center;
+}
+@media (max-width: 560px) {
+  .dy-selbar .ghost {
+    display: none;
+  }
+  .dy-tool span {
+    display: none;
+  }
 }
 
 /* ───────── Mapa del año (ventana translúcida) ───────── */
@@ -378,18 +613,18 @@
 .dy-seg {
   display: inline-flex;
   max-width: 100%;
-  padding: 3px;
+  padding: 2px;
   overflow-x: auto;
-  border-radius: 10px;
+  border-radius: 9px;
   background: #f5f2ea;
   scrollbar-width: none;
 }
 .dy-seg button {
   flex: none;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 7px;
-  font-size: 12px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--dy-muted) !important;
   transition:
@@ -614,13 +849,13 @@ button.dy-cell:focus-visible {
 .dy-filters button {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 11px;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
   border: 1px solid var(--dy-line);
   border-radius: 999px;
   background: #fff;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--dy-muted) !important;
   transition:
@@ -644,9 +879,9 @@ button.dy-cell:focus-visible {
 }
 .dy-filters button.mood {
   justify-content: center;
-  width: 32px;
+  width: 28px;
   padding: 0;
-  font-size: 15px;
+  font-size: 14px;
 }
 .dy-filters button.mood.on {
   border-color: var(--dy-accent);
@@ -865,71 +1100,206 @@ button.dy-cell:focus-visible {
   color: var(--dy-faint);
 }
 .dy-drafts-list {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
   gap: 10px;
-  padding-bottom: 4px;
-  overflow-x: auto;
-  scroll-snap-type: x proximity;
-  scrollbar-width: thin;
-  scrollbar-color: var(--dy-line) transparent;
 }
-.dy-draft {
-  position: relative;
-  flex: 0 0 min(260px, 78vw);
-  scroll-snap-align: start;
-  border: 1px dashed #dccfb4;
-  border-radius: 16px;
+.dy-drafts-list > * {
+  min-width: 0;
+}
+
+/* Borradores: una lista corta, como hojas sueltas, sin desplazarse de lado. */
+.dy-drafts2 {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--dy-line);
+  border-radius: 18px;
   background:
-    repeating-linear-gradient(
-      180deg,
-      transparent 0 23px,
-      rgba(180, 130, 58, 0.06) 23px 24px
-    ),
-    var(--dy-paper);
-  transition:
-    border-color 0.15s,
-    transform 0.15s,
-    box-shadow 0.15s;
+    linear-gradient(180deg, rgba(246, 236, 216, 0.45), rgba(255, 255, 255, 0) 70px),
+    #fff;
 }
-.dy-draft:hover {
-  border-color: var(--dy-accent);
-  transform: translateY(-1px);
-  box-shadow: 0 8px 20px -14px rgba(80, 60, 20, 0.4);
+.dy-drafts2 > header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px 10px;
 }
-.dy-draft-open {
+.dy-drafts2-ic {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--dy-soft);
+  color: var(--dy-accent-ink);
+}
+.dy-drafts2 > header div {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  width: 100%;
-  padding: 12px 30px 13px 14px;
-  text-align: left;
+  gap: 1px;
+  min-width: 0;
 }
-.dy-draft-open small {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
+.dy-drafts2 > header strong {
+  font: 500 16px/1.25 var(--dy-serif);
+}
+.dy-drafts2 > header small {
+  font-size: 11.5px;
   color: var(--dy-faint);
 }
-.dy-draft-open small .mood-orb:last-of-type {
-  margin-right: 3px;
+.dy-drafts2 ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px 8px;
 }
-.dy-draft-open strong {
+.dy-drafts2 li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-radius: 12px;
+  transition: background 0.15s;
+}
+.dy-drafts2 li + li::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 12px;
+  left: 56px;
+  height: 1px;
+  background: #f2ede3;
+}
+.dy-drafts2 li:hover {
+  background: #fbf7ee;
+}
+.dy-drafts2 li:hover::before,
+.dy-drafts2 li:hover + li::before {
+  opacity: 0;
+}
+.dy-drafts2-open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 6px 10px 10px;
+  text-align: left;
+}
+.dy-drafts2-moods {
+  display: inline-flex;
+  flex: none;
+  justify-content: center;
+  align-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px dashed #dccfb4;
+  border-radius: 10px;
+  background: var(--dy-paper);
+  color: var(--dy-faint);
+}
+.dy-drafts2-moods .mood-orb + .mood-orb {
+  margin-left: -12px;
+  box-shadow: 0 0 0 1.5px var(--dy-paper);
+}
+.dy-drafts2-txt {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.dy-drafts2-txt strong {
   overflow: hidden;
-  font: 500 15.5px/1.3 var(--dy-serif);
-  text-overflow: ellipsis;
+  font: 500 15px/1.3 var(--dy-serif);
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
-.dy-draft-open span {
-  display: -webkit-box;
+.dy-drafts2-txt small {
   overflow: hidden;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--dy-muted);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  font-size: 11.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dy-faint);
 }
+.dy-drafts2-txt em {
+  font-style: normal;
+  color: var(--dy-muted);
+}
+.dy-drafts2-go {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dy-accent-ink);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
+}
+.dy-drafts2 li:hover .dy-drafts2-go,
+.dy-drafts2-open:focus-visible .dy-drafts2-go {
+  opacity: 1;
+  transform: none;
+  background: var(--dy-soft);
+}
+.dy-drafts2-x {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-right: 6px;
+  border-radius: 9px;
+  color: var(--dy-faint) !important;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s;
+}
+.dy-drafts2 li:hover .dy-drafts2-x,
+.dy-drafts2-x:focus-visible {
+  opacity: 1;
+}
+.dy-drafts2-x:hover {
+  background: #f6e3dc;
+  color: #b8412f !important;
+}
+@media (hover: none) {
+  .dy-drafts2-x,
+  .dy-drafts2-go {
+    opacity: 1;
+    transform: none;
+  }
+  .dy-drafts2-go {
+    display: none;
+  }
+}
+.dy-drafts2-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  padding: 9px;
+  border-top: 1px solid #f2ede3;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--dy-muted) !important;
+}
+.dy-drafts2-more:hover {
+  background: #fbf7ee;
+  color: var(--dy-ink) !important;
+}
+.dy-drafts2-more .flip {
+  transform: rotate(180deg);
+}
+/* La «x» de las cápsulas (comparten la cabecera de los antiguos borradores). */
 .dy-draft-x {
   position: absolute;
   top: 8px;
@@ -946,7 +1316,6 @@ button.dy-cell:focus-visible {
     background 0.15s,
     color 0.15s;
 }
-.dy-draft:hover .dy-draft-x,
 .dy-draft-x:focus-visible {
   opacity: 1;
 }
@@ -1037,32 +1406,285 @@ button.dy-cell:focus-visible {
   font-size: 12px;
   color: var(--dy-accent-ink);
 }
-.dy-card-edit {
+.dy-card-acts {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.dy-card-acts button {
   display: grid;
   place-items: center;
   width: 28px;
   height: 28px;
   border-radius: 8px;
   color: var(--dy-faint) !important;
-  opacity: 0;
-  transition:
-    opacity 0.15s,
-    background 0.15s;
+  transition: background 0.15s;
 }
-.dy-card:hover .dy-card-edit,
-.dy-card-edit:focus-visible {
+.dy-card:hover .dy-card-acts,
+.dy-card-acts:focus-within {
   opacity: 1;
 }
-.dy-card-edit:hover {
+.dy-card-acts button:hover {
   background: #f5f1e8;
   color: var(--dy-ink) !important;
 }
 @media (hover: none) {
-  .dy-card-edit {
+  .dy-card-acts {
     opacity: 1;
+  }
+}
+/* Contexto guardado solo: clima, luz, sueño, ejercicio. */
+.dy-card-meta > .dy-card-ctx {
+  gap: 8px;
+  color: var(--dy-faint);
+}
+.dy-card-ctx > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  text-transform: lowercase;
+}
+/* Elegir entradas para el PDF. */
+.dy-card.picking {
+  cursor: pointer;
+}
+.dy-card.picking .dy-card-open {
+  padding-left: 30px;
+}
+.dy-card-check {
+  position: absolute;
+  top: 17px;
+  left: 16px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid #d8cdb6;
+  border-radius: 6px;
+  background: #fff;
+  color: #fff;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.dy-card.picked {
+  border-color: var(--dy-accent);
+  box-shadow: 0 0 0 3px var(--dy-soft);
+}
+.dy-card.picked .dy-card-check {
+  border-color: var(--dy-accent);
+  background: var(--dy-accent);
+}
+.dy-pick-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--dy-accent-ink);
+}
+
+/* ───────── Modos de vista ───────── */
+.dy-layouts button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  padding: 0;
+}
+/* Tarjetas: un mosaico por mes, cada tarjeta con su día. */
+.dy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  align-items: start;
+  gap: 10px;
+  padding-bottom: 8px;
+}
+.dy-grid .dy-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 14px 16px;
+}
+.dy-grid .dy-card-title {
+  font-size: 17px;
+}
+.dy-grid .dy-card-text {
+  font-size: 14px;
+  -webkit-line-clamp: 5;
+}
+.dy-grid .dy-card-len {
+  display: none;
+}
+.dy-grid .dy-card-photos {
+  margin-top: 10px;
+}
+.dy-grid .dy-card-photos button {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+}
+.dy-grid .dy-card-foot {
+  margin-top: auto;
+}
+.dy-grid .dy-card-photos + .dy-card-foot,
+.dy-grid .dy-card-open + .dy-card-foot {
+  margin-top: 10px;
+}
+.dy-card-stamp {
+  font:
+    700 10px/1 "Manrope",
+    sans-serif;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--dy-accent-ink);
+}
+/* Lista compacta: una línea por entrada. */
+.dy-rows {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin-bottom: 8px;
+  border: 1px solid #eeeae0;
+  border-radius: 16px;
+  background: #fff;
+}
+.dy-row {
+  position: relative;
+  -webkit-touch-callout: none;
+  transition: background 0.15s;
+}
+.dy-row + .dy-row {
+  border-top: 1px solid #f2eee5;
+}
+.dy-row:hover {
+  background: #fdfbf6;
+}
+.dy-row.lifted {
+  opacity: 0.45;
+}
+.dy-row-open {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 14px;
+  text-align: left;
+}
+.dy-row-date {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  width: 30px;
+}
+.dy-row-date b {
+  font: 500 19px/1 var(--dy-serif);
+  color: var(--dy-ink);
+}
+.dy-row-date small {
+  margin-top: 2px;
+  font:
+    700 8.5px/1 "Manrope",
+    sans-serif;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--dy-faint);
+}
+.dy-row-date.today b,
+.dy-row-date.today small {
+  color: var(--dy-accent);
+}
+.dy-row-moods {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  color: var(--dy-faint);
+}
+.dy-row-moods .mood-orb + .mood-orb {
+  margin-left: -7px;
+  box-shadow: 0 0 0 1.5px #fff;
+}
+.dy-row-txt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dy-muted);
+}
+.dy-row-txt strong {
+  font: 500 15.5px/1.3 var(--dy-serif);
+  color: var(--dy-ink);
+}
+.dy-row-side {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--dy-faint);
+}
+.dy-row-side > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.dy-row .dy-card-acts {
+  top: 50%;
+  transform: translateY(-50%);
+}
+.dy-row:hover .dy-card-acts,
+.dy-row .dy-card-acts:focus-within {
+  opacity: 1;
+}
+.dy-row.picking {
+  cursor: pointer;
+}
+.dy-row.picking .dy-card-check {
+  position: static;
+  flex: none;
+}
+.dy-row.picked {
+  background: var(--dy-soft);
+}
+.dy-row.picked .dy-card-check {
+  border-color: var(--dy-accent);
+  background: var(--dy-accent);
+}
+@media (hover: hover) {
+  /* Las acciones aparecen sobre el final de la fila; deja de verse lo que tapan. */
+  .dy-row:hover .dy-row-side,
+  .dy-row:focus-within .dy-row-side {
+    visibility: hidden;
+  }
+}
+@media (hover: none) {
+  .dy-row .dy-card-acts {
+    opacity: 1;
+  }
+  .dy-row-side {
+    display: none;
+  }
+  .dy-row-open {
+    padding-right: 104px;
+  }
+}
+@media (max-width: 560px) {
+  .dy-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dy-row-side .dy-row-len {
+    display: none;
   }
 }
 

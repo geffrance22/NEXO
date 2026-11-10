@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import {
   AtSign,
+  BedDouble,
+  Dumbbell,
   Hash,
   LoaderCircle,
   LocateFixed,
@@ -74,6 +76,13 @@ const MOOD_PROMPTS: Record<string, string[]> = {
     "¿Qué te habría gustado decir?",
   ],
 };
+
+/** Cómo dormiste anoche (se cruza con tu ánimo en el mapa del diario). */
+const SLEEP = [
+  ["poco", "Poco"],
+  ["regular", "Regular"],
+  ["bien", "Bien"],
+] as const;
 
 /** Frases cortas para invitar a escribir; cada vez sale una distinta. */
 const PROMPTS = [
@@ -191,6 +200,38 @@ export function NoteView({ c }: ViewProps) {
         <span>¿Cómo te sientes?</span>
         <MoodTrio value={feelings} onChange={setFeelings} />
       </div>
+      <div className="cp-note-body" role="group" aria-label="Tu cuerpo hoy">
+        <BedDouble size={15} aria-hidden="true" />
+        <span>Anoche dormiste</span>
+        <span className="cp-sleep" role="radiogroup" aria-label="Cómo dormiste">
+          {SLEEP.map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={c.details.sleep === id}
+              className={c.details.sleep === id ? "on" : ""}
+              onClick={() =>
+                c.setDetail("sleep", c.details.sleep === id ? undefined : id)
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={c.details.exercise === true}
+          className={"cp-move" + (c.details.exercise ? " on" : "")}
+          onClick={() =>
+            c.setDetail("exercise", c.details.exercise ? undefined : true)
+          }
+        >
+          <Dumbbell size={14} aria-hidden="true" />
+          Hice ejercicio
+        </button>
+      </div>
       <div className="cp-tray">
         <PhotoButton uploads={c.uploads} label="Foto" />
         <button
@@ -206,6 +247,7 @@ export function NoteView({ c }: ViewProps) {
           type="button"
           className={"cp-tray-btn" + (hasPlace ? " on" : "")}
           onClick={links.openPlace}
+          title="Un lugar del que hablas en la entrada"
         >
           <MapPin size={17} />
           Lugar
@@ -264,12 +306,12 @@ export function NoteView({ c }: ViewProps) {
             onChange={c.setDate}
           />
           {c.details.where ? (
-            <span className="cp-where" title="Dónde estabas">
-              <MapPin size={13} />
+            <span className="cp-where" title="Desde dónde escribes esta entrada">
+              <LocateFixed size={13} />
               {c.details.where}
               <button
                 type="button"
-                aria-label="Quitar la ubicación"
+                aria-label="Quitar desde dónde escribes"
                 onClick={() => c.setDetail("where", undefined)}
               >
                 <X size={12} />
@@ -280,8 +322,8 @@ export function NoteView({ c }: ViewProps) {
               type="button"
               className={"cp-where-btn" + (locating ? " busy" : "")}
               onClick={() => void locate()}
-              aria-label="Poner dónde estás"
-              title="Poner dónde estás"
+              aria-label="Poner desde dónde escribes"
+              title="Poner desde dónde escribes (tu ubicación ahora)"
               disabled={locating}
             >
               {locating ? (

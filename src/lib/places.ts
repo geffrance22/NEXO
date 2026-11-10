@@ -33,13 +33,12 @@ export const placeKindList = Object.keys(placeKinds) as PlaceKind[];
 
 const localDay = (iso: string) => todayInputValue(new Date(iso));
 
-/** ¿Este recuerdo pasó en este lugar? Por enlace, o por nombre en los recuerdos antiguos. */
+/**
+ * ¿Este recuerdo pasó en este lugar? Solo cuenta el lugar vinculado (`details.placeId`). La
+ * ubicación desde donde escribiste (`details.where`) es otra cosa y nunca hace una visita.
+ */
 export function isAt(e: Entry, place: Place) {
-  if (e.details.placeId) return e.details.placeId === place.id;
-  return (
-    Boolean(e.details.place) &&
-    normalizeText(e.details.place!.trim()) === normalizeText(place.name.trim())
-  );
+  return e.details.placeId === place.id;
 }
 
 export function placeOf(e: Entry, places: Place[]) {
@@ -82,22 +81,6 @@ export function placeStats(place: Place, entries: Entry[], people: Person[]): Pl
       .sort((a, b) => b.n - a.n),
     mood: moodCount.size ? [...moodCount.entries()].sort((a, b) => b[1] - a[1])[0][0] : null,
   };
-}
-
-/** Lugares escritos a mano en recuerdos que aún no tienen ficha (para guardarlos con un clic). */
-export function detectedPlaces(entries: Entry[], places: Place[]) {
-  const known = new Set(places.map((p) => normalizeText(p.name.trim())));
-  const found = new Map<string, { name: string; n: number }>();
-  for (const e of entries) {
-    const name = e.details.place?.trim();
-    if (!name || e.details.placeId) continue;
-    const key = normalizeText(name);
-    if (known.has(key)) continue;
-    const item = found.get(key);
-    if (item) item.n++;
-    else found.set(key, { name, n: 1 });
-  }
-  return [...found.values()].sort((a, b) => b.n - a.n);
 }
 
 export const placeSearchText = (p: Place) =>

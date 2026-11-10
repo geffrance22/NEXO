@@ -1,5 +1,5 @@
 import { entryImages } from "../lib/moviePosters";
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   BookMarked,
   Brain,
@@ -9,6 +9,7 @@ import {
   GraduationCap,
   Layers,
   MapPin,
+  Newspaper,
   Paperclip,
   Pencil,
   RotateCcw,
@@ -23,6 +24,7 @@ import { isActive } from "../library/progress";
 import { isFinished } from "../ritual/learning";
 import "../ritual/ritual.css";
 import { useApp } from "../AppContext";
+import { supabase } from "../backend";
 import type { Entry } from "../data";
 import { incomeColors, kindMeta, seriesColors } from "../composer/kinds";
 import {
@@ -117,6 +119,25 @@ export function EntryViewer({
     entry.kind === "Aprendizaje" && d.sourceId
       ? workspace.entries.find((e) => e.id === d.sourceId)
       : undefined;
+  // O de un artículo de Lecturas: enlaza solo mientras el artículo siga guardado.
+  const readingId = entry.kind === "Aprendizaje" ? d.readingId : undefined;
+  const [readingAlive, setReadingAlive] = useState(false);
+  useEffect(() => {
+    setReadingAlive(false);
+    if (!readingId) return;
+    let live = true;
+    void supabase
+      .from("readings")
+      .select("id")
+      .eq("id", readingId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (live) setReadingAlive(Boolean(data));
+      });
+    return () => {
+      live = false;
+    };
+  }, [readingId]);
 
   // Si lo anotaste días después de que pasó, se indica.
   const happened = todayInputValue(new Date(entry.created_at));
@@ -129,7 +150,7 @@ export function EntryViewer({
 
   return (
     <Sheet
-      label={entry.title || entry.kind}
+      label={entry.title || (entry.kind === "Nota" ? "Entrada" : entry.kind)}
       className={"ev" + (wide ? " wide" : "")}
       yieldTo=".nx-peek, .sheet.pg, .sheet.cr, .sheet.cz-form-sheet"
       onRequestClose={onClose}
@@ -172,9 +193,13 @@ export function EntryViewer({
               </button>
             )}
             <div className="ev-title">
-              <h2 className={entry.kind === "Pendiente" && done ? "done" : ""}>
-                {entry.title || entry.kind}
-              </h2>
+              {(entry.title || entry.kind !== "Nota") && (
+                <h2
+                  className={entry.kind === "Pendiente" && done ? "done" : ""}
+                >
+                  {entry.title || entry.kind}
+                </h2>
+              )}
               {entry.kind === "Movimiento" && (
                 <strong className={"ev-amount " + entry.direction}>
                   {signedAmount(entry)}
@@ -244,6 +269,11 @@ export function EntryViewer({
           {entry.kind === "Trabajo" && d.nextStep && (
             <p className="ev-note">
               <b>Siguiente paso</b> {d.nextStep}
+            </p>
+          )}
+          {entry.kind === "Aprendizaje" && d.readingSummary && (
+            <p className="ev-note">
+              <b>Resumen del artículo</b> {d.readingSummary}
             </p>
           )}
           {entry.kind === "Aprendizaje" && d.apply && (
@@ -338,9 +368,34 @@ export function EntryViewer({
           {(people.length > 0 ||
             episode ||
             origin ||
+            readingId ||
             entry.tags.length > 0 ||
             entry.file_path) && (
             <div className="ev-links">
+              {readingId && !origin && (
+                <div className="ev-row">
+                  <span className="ev-label">Viene de</span>
+                  {readingAlive ? (
+                    <button
+                      type="button"
+                      className="ev-episode"
+                      title="Abrir el artículo en Lecturas"
+                      onClick={() =>
+                        navigate(() => app.go("Lecturas", { id: readingId }))
+                      }
+                    >
+                      <Newspaper size={13} /> {d.sourceName || "Artículo"}
+                    </button>
+                  ) : (
+                    <span
+                      className="ev-episode ev-gone"
+                      title="El artículo ya no está en Lecturas"
+                    >
+                      <Newspaper size={13} /> {d.sourceName || "Artículo"}
+                    </span>
+                  )}
+                </div>
+              )}
               {origin && (
                 <div className="ev-row">
                   <span className="ev-label">Viene de</span>

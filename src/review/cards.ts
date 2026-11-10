@@ -8,6 +8,7 @@ import {
 import { rateLearning, type DueLearning } from "./learnings";
 import { rateQuote, type DueQuote } from "./quotes";
 import { rateWord, type DueWord } from "./words";
+import { rateFlashcard, type DueFlashcard } from "./flashcards";
 
 /**
  * Una tarjeta del repaso: un resaltado de un artículo (viene de Lecturas), una cita de un libro,
@@ -26,7 +27,17 @@ export type ReviewCard =
   | (Base & { source: "resaltado"; item: ReviewItem })
   | (Base & { source: "cita"; book: Entry; key: string })
   | (Base & { source: "aprendizaje"; entry: Entry; origin?: Entry })
-  | (Base & { source: "palabra"; word: DueWord });
+  | (Base & { source: "palabra"; word: DueWord })
+  | (Base & { source: "flashcard"; card: DueFlashcard });
+
+export const fromFlashcard = (c: DueFlashcard): ReviewCard => ({
+  id: "f:" + c.id,
+  source: "flashcard",
+  step: c.review_step,
+  quote: c.front,
+  from: { id: c.reading_id ?? "", title: c.source || "Tus flashcards" },
+  card: c,
+});
 
 export const fromWord = (w: DueWord): ReviewCard => ({
   id: "w:" + w.id,
@@ -88,6 +99,13 @@ export function interleave<T>(...lists: T[][]) {
  */
 export function cardFaces(card: ReviewCard) {
   if (card.source === "resaltado") return faces(card.item);
+  if (card.source === "flashcard")
+    return {
+      front: card.card.front,
+      kind: "pregunta" as const,
+      back: card.card.back,
+      quote: "",
+    };
   if (card.source === "palabra")
     return {
       front: `¿Qué significa «${card.word.term}»?`,
@@ -120,6 +138,7 @@ export async function rateCard(
 ) {
   if (card.source === "resaltado") return rateReview(card.item, grade);
   if (card.source === "palabra") return rateWord(card.word, grade);
+  if (card.source === "flashcard") return rateFlashcard(card.card, grade);
   if (card.source === "aprendizaje") {
     const entry =
       deps.entries.find((e) => e.id === card.entry.id) ?? card.entry;

@@ -169,7 +169,7 @@ export function Capsules() {
 }
 
 /** La cápsula abierta. La de una sola vez se borra al cerrarla. */
-function CapsuleReader({ entry, onDone }: { entry: Entry; onDone: () => void }) {
+export function CapsuleReader({ entry, onDone }: { entry: Entry; onDone: () => void }) {
   const { burnCapsule, confirm, notify, viewEntry } = useApp();
   const once = Boolean(entry.details.capsule?.once);
   const written = capsuleDay(dayOf(entry));

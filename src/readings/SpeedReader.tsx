@@ -3,9 +3,14 @@ import { supabase } from '../backend';
 import { preview } from './media';
 import { ArrowLeft, RotateCcw, Clock3 } from 'lucide-react';
 
-export async function readingAI(id: string, mode: 'summary' | 'quiz') {
+/** `brief`: resumen de dos o tres frases (para guardarlo con un aprendizaje). */
+export async function readingAI(id: string, mode: 'summary' | 'quiz', brief = false) {
   const { data, error } = await supabase.functions.invoke('assistant', {
-    body: { mode: 'reading-' + mode, articleId: id },
+    body: {
+      mode: 'reading-' + mode,
+      articleId: id,
+      ...(brief && { brief: true }),
+    },
   });
   if (error) {
     const detail = await error.context?.json?.().catch(() => null);

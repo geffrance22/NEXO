@@ -20,6 +20,7 @@ export async function whereAmI(): Promise<string> {
     );
   });
   const { latitude, longitude } = pos.coords;
+  rememberCoords(latitude, longitude);
   const url =
     "https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&accept-language=es" +
     `&lat=${latitude.toFixed(4)}&lon=${longitude.toFixed(4)}`;
@@ -37,8 +38,14 @@ const words = (s: string) => s.trim().split(/\s+/).filter(Boolean);
 export function shortPlace(a: Record<string, string>): string {
   const city =
     a.city || a.town || a.village || a.municipality || a.county || "";
-  const near = a.neighbourhood || a.suburb || a.quarter || a.city_district || "";
-  if (near && city && near !== city && words(near).length + words(city).length <= 2)
+  const near =
+    a.neighbourhood || a.suburb || a.quarter || a.city_district || "";
+  if (
+    near &&
+    city &&
+    near !== city &&
+    words(near).length + words(city).length <= 2
+  )
     return `${near}, ${city}`;
   const pick = city || near || a.state || a.country || "";
   return clampWhere(pick);
@@ -47,3 +54,38 @@ export function shortPlace(a: Record<string, string>): string {
 /** Recorta cualquier texto de ubicación a dos palabras. */
 export const clampWhere = (s: string) =>
   words(s.replace(/,/g, " ")).slice(0, 2).join(" ");
+
+const COORDS_KEY = "nexo:diary-coords";
+
+/**
+ * La última ubicación aproximada (dos decimales, ≈1 km) para pedir el clima sin volver a
+ * preguntar. Solo vive en este navegador.
+ */
+export function rememberCoords(lat: number, lon: number) {
+  try {
+    localStorage.setItem(
+      COORDS_KEY,
+      JSON.stringify({
+        lat: +lat.toFixed(2),
+        lon: +lon.toFixed(2),
+        at: Date.now(),
+      }),
+    );
+  } catch {
+    /* Sin almacenamiento: el clima se pedirá con la ubicación del momento, si hay permiso. */
+  }
+}
+
+export function lastCoords(): { lat: number; lon: number } | null {
+  try {
+    const raw = localStorage.getItem(COORDS_KEY);
+    const v = raw
+      ? (JSON.parse(raw) as { lat?: unknown; lon?: unknown })
+      : null;
+    return v && typeof v.lat === "number" && typeof v.lon === "number"
+      ? { lat: v.lat, lon: v.lon }
+      : null;
+  } catch {
+    return null;
+  }
+}

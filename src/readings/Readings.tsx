@@ -46,9 +46,10 @@ import { useLibrary, type Card } from "./library";
 import { Notebooks } from "./Notebooks";
 import { MarkGroups, useResume } from "./ReadingExtras";
 import { ArticleMarks, toneOf } from "./ArticleMarks";
-import { BookA, Heart, NotebookPen, Pin } from "lucide-react";
+import { BookA, Heart, Layers, NotebookPen, Pin, Rss } from "lucide-react";
 import { ReadingRow, type RowActions } from "./ReadingRow";
 import { Dictionary } from "./Dictionary";
+import { Flashcards } from "./Flashcards";
 import { TimePick } from "./TimePick";
 import { cleanTerm, isTerm, sentenceAround, useWords } from "./words";
 import { FinishPrompt, ReadEnd } from "./ReadEnd";
@@ -56,6 +57,9 @@ import { ReaderSettings, useReaderPrefs } from "./ReaderSettings";
 import { BatchBar } from "./BatchBar";
 import { JUMP_KEY } from "./search";
 import { SpeedReader, readingAI } from "./SpeedReader";
+import { LearnDialog } from "./LearnDialog";
+import { FeedsDialog } from "./FeedsDialog";
+import { syncFeeds } from "./feeds";
 import { toHash } from "../lib/route";
 import "./readings.css";
 
@@ -74,6 +78,7 @@ type Article = {
   media?: Record<string, string>;
   pinned_at?: string | null;
   read_at?: string | null;
+  opened_at?: string | null;
 };
 /** Un artículo recién vuelto a descargar, con los campos de su tarjeta. */
 type Fresh = Article & Partial<Pick<Card, "excerpt" | "cover" | "minutes">>;
@@ -234,7 +239,8 @@ export function Readings({
     [books, showBooks] = useState(false),
     [askOpen, setAskOpen] = useState(false),
     [shareOpen, setShareOpen] = useState(false),
-    [dict, showDict] = useState(false);
+    [dict, showDict] = useState(false),
+    [flash, showFlash] = useState(false);
   const { notify, workspace, confirm } = useApp();
   // Tamaño, fuente, interlineado, ancho y fondo del lector (se recuerdan en el navegador).
   const reader = useReaderPrefs();
@@ -242,6 +248,11 @@ export function Readings({
   // descartaste en esta visita.
   const [offer, setOffer] = useState("");
   const declined = useRef(new Set<string>());
+  // El artículo cuya sugerencia ya respondiste con «Ahora no» (queda solo el cerebro).
+  const [answered, setAnswered] = useState("");
+  // Ventana «Lo que aprendí» (va a Aprendizajes) y la de los feeds RSS.
+  const [learning, setLearning] = useState(false);
+  const [feeds, showFeeds] = useState(false);
   // Tarjetas marcadas para acciones en lote y la última que marcaste (para Mayús + clic).
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const lastPick = useRef("");
@@ -252,6 +263,25 @@ export function Readings({
     const refresh = () => bump((v) => v + 1);
     window.addEventListener("nexo:link-saved", refresh);
     return () => window.removeEventListener("nexo:link-saved", refresh);
+  }, []);
+  // Newsletters: al abrir Lecturas se revisan los feeds (si no se revisaron hace poco). Sin la
+  // migración o la función, no pasa nada.
+  useEffect(() => {
+    let live = true;
+    syncFeeds()
+      .then((n) => {
+        if (!live || !n) return;
+        bump((v) => v + 1);
+        notify(
+          n === 1
+            ? "1 artículo nuevo de tus newsletters en «Por leer»."
+            : `${n} artículos nuevos de tus newsletters en «Por leer».`,
+        );
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
   }, []);
   // Cambios en resaltados: refrescan Anotaciones y los contadores sin recargar la lista.
   const [markRev, bumpMarks] = useState(0);
@@ -364,7 +394,6 @@ export function Readings({
     const rid = article.id;
     const before = article.read_at ?? null;
     const at = done ? new Date().toISOString() : null;
-    if (done) setOffer("");
     setArticle((a) => (a && a.id === rid ? { ...a, read_at: at } : a));
     patchCard(rid, { read_at: at });
     void supabase
@@ -408,6 +437,19 @@ export function Readings({
           setArticle(a.data);
           setFolder(a.data.folder);
           setMarks(m);
+          // Primera vez que lo abres: deja de ir en negrita en la lista (sin la migración, no hay
+          // columna y no se hace nada).
+          if (a.data.opened_at === null) {
+            const at = new Date().toISOString();
+            patchCard(id, { opened_at: at });
+            void supabase
+              .from("readings")
+              .update({ opened_at: at })
+              .eq("id", id)
+              .then(({ error }) => {
+                if (error) patchCard(id, { opened_at: null });
+              });
+          }
           // Un resaltado abierto desde el buscador global: se lleva a él al pintarlo.
           try {
             const jump = JSON.parse(sessionStorage.getItem(JUMP_KEY) ?? "null");
@@ -568,7 +610,8 @@ export function Readings({
     if (error) throw error;
     bump((v) => v + 1);
     setMarks((v) => v.filter((m) => m.reading_id !== id));
-    open(visible.find((a) => a.id !== id));
+    // Tras eliminarlo no se abre otro: el panel queda vacío.
+    open();
   }
   function open(a?: { id: string }) {
     // Al cambiar de artículo (o cerrarlo) se vacía ya: nunca se pinta el anterior en el panel nuevo.
@@ -579,6 +622,7 @@ export function Readings({
     window.getSelection()?.removeAllRanges();
     showBooks(false);
     showDict(false);
+    showFlash(false);
     setSpeed(false);
     setTagOpen(false);
     setTag("");
@@ -586,6 +630,8 @@ export function Readings({
     setDeleting(false);
     setAnnotations(false);
     setOffer("");
+    setAnswered("");
+    setLearning(false);
     setFeedback("");
     select(a?.id ?? "");
     setEditing(null);
@@ -1249,6 +1295,7 @@ export function Readings({
           closeEditor(true);
           select("");
           showBooks(false);
+          showFlash(false);
           showDict(true);
         },
       });
@@ -1382,7 +1429,7 @@ export function Readings({
   return (
     <section
       className="readings"
-      data-open={!!article || books || dict}
+      data-open={!!article || books || dict || flash}
       data-paper={reader.paper}
       data-align={reader.prefs.align}
       style={reader.style}
@@ -1421,12 +1468,22 @@ export function Readings({
               <ChevronDown size={15} aria-hidden="true" />
             </label>
             <button
+              className="rd-rss-btn"
+              title="Newsletters (RSS): añadir y ver tus feeds"
+              aria-label="Newsletters (RSS)"
+              aria-pressed={feeds}
+              onClick={() => showFeeds(true)}
+            >
+              <Rss size={17} />
+            </button>
+            <button
               title="Cuadernos"
               aria-label="Cuadernos"
               aria-pressed={books}
               onClick={() => {
                 select("");
                 showDict(false);
+                showFlash(false);
                 showBooks(true);
               }}
             >
@@ -1444,6 +1501,7 @@ export function Readings({
               onClick={() => {
                 select("");
                 showBooks(false);
+                showFlash(false);
                 showDict(true);
               }}
             >
@@ -1453,6 +1511,20 @@ export function Readings({
                   {pendingWords > 99 ? "99+" : pendingWords}
                 </i>
               )}
+            </button>
+            <button
+              className="rd-flash-btn"
+              title="Flashcards: estudia lo esencial de tus artículos leídos"
+              aria-label="Flashcards"
+              aria-pressed={flash}
+              onClick={() => {
+                select("");
+                showBooks(false);
+                showDict(false);
+                showFlash(true);
+              }}
+            >
+              <Layers size={18} />
             </button>
             <button
               className="rd-add"
@@ -1536,6 +1608,12 @@ export function Readings({
             }}
           />
         )}
+        {feeds && (
+          <FeedsDialog
+            close={() => showFeeds(false)}
+            imported={() => bump((v) => v + 1)}
+          />
+        )}
         {view === "marks" && (
           <MarkGroups
             query={query}
@@ -1589,6 +1667,11 @@ export function Readings({
             api={dictionary}
             open={(id) => open({ id })}
             back={() => showDict(false)}
+          />
+        ) : flash ? (
+          <Flashcards
+            open={(id) => open({ id })}
+            back={() => showFlash(false)}
           />
         ) : article ? (
           <>
@@ -1962,9 +2045,11 @@ export function Readings({
                   onReachEnd={() => {
                     if (!declined.current.has(article.id)) setOffer(article.id);
                   }}
+                  onLearn={() => setLearning(true)}
                 />
-                {offer === article.id && !article.read_at && (
+                {offer === article.id && (
                   <FinishPrompt
+                    asking={!article.read_at && answered !== article.id}
                     onYes={() => {
                       markRead(true);
                       notify("Movido a Leídos.", {
@@ -1975,8 +2060,16 @@ export function Readings({
                     }}
                     onNo={() => {
                       declined.current.add(article.id);
-                      setOffer("");
+                      setAnswered(article.id);
                     }}
+                    onLearn={() => setLearning(true)}
+                    onClose={() => setOffer("")}
+                  />
+                )}
+                {learning && (
+                  <LearnDialog
+                    article={article}
+                    close={() => setLearning(false)}
                   />
                 )}
               </>

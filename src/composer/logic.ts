@@ -1,9 +1,8 @@
-import { plainText } from "../components/RichText";
 import type { Direction, Entry, EntryDetails, EntryInput, Kind } from "../data";
 
 /** Qué detalles se guardan según el tipo: lo que sobre (p. ej. al cambiar de tipo) se descarta. */
 export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
-  Nota: ["mood", "feelings", "where", "place", "placeId"],
+  Nota: ["mood", "feelings", "where", "place", "placeId", "ctx", "sleep", "exercise"],
   Encuentro: ["mood", "place", "placeId", "activity"],
   Película: [
     "movieInfo",
@@ -46,6 +45,8 @@ export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
     "apply",
     "sourceId",
     "review",
+    "readingId",
+    "readingSummary",
   ],
   Movimiento: ["method"],
   Pendiente: [
@@ -187,18 +188,16 @@ type TitleFields = {
   category?: string;
 };
 
-/** Título final: el escrito, o uno razonable sacado del contenido. */
+/**
+ * Título final: el escrito, o uno razonable sacado del contenido. Una entrada del diario (Nota)
+ * sin título queda sin título: no se copia parte del texto.
+ */
 export function deriveTitle(kind: Kind, f: TitleFields) {
   const typed = clip(f.title);
   if (typed) return typed;
   switch (kind) {
     case "Nota":
-      return (
-        clip(
-          plainText(f.body.split("\n").find((line) => line.trim()) ?? ""),
-          80,
-        ) || "Entrada"
-      );
+      return "";
     case "Encuentro": {
       const shown = f.names.slice(0, 3).join(", ");
       const more = f.names.length > 3 ? ` y ${f.names.length - 3} más` : "";

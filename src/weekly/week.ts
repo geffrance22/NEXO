@@ -12,7 +12,7 @@ import type {
   Workspace,
 } from '../data';
 import { isOpenTask } from '../lib/commitments';
-import { addDays, normalizeText, todayInputValue } from '../lib/format';
+import { addDays, todayInputValue } from '../lib/format';
 import { daysToBirthday } from '../lib/people';
 import { placeOf } from '../lib/places';
 
@@ -52,20 +52,19 @@ export function weekOf(ws: Workspace, start: string, end: string) {
     .flatMap(([id, n]) => (byId.has(id) ? [{ person: byId.get(id)!, n }] : []))
     .sort((a, b) => b.n - a.n);
 
-  // Lugares: por su ficha o, en recuerdos antiguos, por el nombre escrito.
+  // Lugares: solo los vinculados (con ficha en Nexo).
   const placeMap = new Map<string, PlaceVisit>();
   for (const e of entries) {
-    const name = e.details.place?.trim();
-    if (!name && !e.details.placeId) continue;
     const place = placeOf(e, ws.places);
-    const key = place?.id ?? 'n:' + normalizeText(name ?? '');
+    if (!place) continue;
+    const key = place.id;
     const item = placeMap.get(key) ?? {
       key,
       place,
-      name: place?.name ?? name ?? 'Lugar',
+      name: place.name,
       visits: [],
       people: [],
-      isNew: Boolean(place && inWeek(place.created_at)),
+      isNew: inWeek(place.created_at),
     };
     item.visits.push(e);
     for (const id of e.person_ids) {

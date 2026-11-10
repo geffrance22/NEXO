@@ -33,6 +33,7 @@ import {
 } from "../diary/drafts";
 import { piecesFromAi, readingInput } from "../diary/reader/pieces";
 import { capsuleDay, countdown } from "../diary/capsule";
+import { contextFor, prefetchSky } from "../diary/context";
 import { CapsuleDialog } from "./CapsuleDialog";
 import { useDismiss } from "../hooks/useDismiss";
 import { plainText } from "../components/RichText";
@@ -134,6 +135,12 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
   // Entrada nueva del diario: se guarda sola como borrador mientras escribes (si cierras la
   // ventana, queda en «Borradores») y al guardarla la IA la lee en segundo plano.
   const diary = c.kind === "Nota" && !c.editing;
+  // El cielo de ahora (clima, salida y puesta del sol) se busca en cuanto abres el diario, para
+  // que al publicar ya esté listo y quede como contexto de la entrada.
+  const sky = useRef<ReturnType<typeof prefetchSky> | null>(null);
+  useEffect(() => {
+    if (diary && !sky.current) sky.current = prefetchSky();
+  }, [diary]);
   const [draftId] = useState(() => init.draft?.id ?? crypto.randomUUID());
   const drafts = useDrafts(user.id);
   const storedDraft = drafts.some((d) => d.id === draftId);
@@ -282,6 +289,15 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
     const input = c.toInput();
     // Cápsula del tiempo: queda sellada (ni la IA la lee ni se vincula a cuadernos hasta abrirla).
     if (capsule) input.details = { ...input.details, capsule };
+    // Diario: la hora, la luz y el clima de cuando escribiste (sin esperar más de un par de segundos).
+    if (diary && input.kind === "Nota" && !input.details.ctx) {
+      const now = await Promise.race([
+        sky.current ?? Promise.resolve(null),
+        new Promise<null>((r) => window.setTimeout(() => r(null), 2500)),
+      ]);
+      const ctx = await contextFor(input.date, now, input.details.where);
+      if (ctx) input.details = { ...input.details, ctx };
+    }
     if (input.kind === "Película") {
       const poster = input.details.tmdbPoster,
         year = input.details.year || "",
@@ -627,7 +643,10 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
             </button>
             {c.editing && <span className="cp-editing">Editando</span>}
             {diary && storedDraft && (
-              <span className="cp-editing cp-draft-tag" title="Se guarda solo mientras escribes">
+              <span
+                className="cp-editing cp-draft-tag"
+                title="Se guarda solo mientras escribes"
+              >
                 <FilePen size={12} /> Borrador
               </span>
             )}

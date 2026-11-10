@@ -5,6 +5,7 @@ import type {
   Entry,
   EntryDetails,
   EntryInput,
+  EntryPatch,
   Episode,
   EpisodeChanges,
   EpisodeInput,
@@ -26,6 +27,7 @@ import type { PersonSection } from './lib/people';
 import type { TieInput } from './hooks/useWorkspace';
 import type { Notify } from './hooks/useToast';
 import type { DiaryDraft } from './diary/drafts';
+import type { DiaryVault } from './diary/vault';
 import type { DiaryJob } from './diary/reader/DiaryReader';
 
 /** Accesos rápidos para alimentar la ficha de una persona sin abrir el formulario completo. */
@@ -100,10 +102,9 @@ export type AppContextValue = {
   /** Crea muchos recuerdos de una vez, sin avisos (importaciones). null si algo falló. */
   createEntries: (inputs: EntryInput[]) => Promise<Entry[] | null>;
   /** Cambia solo detalles, estado o personas de un recuerdo (posponer, completar…). */
-  patchEntry: (
-    entry: Entry,
-    changes: Partial<Pick<Entry, 'details' | 'status' | 'person_ids' | 'body' | 'title'>>,
-  ) => Promise<boolean>;
+  patchEntry: (entry: Entry, changes: EntryPatch) => Promise<boolean>;
+  /** Las entradas del diario guardadas en la bóveda (cifradas con el PIN). */
+  diaryVault: DiaryVault;
   /** Pone (o quita con null) recuerdos en un episodio. */
   linkEntries: (ids: string[], episodeId: string | null, silent?: boolean) => Promise<boolean>;
   saveEpisode: (input: EpisodeInput, silent?: boolean) => Promise<Episode | null>;

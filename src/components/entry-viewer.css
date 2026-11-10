@@ -371,6 +371,15 @@ html[data-theme='dark'] .sheet-backdrop:has(> .sheet.ev) {
 .ev-episode:hover {
   background: #fff;
 }
+/* El artículo de Lecturas ya no existe: se nombra, pero no enlaza. */
+.ev-episode.ev-gone {
+  color: #7d8678;
+  font-weight: 500;
+  cursor: default;
+}
+.ev-episode.ev-gone:hover {
+  background: rgba(255, 255, 255, 0.75);
+}
 .ev-tags span {
   padding: 3px 9px;
   border-radius: 999px;

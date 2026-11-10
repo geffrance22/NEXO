@@ -1,0 +1,937 @@
+/* ════════════════ Diario: carpetas, archivo y bóveda ════════════════ */
+
+/* Lo que vive fuera de `.dy` (menús y la pastilla que se arrastra) necesita sus colores. */
+.dy-entry-menu,
+.dy-drag-ghost {
+  --dy-ink: #2b2620;
+  --dy-muted: #8a8173;
+  --dy-faint: #b3ab9c;
+  --dy-line: #ece5d6;
+  --dy-accent: #b4823a;
+  --dy-accent-ink: #6e4d1c;
+  --dy-soft: #f6ecd8;
+  --dy-vault: #3d5a80;
+}
+.dy,
+.sheet.dyy {
+  --dy-vault: #3d5a80;
+}
+
+/* ───────── Barra de carpetas ───────── */
+.dy-folders {
+  position: relative;
+  z-index: 5;
+  margin-top: 8px;
+  min-width: 0;
+}
+.dy-folders-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 2px 6px;
+}
+/* Copia invisible de todas las fichas para medir cuántas caben en la fila. */
+.dy-folders-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: 8px;
+  width: max-content;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* «+N»: las carpetas que no caben. */
+.dy-folder-more {
+  display: grid;
+  flex: none;
+  place-items: center;
+  min-width: 52px;
+  padding: 0 12px;
+  border: 1px solid var(--dy-line);
+  border-radius: 14px;
+  background: #fff;
+  font:
+    700 14px/1 "DM Sans",
+    sans-serif;
+  color: var(--dy-accent-ink) !important;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    box-shadow 0.15s,
+    transform 0.15s;
+}
+.dy-folder-more:hover,
+.dy-folder-more.open {
+  border-color: #e0d5bf;
+  background: var(--dy-soft);
+  box-shadow: 0 8px 20px -16px rgba(80, 60, 20, 0.5);
+}
+.dy-folder-more.over {
+  border-color: var(--dy-accent);
+  background: var(--dy-soft);
+  box-shadow: 0 0 0 4px rgba(180, 130, 58, 0.2);
+  transform: translateY(-2px);
+}
+/* Mientras arrastras, la barra te acompaña arriba para que puedas soltar en ella. */
+.dy-folders.dragging {
+  position: sticky;
+  top: calc(var(--topbar-h, 52px) + 8px);
+  z-index: 40;
+  padding: 8px;
+  border: 1px solid var(--dy-line);
+  border-radius: 18px;
+  background: rgba(255, 253, 248, 0.94);
+  box-shadow: 0 18px 40px -22px rgba(45, 35, 15, 0.45);
+  backdrop-filter: blur(12px);
+}
+.dy-folders-hint {
+  margin: 2px 4px 0;
+  font-size: 11.5px;
+  color: var(--dy-muted);
+}
+
+.dy-folder {
+  --f: var(--dy-accent);
+  position: relative;
+  flex: none;
+  border: 1px solid var(--dy-line);
+  border-radius: 14px;
+  background: #fff;
+  -webkit-touch-callout: none;
+  user-select: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    background 0.15s,
+    transform 0.15s;
+}
+.dy-folder:hover {
+  border-color: #e0d5bf;
+  box-shadow: 0 8px 20px -16px rgba(80, 60, 20, 0.5);
+}
+.dy-folder.on {
+  border-color: color-mix(in srgb, var(--f) 55%, #fff);
+  background: color-mix(in srgb, var(--f) 9%, #fff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--f) 14%, transparent);
+}
+.dy-folder.system {
+  --f: #8a8173;
+}
+.dy-folder.vault {
+  --f: var(--dy-vault);
+}
+.dy-folder-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 132px;
+  max-width: 220px;
+  padding: 9px 14px 9px 9px;
+  text-align: left;
+}
+.dy-folder:has(.dy-folder-edit) .dy-folder-btn {
+  padding-right: 36px;
+}
+/* Solo el icono (la bóveda mientras no arrastras nada). */
+.dy-folder.compact .dy-folder-btn {
+  justify-content: center;
+  min-width: 0;
+  height: 100%;
+  padding: 9px;
+}
+.dy-folder-ic {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--f) 13%, #fff);
+  color: var(--f);
+}
+.dy-folder-ic.big {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+}
+.dy-folder-txt {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.dy-folder-txt strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dy-folder-txt small {
+  font-size: 11px;
+  color: var(--dy-faint);
+  white-space: nowrap;
+}
+.dy-folder.on .dy-folder-txt small {
+  color: var(--dy-muted);
+}
+.dy-folder-edit {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--dy-muted) !important;
+  transform: translateY(-50%);
+}
+.dy-folder-edit:hover {
+  background: color-mix(in srgb, var(--f) 14%, #fff);
+  color: var(--dy-ink) !important;
+}
+.dy-folder-new {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  padding: 0;
+  border: 1px dashed #dccfb5;
+  border-radius: 14px;
+  color: var(--dy-muted) !important;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
+}
+.dy-folder-new:hover {
+  border-color: var(--dy-accent);
+  background: var(--dy-soft);
+  color: var(--dy-accent-ink) !important;
+}
+.dy-folders-div {
+  flex: none;
+  width: 1px;
+  margin: 8px 2px;
+  background: var(--dy-line);
+}
+/* Destinos posibles mientras arrastras, y el que está bajo el puntero. */
+.dy-folder.target {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--f) 45%, #fff);
+}
+.dy-folder.over {
+  border-style: solid;
+  border-color: var(--f);
+  background: color-mix(in srgb, var(--f) 12%, #fff);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--f) 20%, transparent);
+  transform: translateY(-2px) scale(1.03);
+}
+.dy-folder.over .dy-folder-ic {
+  background: var(--f);
+  color: #fff;
+}
+/* Reordenar: la carpeta que mueves y la línea donde quedará. */
+.dy-folder.lifted,
+.dy-pop-item.lifted {
+  opacity: 0.4;
+}
+.dy-folder.ins-before::before,
+.dy-folder.ins-after::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--dy-accent);
+  pointer-events: none;
+}
+.dy-folder.ins-before::before {
+  left: -6.5px;
+}
+.dy-folder.ins-after::after {
+  right: -6.5px;
+}
+
+/* ───────── Lista «+N» ───────── */
+.dy-folder-pop {
+  --dy-ink: #2b2620;
+  --dy-muted: #8a8173;
+  --dy-faint: #b3ab9c;
+  --dy-line: #ece5d6;
+  --dy-accent: #b4823a;
+  --dy-accent-ink: #6e4d1c;
+  --dy-soft: #f6ecd8;
+  --dy-vault: #3d5a80;
+  position: fixed;
+  z-index: 950;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(420px, calc(100vh - 24px));
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid var(--dy-line);
+  border-radius: 14px;
+  background: rgba(255, 253, 248, 0.98);
+  box-shadow: 0 18px 40px -16px rgba(45, 35, 15, 0.38);
+  backdrop-filter: blur(12px);
+  font:
+    500 13px/1.2 "DM Sans",
+    sans-serif;
+  color: var(--dy-ink);
+  animation: dy-pop 0.16s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.dy-folder-pop > small {
+  padding: 6px 10px 4px;
+  font:
+    700 9.5px/1 "Manrope",
+    sans-serif;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--dy-faint);
+}
+.dy-pop-item {
+  --f: var(--dy-accent);
+  position: relative;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  -webkit-touch-callout: none;
+  user-select: none;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.dy-pop-item.system {
+  --f: #8a8173;
+}
+.dy-pop-item.vault {
+  --f: var(--dy-vault);
+}
+.dy-pop-item > button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 9px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.dy-pop-item .dy-folder-ic {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+}
+.dy-pop-item .dy-folder-txt {
+  flex: 1;
+}
+.dy-pop-item .grip {
+  flex: none;
+  color: var(--dy-faint);
+}
+.dy-pop-item > button:hover,
+.dy-pop-item > button:focus-visible {
+  background: var(--dy-soft);
+  outline: none;
+}
+.dy-pop-item.target {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--f) 45%, #fff);
+}
+.dy-pop-item.over {
+  border-style: solid;
+  border-color: var(--f);
+  background: color-mix(in srgb, var(--f) 12%, #fff);
+}
+.dy-pop-item.over .dy-folder-ic {
+  background: var(--f);
+  color: #fff;
+}
+.dy-pop-item.ins-before::before,
+.dy-pop-item.ins-after::after {
+  content: "";
+  position: absolute;
+  right: 8px;
+  left: 8px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--dy-accent);
+  pointer-events: none;
+}
+.dy-pop-item.ins-before::before {
+  top: -2.5px;
+}
+.dy-pop-item.ins-after::after {
+  bottom: -2.5px;
+}
+
+/* ───────── Arrastrar ───────── */
+body.dy-dragging,
+body.dy-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+.dy-card {
+  -webkit-touch-callout: none;
+}
+.dy-card.lifted {
+  opacity: 0.45;
+  transform: scale(0.99);
+}
+.dy-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  padding: 8px 14px 8px 10px;
+  border: 1px solid var(--dy-line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 16px 36px -14px rgba(45, 35, 15, 0.45);
+  font:
+    600 13px/1.2 "DM Sans",
+    sans-serif;
+  color: var(--dy-ink);
+  pointer-events: none;
+  will-change: transform;
+}
+.dy-drag-ghost i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--g, var(--dy-accent));
+}
+.dy-drag-ghost span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dy-drag-ghost.ready {
+  border-color: var(--dy-accent);
+}
+.dy-drag-ghost.ready i {
+  box-shadow: 0 0 0 4px rgba(180, 130, 58, 0.2);
+}
+
+/* ───────── En la tarjeta ───────── */
+.dy-card-folder {
+  --f: var(--dy-accent);
+  padding: 2px 8px 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--f) 11%, #fff);
+  font-weight: 600;
+  color: color-mix(in srgb, var(--f) 80%, #000);
+}
+.dy-card-acts button.on {
+  background: #f5f1e8;
+  color: var(--dy-ink) !important;
+}
+.dy-card-acts:has(button.on) {
+  opacity: 1;
+}
+
+/* ───────── Menú «Más opciones» ───────── */
+.dy-entry-menu {
+  position: fixed;
+  z-index: 950;
+  display: flex;
+  flex-direction: column;
+  max-height: min(420px, calc(100vh - 24px));
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid var(--dy-line);
+  border-radius: 14px;
+  background: rgba(255, 253, 248, 0.98);
+  box-shadow: 0 18px 40px -16px rgba(45, 35, 15, 0.38);
+  backdrop-filter: blur(12px);
+  font:
+    500 13px/1.2 "DM Sans",
+    sans-serif;
+  color: var(--dy-ink);
+  animation: dy-pop 0.16s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.dy-entry-menu.up {
+  transform: translateY(-100%);
+  animation: none;
+}
+.dy-entry-menu > small {
+  padding: 6px 10px 4px;
+  font:
+    700 9.5px/1 "Manrope",
+    sans-serif;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--dy-faint);
+}
+.dy-entry-menu button {
+  --f: var(--dy-accent);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.dy-entry-menu button > svg {
+  flex: none;
+  color: var(--dy-muted);
+}
+.dy-entry-menu button > svg.tint {
+  color: var(--f);
+}
+.dy-entry-menu button > span {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dy-entry-menu button > svg.ok {
+  color: var(--dy-accent);
+}
+.dy-entry-menu button:hover,
+.dy-entry-menu button:focus-visible {
+  background: var(--dy-soft);
+  outline: none;
+}
+.dy-entry-menu button.vault > svg {
+  color: var(--dy-vault);
+}
+.dy-entry-menu button.vault:hover,
+.dy-entry-menu button.vault:focus-visible {
+  background: #e9eef5;
+}
+.dy-entry-menu hr {
+  margin: 5px 6px;
+  border: 0;
+  border-top: 1px solid var(--dy-line);
+}
+
+/* ───────── Carpeta vacía ───────── */
+.dy-folder-empty {
+  --f: var(--dy-accent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 34px 20px;
+  border: 1px dashed #e2d8c4;
+  border-radius: 18px;
+  background: #fffdf8;
+  text-align: center;
+}
+.dy-folder-empty > span {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 4px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--f) 12%, #fff);
+  color: var(--f);
+}
+.dy-folder-empty strong {
+  font: 500 18px/1.3 var(--dy-serif);
+}
+.dy-folder-empty p {
+  max-width: 380px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dy-muted);
+}
+
+/* ───────── Ventana de carpeta ───────── */
+.sheet-backdrop > .sheet.dy-folder-sheet {
+  max-width: 380px;
+}
+.dy-folder-sheet form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+.dy-folder-sheet header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dy-folder-sheet header .dy-folder-ic {
+  width: 32px;
+  height: 32px;
+}
+.dy-folder-sheet h2 {
+  margin: 0;
+  font: 500 18px/1.2 var(--dy-serif);
+}
+.dy-folder-sheet .dy-field {
+  gap: 6px;
+}
+.dy-folder-sheet .dy-field input {
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+.dy-folder-sheet .dy-swatches {
+  gap: 6px;
+}
+.dy-folder-sheet .dy-swatches button {
+  width: 26px;
+  height: 26px;
+}
+.dy-folder-sheet .dy-btn {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+.dy-folder-sheet .dy-folder-del {
+  padding: 6px 8px;
+  font-size: 12.5px;
+}
+.dy-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.dy-field > span {
+  font:
+    700 10px/1 "Manrope",
+    sans-serif;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--dy-muted);
+}
+.dy-field input {
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--dy-line);
+  border-radius: 12px;
+  background: #fff;
+  font: inherit;
+  font-size: 15px;
+  color: var(--dy-ink);
+  outline: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.dy-field input:focus {
+  border-color: var(--dy-accent);
+  box-shadow: 0 0 0 3px rgba(180, 130, 58, 0.16);
+}
+.dy-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.dy-swatches button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--f);
+  color: #fff !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  transition: transform 0.12s;
+}
+.dy-swatches button:hover {
+  transform: scale(1.08);
+}
+.dy-swatches button.on {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--f);
+}
+.dy-folder-sheet footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+.dy-folder-del {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #b4473a !important;
+}
+.dy-folder-del:hover {
+  background: #fbeeec;
+}
+.dy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 12px;
+  background: var(--dy-accent);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #fff !important;
+  transition:
+    background 0.15s,
+    opacity 0.15s;
+}
+.dy-btn:hover {
+  background: #a0722f;
+}
+.dy-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.dy-btn.ghost {
+  background: transparent;
+  color: var(--dy-muted) !important;
+}
+.dy-btn.ghost:hover {
+  background: #f5f1e8;
+  color: var(--dy-ink) !important;
+}
+.dy-btn.dark {
+  background: var(--dy-vault);
+}
+.dy-btn.dark:hover {
+  background: #2f4866;
+}
+
+/* ───────── Bóveda ───────── */
+.dy-vault-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 38px 22px 30px;
+  border: 1px solid #dfe5ee;
+  border-radius: 20px;
+  background:
+    radial-gradient(120% 80% at 50% 0%, #eef2f8, rgba(255, 255, 255, 0) 70%),
+    #fff;
+  text-align: center;
+}
+.dy-vault-sheet .dy-vault-gate {
+  border: 0;
+  border-radius: 0;
+}
+.dy-vault-ico {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 4px;
+  border-radius: 18px;
+  background: var(--dy-vault);
+  color: #fff;
+  box-shadow: 0 12px 28px -14px rgba(61, 90, 128, 0.8);
+}
+.dy-vault-gate h3 {
+  margin: 0;
+  font: 500 22px/1.2 var(--dy-serif);
+}
+.dy-vault-gate p {
+  max-width: 400px;
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--dy-muted);
+}
+.dy-vault-gate code {
+  font-size: 12px;
+}
+.dy-pin-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.dy-pin-row.shake {
+  animation: dy-shake 0.32s;
+}
+@keyframes dy-shake {
+  25% {
+    transform: translateX(-6px);
+  }
+  50% {
+    transform: translateX(6px);
+  }
+  75% {
+    transform: translateX(-3px);
+  }
+}
+.dy-pin {
+  width: 190px;
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid #d9e0ea;
+  border-radius: 12px;
+  background: #fff;
+  font:
+    600 20px/1 "DM Sans",
+    sans-serif;
+  letter-spacing: 6px;
+  text-align: center;
+  color: var(--dy-ink);
+  outline: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.dy-pin::placeholder {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--dy-faint);
+}
+.dy-pin:focus {
+  border-color: var(--dy-vault);
+  box-shadow: 0 0 0 3px rgba(61, 90, 128, 0.16);
+}
+.dy-pin.invalid {
+  border-color: #c9584a;
+}
+.dy-vault-error {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #b4473a;
+}
+.dy-vault-gate .dy-btn {
+  min-width: 190px;
+  margin-top: 4px;
+}
+.dy-vault-note {
+  max-width: 360px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--dy-faint);
+}
+.dy-vault-forgot {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--dy-vault) !important;
+}
+.dy-vault-forgot:hover {
+  text-decoration: underline;
+}
+.dy-vault-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 10px 10px 14px;
+  border: 1px solid #dfe5ee;
+  border-radius: 14px;
+  background: #f3f6fa;
+  color: #2b3340;
+}
+.dy-vault-bar > span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.dy-vault-bar > span > svg {
+  flex: none;
+  color: var(--dy-vault);
+}
+.dy-vault-bar > span > span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.dy-vault-bar strong {
+  font-size: 13px;
+}
+.dy-vault-bar small {
+  font-size: 11.5px;
+  color: #6b7686;
+}
+.dy-vault-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #d5dde8;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--dy-vault) !important;
+}
+.dy-vault-bar button:hover {
+  border-color: var(--dy-vault);
+}
+.dy-vault-opening {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 30px;
+  font-size: 13px;
+  color: var(--dy-muted);
+}
+.spin-dot {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #d5dde8;
+  border-top-color: var(--dy-vault);
+  border-radius: 50%;
+  animation: dy-spin 0.8s linear infinite;
+}
+@keyframes dy-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 640px) {
+  .dy-folder-btn {
+    min-width: 118px;
+  }
+  /* En pantallas estrechas, «Nueva carpeta» un poco más estrecho. */
+  .dy-folder-new {
+    width: 42px;
+  }
+  .dy-folder-sheet form {
+    padding: 16px;
+  }
+}
+
+/* La línea de tiempo y «Cargar más» (juntos, para renovar el uso de la bóveda al tocarlos). */
+.dy-list-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.dy-list-body:empty {
+  display: none;
+}

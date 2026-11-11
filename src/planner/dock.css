@@ -1,0 +1,364 @@
+/* ════════════════ Columna en ventanita (abajo a la derecha, en todas las secciones) ════════════════ */
+.cdock {
+  --ink: #1f2b24;
+  --muted: #6b7770;
+  --line: rgba(25, 40, 30, 0.09);
+  --ok: #2f9a5c;
+  position: fixed;
+  right: calc(20px + var(--shift, 0px));
+  bottom: 20px;
+  /* Debajo de fichas, diálogos y el chat: no tapa sus botones. */
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  width: 264px;
+  max-width: calc(100vw - 24px);
+  overflow: hidden;
+  border-radius: 16px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow:
+    0 0 0 1px rgba(25, 40, 30, 0.07),
+    0 12px 32px -14px rgba(15, 25, 20, 0.38),
+    0 2px 6px -2px rgba(15, 25, 20, 0.08);
+  animation: cdock-in 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition:
+    width 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
+    right 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.2s;
+}
+.cdock.open {
+  width: 320px;
+  box-shadow:
+    0 0 0 1px rgba(25, 40, 30, 0.07),
+    0 22px 48px -18px rgba(15, 25, 20, 0.42),
+    0 2px 6px -2px rgba(15, 25, 20, 0.08);
+}
+/* Un hilo del color de la columna, arriba. */
+.cdock::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 16px;
+  left: 16px;
+  height: 2px;
+  border-radius: 0 0 3px 3px;
+  background: var(--dc);
+  opacity: 0.8;
+}
+.cdock button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Barra */
+.cdock-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  height: 48px;
+  padding: 0 6px 0 4px;
+}
+.cdock-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 40px;
+  padding: 0 8px 0 10px !important;
+  border-radius: 11px;
+  text-align: left;
+  transition: background 0.15s;
+}
+.cdock-toggle:hover {
+  background: rgba(25, 40, 30, 0.04);
+}
+.cdock-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--dc);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dc) 16%, transparent);
+}
+.cdock-title {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+.cdock-title strong,
+.cdock-title small {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cdock-title strong {
+  font:
+    700 13.5px "Manrope",
+    sans-serif;
+  letter-spacing: -0.1px;
+}
+.cdock-title small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.cdock-count {
+  flex: none;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dc) 13%, #fff);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--dc) 80%, #000);
+}
+.cdock-tool {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--muted) !important;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.cdock-tool:hover {
+  background: rgba(25, 40, 30, 0.07) !important;
+  color: var(--ink) !important;
+}
+.cdock-tool:focus-visible,
+.cdock-toggle:focus-visible,
+.cdock-main:focus-visible,
+.cdock-check:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dc) 55%, transparent);
+  outline-offset: 1px;
+}
+
+/* Cuerpo: se despliega con su alto real. */
+.cdock-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.cdock.open .cdock-body {
+  grid-template-rows: 1fr;
+}
+.cdock-inner {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.cdock-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: min(320px, 46vh);
+  margin: 0;
+  padding: 6px 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--line);
+  list-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(25, 40, 30, 0.2) transparent;
+}
+.cdock-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding-left: 4px;
+  animation: cdock-row 0.18s ease-out;
+}
+.cdock-check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  box-sizing: border-box;
+  width: 17px;
+  height: 17px;
+  margin-top: 8px;
+  border: 1.5px solid rgba(25, 40, 30, 0.26) !important;
+  border-radius: 50%;
+  color: transparent !important;
+  line-height: 0;
+  transition:
+    background 0.16s,
+    border-color 0.16s,
+    color 0.16s;
+}
+.cdock-check > svg {
+  display: block;
+}
+.cdock-check:hover {
+  border-color: var(--ok) !important;
+  color: color-mix(in srgb, var(--ok) 55%, transparent) !important;
+}
+.cdock-check[aria-pressed="true"] {
+  border-color: var(--ok) !important;
+  background: var(--ok) !important;
+  color: #fff !important;
+  animation: cdock-pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.5);
+}
+.cdock-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 8px !important;
+  border-radius: 9px;
+  text-align: left;
+  transition: background 0.15s;
+}
+.cdock-main:hover {
+  background: rgba(25, 40, 30, 0.045) !important;
+}
+.cdock-name {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 560;
+  line-height: 1.38;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  transition: color 0.2s;
+}
+.cdock-list li.done .cdock-name {
+  color: #9aa391;
+  text-decoration: line-through;
+  text-decoration-color: rgba(25, 40, 30, 0.25);
+}
+.cdock-main small {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.cdock-main small span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.cdock-main small span.full {
+  font-weight: 650;
+  color: var(--ok);
+}
+.cdock-due.soon {
+  font-weight: 650;
+  color: #a8721d;
+}
+.cdock-due.late {
+  font-weight: 650;
+  color: #b0533a;
+}
+.cdock-due.ok {
+  color: var(--ok);
+}
+.cdock-empty {
+  padding: 14px 8px !important;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.cdock-skel i {
+  display: block;
+  width: 100%;
+  height: 14px;
+  margin: 9px 6px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #eef1ed 0%, #f6f8f5 50%, #eef1ed 100%);
+  background-size: 200% 100%;
+  animation: cdock-shine 1.2s linear infinite;
+}
+
+/* Escribir una tarjeta nueva */
+.cdock-add {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px 8px;
+  padding: 0 10px;
+  border-radius: 11px;
+  background: rgba(25, 40, 30, 0.04);
+  color: var(--muted);
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
+}
+.cdock-add:focus-within {
+  background: #fff;
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--dc) 55%, transparent);
+}
+.cdock-add input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+}
+.cdock-add input::placeholder {
+  color: #98a29a;
+}
+
+@media (max-width: 640px) {
+  .cdock {
+    right: 12px;
+    bottom: 12px;
+  }
+  .cdock.open {
+    width: calc(100vw - 24px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cdock,
+  .cdock-body,
+  .cdock-list li {
+    animation: none;
+    transition: none;
+  }
+}
+@keyframes cdock-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+}
+@keyframes cdock-row {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+@keyframes cdock-pop {
+  50% {
+    transform: scale(1.22);
+  }
+}
+@keyframes cdock-shine {
+  to {
+    background-position: -200% 0;
+  }
+}

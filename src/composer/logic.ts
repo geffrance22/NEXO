@@ -48,7 +48,28 @@ export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
     "readingId",
     "readingSummary",
   ],
-  Movimiento: ["method"],
+  Movimiento: [
+    "method",
+    "flow",
+    "pending",
+    "paidOn",
+    "due",
+    "toMethod",
+    "currency",
+    "original",
+    "fx",
+    "place",
+    "placeId",
+    "asset",
+    "warrantyUntil",
+    "worth",
+    "deductible",
+    "split",
+    "repeat",
+    "recurringId",
+    "goalId",
+    "debtId",
+  ],
   Pendiente: [
     "priority",
     "due",
@@ -130,6 +151,28 @@ export function cleanDetails(kind: Kind, details: EntryDetails): EntryDetails {
     }
     if (!out.lentBy) delete out.lentById;
   }
+  if (kind === "Movimiento") {
+    // Lo que solo existe en ciertos tipos de movimiento no se guarda en los demás.
+    if (out.pending !== true) {
+      delete out.pending;
+      if (out.flow !== "prestamo") delete out.due;
+    } else delete out.paidOn;
+    if (out.flow !== "transferencia") delete out.toMethod;
+    if (out.flow !== "ahorro") delete out.goalId;
+    if (!out.currency || out.currency === "COP") {
+      delete out.currency;
+      delete out.original;
+      delete out.fx;
+    }
+    if (out.asset !== true) {
+      delete out.asset;
+      delete out.warrantyUntil;
+    }
+    if (out.deductible !== true) delete out.deductible;
+    if (out.worth !== 1 && out.worth !== -1) delete out.worth;
+    const split = out.split as EntryDetails["split"];
+    if (!split || !(split.n > 1)) delete out.split;
+  }
   // Anclar solo se guarda cuando está activo.
   if (out.follow !== true) delete out.follow;
   return out as EntryDetails;
@@ -207,7 +250,18 @@ export function deriveTitle(kind: Kind, f: TitleFields) {
       return clip(f.details.place ? `${who} · ${f.details.place}` : who);
     }
     case "Movimiento":
-      return f.category ?? (f.direction === "ingreso" ? "Ingreso" : "Egreso");
+      return (
+        f.category ??
+        (f.details.flow === "transferencia"
+          ? "Transferencia"
+          : f.details.flow === "prestamo"
+            ? f.names.length
+              ? `${f.direction === "egreso" ? "Préstamo a" : "Préstamo de"} ${f.names[0]}`
+              : "Préstamo"
+            : f.direction === "ingreso"
+              ? "Ingreso"
+              : "Gasto")
+      );
     default:
       return kind;
   }
@@ -247,7 +301,17 @@ export function problemFor(kind: Kind, f: ProblemFields): string | null {
     case "Aprendizaje":
       return has(f.title) ? null : "Cuéntanos qué aprendiste.";
     case "Movimiento":
-      return f.amount > 0 ? null : "Indica el monto.";
+      if (!(f.amount > 0)) return "Indica el monto.";
+      if (f.details.flow === "prestamo" && !f.personIds.length)
+        return "Elige con quién es el préstamo.";
+      if (
+        f.details.flow === "transferencia" &&
+        (!f.details.method || !f.details.toMethod)
+      )
+        return "Elige de qué cuenta sale y a cuál llega.";
+      if (f.details.split && !f.personIds.length)
+        return "Agrega con quién lo dividiste.";
+      return null;
     case "Pendiente":
       return has(f.title) ? null : "Escribe qué tienes que hacer.";
   }
@@ -261,17 +325,32 @@ export const expenseCategories = [
   "Ocio",
   "Educación",
   "Trabajo",
+  "Compras",
+  "Regalos",
+  "Impuestos",
   "Ahorro",
   "Otro",
 ];
 export const incomeCategories = [
   "Salario",
   "Ventas",
+  "Honorarios",
   "Regalo",
   "Reembolso",
   "Inversión",
   "Otro",
 ];
+/** Categorías del ahorro: a dónde va la plata que no se gasta. */
+export const savingCategories = ["Ahorro", "Inversión", "Emergencias", "Meta"];
 export const allMoneyCategories = [
-  ...new Set([...expenseCategories, ...incomeCategories]),
+  ...new Set([...expenseCategories, ...incomeCategories, ...savingCategories]),
 ];
+
+/** Categorías propias (Ajustes de Finanzas): se registran aquí para que el formulario las reconozca. */
+const customMoneyCategories = new Set<string>();
+export function setCustomMoneyCategories(list: string[]) {
+  customMoneyCategories.clear();
+  for (const c of list) customMoneyCategories.add(c);
+}
+export const isMoneyCategory = (t: string) =>
+  allMoneyCategories.includes(t) || customMoneyCategories.has(t);

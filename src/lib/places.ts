@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { Entry, Person, Place, PlaceKind, StoredImage } from '../data';
+import { totals } from '../finance/money';
 import { normalizeText, todayInputValue } from './format';
 
 export const placeKinds: Record<
@@ -47,6 +48,9 @@ export function placeOf(e: Entry, places: Place[]) {
 
 export type PlaceStats = {
   visits: Entry[];
+  /** Lo gastado aquí (sin pendientes, transferencias ni préstamos) y en cuántos movimientos. */
+  spent: number;
+  spentCount: number;
   last: string | null;
   first: string | null;
   /** Fotos propias del lugar y de los recuerdos que pasaron ahí. */
@@ -56,8 +60,11 @@ export type PlaceStats = {
 };
 
 export function placeStats(place: Place, entries: Entry[], people: Person[]): PlaceStats {
-  const visits = entries
-    .filter((e) => isAt(e, place))
+  // Un gasto en el lugar no es una visita más: su plata va aparte (`spent`).
+  const here = entries.filter((e) => isAt(e, place));
+  const moves = here.filter((e) => e.kind === 'Movimiento');
+  const visits = here
+    .filter((e) => e.kind !== 'Movimiento')
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
   const counts = new Map<string, number>();
   for (const e of visits) for (const id of e.person_ids) counts.set(id, (counts.get(id) ?? 0) + 1);
@@ -68,8 +75,11 @@ export function placeStats(place: Place, entries: Entry[], people: Person[]): Pl
   const moods = visits.map((e) => e.details.mood).filter((m): m is number => typeof m === 'number');
   const moodCount = new Map<number, number>();
   for (const m of moods) moodCount.set(m, (moodCount.get(m) ?? 0) + 1);
+  const spent = totals(moves);
   return {
     visits,
+    spent: spent.spent,
+    spentCount: moves.length,
     last: visits[0] ? localDay(visits[0].created_at) : null,
     first: visits.length ? localDay(visits[visits.length - 1].created_at) : null,
     photos,

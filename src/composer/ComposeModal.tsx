@@ -56,7 +56,8 @@ import type {
 import { todayInputValue } from "../lib/format";
 import { KindPicker } from "./KindPicker";
 import { incomeColors, kindMeta, seriesColors } from "./kinds";
-import { useComposer } from "./useComposer";
+import { useComposer, type ComposerPrefill } from "./useComposer";
+import { afterMoneySaved, prepareMoney } from "../finance/afterSave";
 import { BookView } from "./views/BookView";
 import { LearningView } from "./views/LearningView";
 import { MeetingView } from "./views/MeetingView";
@@ -97,6 +98,10 @@ export type ComposeInit = {
   episodeId?: string;
   /** Borrador del diario que se retoma. */
   draft?: DiaryDraft;
+  /** Título, fecha, monto… con los que arranca (p. ej. un gasto sugerido desde Finanzas). */
+  prefill?: ComposerPrefill;
+  /** Cambia para abrir un formulario nuevo aunque ya hubiera uno igual («Guardar y otro»). */
+  nonce?: number;
 };
 
 type ComposeModalProps = {
@@ -107,10 +112,17 @@ type ComposeModalProps = {
    */
   onSave: (input: EntryInput, into?: Entry) => Promise<string | null>;
   onClose: () => void;
+  /** «Guardar y otro»: deja listo un movimiento nuevo en lugar de cerrar. */
+  onAgain?: () => void;
 };
 
 /** Ventana para crear o editar un recuerdo: primero eliges el tipo, luego escribes. */
-export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
+export function ComposeModal({
+  init,
+  onSave,
+  onClose,
+  onAgain,
+}: ComposeModalProps) {
   const {
     user,
     workspace,
@@ -129,6 +141,7 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
       details: init.details,
       episodeId: init.episodeId,
       draft: init.draft,
+      prefill: init.prefill,
     },
     workspace.people,
     workspace.ties,
@@ -285,11 +298,17 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
     onClose();
   };
 
-  async function submit(e?: FormEvent, capsule?: TimeCapsule) {
+  async function submit(
+    e?: FormEvent,
+    capsule?: TimeCapsule,
+    again = false,
+  ) {
     e?.preventDefault();
     if (c.problem || busy) return;
     setBusy(true);
     const input = c.toInput();
+    // Movimientos: el fijo que nace de «se repite» lleva su id desde ya.
+    if (input.kind === "Movimiento") prepareMoney(input);
     // Cápsula del tiempo: queda sellada (ni la IA la lee ni se vincula a cuadernos hasta abrirla).
     if (capsule) input.details = { ...input.details, capsule };
     // Diario: la hora, la luz y el clima de cuando escribiste (sin esperar más de un par de segundos).
@@ -398,7 +417,13 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
     if (lender && before?.details.lentById !== lender.id)
       void noteLoan(lender, input, savedId);
     if (picked && !capsule) void fileInNotebooks(savedId, picked);
-    onClose();
+    // Deudas del reparto o del préstamo y el fijo de «se repite».
+    if (input.kind === "Movimiento")
+      void afterMoneySaved(input, savedId, workspace.people).then(
+        (msg) => msg && notify(msg),
+      );
+    if (again && onAgain) onAgain();
+    else onClose();
   }
 
   /** Guarda lo escrito en borradores del diario y cierra (no cuenta ni se vincula a nadie). */
@@ -692,6 +717,17 @@ export function ComposeModal({ init, onSave, onClose }: ComposeModalProps) {
             >
               Cancelar
             </button>
+            {c.kind === "Movimiento" && !c.editing && onAgain && (
+              <button
+                type="button"
+                className="cp-btn ghost cp-again"
+                title="Guarda y deja listo el siguiente (para registrar varios seguidos)"
+                disabled={Boolean(c.problem) || busy}
+                onClick={() => void submit(undefined, undefined, true)}
+              >
+                Guardar y otro
+              </button>
+            )}
             <span
               className={"cp-split" + (diary ? " on" : "")}
               ref={saveMenuRef}

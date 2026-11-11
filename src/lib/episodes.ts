@@ -46,6 +46,7 @@ import type {
 import { isOpenTask } from './commitments';
 import { normalizeText, todayInputValue } from './format';
 import { daysBetween } from './people';
+import { totals } from '../finance/money';
 
 export type EpisodeKindMeta = {
   label: string;
@@ -349,8 +350,7 @@ export function episodeSummary(ep: Episode, entries: Entry[], people: Person[], 
     .filter((e) => e.episode_id === ep.id)
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
   const money = items.filter((e) => e.kind === 'Movimiento');
-  const spent = money.filter((e) => e.direction === 'egreso').reduce((s, e) => s + e.amount, 0);
-  const earned = money.filter((e) => e.direction === 'ingreso').reduce((s, e) => s + e.amount, 0);
+  const { spent, income: earned } = totals(money);
   const tasks = items.filter((e) => e.kind === 'Pendiente');
   const ids = new Set([...ep.person_ids, ...items.flatMap((e) => e.person_ids)]);
   const placeIds = new Set([

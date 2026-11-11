@@ -63,6 +63,10 @@ export function searchWorkspace(
         kindLabel(e),
         e.details.author ?? '',
         ...(e.details.quotes ?? []),
+        // Movimientos: también por monto («50000» o «50.000»), cuenta y lugar.
+        ...(e.kind === 'Movimiento'
+          ? [String(e.amount), e.amount.toLocaleString('es-CO'), e.details.method ?? '', e.details.place ?? '']
+          : []),
       ].join(' '),
     ),
   ).map((entry): SearchHit => ({ type: 'entry', entry }));

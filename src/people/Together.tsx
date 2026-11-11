@@ -25,6 +25,10 @@ import { PhotoThumbs } from '../components/PhotoThumbs';
 import { RichText } from '../components/RichText';
 import { aimBoard } from '../planner/boardView';
 import { usePersonCards } from '../planner/personCards';
+import { totals } from '../finance/money';
+import { debtBalances, itemsOf } from '../finance/model';
+import { useFinance } from '../finance/store';
+import { openFinanceTab } from '../finance/ui';
 
 const monthNames = [
   'enero',
@@ -160,8 +164,7 @@ export function Together({
       .sort((a, b) => b.n - a.n);
     const media = shared.filter((e) => e.kind === 'Libro' || e.kind === 'Película');
     const moves = shared.filter((e) => e.kind === 'Movimiento');
-    const spent = moves.filter((e) => e.direction === 'egreso').reduce((s, e) => s + e.amount, 0);
-    const earned = moves.filter((e) => e.direction === 'ingreso').reduce((s, e) => s + e.amount, 0);
+    const { spent, income: earned } = totals(moves);
     const counts = new Map<Kind, number>();
     for (const e of shared) counts.set(e.kind, (counts.get(e.kind) ?? 0) + 1);
     const first = stats.interactions[stats.interactions.length - 1];
@@ -180,6 +183,8 @@ export function Together({
   }, [stats, workspace.episodes, workspace.places, id]);
 
   const onBoards = usePersonCards(id);
+  const fin = useFinance();
+  const debt = debtBalances(itemsOf(fin.items, 'deuda')).find((r) => r.personId === id)?.net ?? 0;
   const commitments = commitmentsWith(id, workspace.entries);
   // El pendiente que nació en una tarjeta ya sale en «En tableros»: no se muestra dos veces.
   const openCommitments = [...commitments.mine, ...commitments.theirs]
@@ -343,6 +348,18 @@ export function Together({
             </div>
           </div>
         </>
+      )}
+      {debt !== 0 && (
+        <button
+          type="button"
+          className={'pj-debt ' + (debt > 0 ? 'in' : 'out')}
+          onClick={() => openFinanceTab(go, 'deudas')}
+        >
+          {debt > 0
+            ? `${person.name.split(' ')[0]} te debe ${money(debt)}`
+            : `Le debes ${money(-debt)} a ${person.name.split(' ')[0]}`}
+          <ArrowRight size={13} />
+        </button>
       )}
 
       {openCommitments.length > 0 && (

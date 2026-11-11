@@ -36,6 +36,8 @@ import { dismiss, undismiss, useDismissed } from '../relations/dismissed';
 import { WeeklyAgendaCard } from '../weekly/WeeklyDigest';
 import { ReviewAgendaCard } from './Review';
 import { CapsuleAgendaCard } from './CapsuleCard';
+import { FinanceAgendaCard } from '../finance/AgendaCard';
+import '../finance/finance.css';
 import './agenda.css';
 
 const looks: Record<AgendaKind, { icon: LucideIcon; color: string; soft: string }> = {
@@ -166,6 +168,7 @@ export function TodayAgenda() {
       {/* Cápsulas que llegaron, repaso de lecturas y periódico semanal: solo cuando tocan. */}
       <div className="ag-list ag-extra">
         <CapsuleAgendaCard />
+        <FinanceAgendaCard />
         <WeeklyAgendaCard />
         <ReviewAgendaCard />
       </div>

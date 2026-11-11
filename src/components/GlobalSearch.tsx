@@ -20,7 +20,7 @@ import type { LucideIcon } from "lucide-react";
 import { useApp } from "../AppContext";
 import { kindMeta } from "../composer/kinds";
 import { useDismiss } from "../hooks/useDismiss";
-import { kindLabel } from "../lib/entries";
+import { kindLabel, signedAmount } from "../lib/entries";
 import { episodeKindOf } from "../lib/episodes";
 import { friendlyDate, shortDate } from "../lib/format";
 import { relationMeta, relationOf } from "../lib/people";
@@ -106,7 +106,10 @@ function describe(hit: Hit): { title: string; sub: string; look: Look | null } {
       const meta = kindMeta[entry.kind];
       return {
         title: entry.title || entry.kind,
-        sub: `${kindLabel(entry)} · ${shortDate(entry.created_at)}`,
+        sub:
+          entry.kind === "Movimiento"
+            ? `${signedAmount(entry)} · ${shortDate(entry.created_at)}`
+            : `${kindLabel(entry)} · ${shortDate(entry.created_at)}`,
         look: { icon: meta.icon, color: meta.ink, soft: meta.soft },
       };
     }

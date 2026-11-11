@@ -413,10 +413,10 @@ const unitValue = (unit: string) => {
   return 1;
 };
 
-type AmountHit = { value: number; start: number; end: number; unit: boolean };
+export type AmountHit = { value: number; start: number; end: number; unit: boolean };
 
 /** Los montos de una frase, con su posición (para leer el contexto de cada uno). */
-function amountsIn(text: string): AmountHit[] {
+export function amountsIn(text: string): AmountHit[] {
   const n = normalizeText(text);
   const out: AmountHit[] = [];
   for (const m of n.matchAll(AMOUNT)) {
@@ -463,7 +463,7 @@ function amountsIn(text: string): AmountHit[] {
 }
 
 /** Dirección del monto: el verbo de dinero más cercano antes de él (o después, si no hay). */
-function directionAt(n: string, at: number): Direction | null {
+export function directionAt(n: string, at: number): Direction | null {
   const verbs: { at: number; end: number; dir: Direction }[] = [];
   for (const m of n.matchAll(MONEY_IN))
     verbs.push({

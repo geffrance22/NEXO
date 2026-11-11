@@ -33,14 +33,15 @@ const headings: Record<Exclude<Page, 'Mi espacio'>, { title: string; text: strin
 };
 
 export function PageHeading() {
-  const { page, selected, openEntry, openPerson, openPlace } = useApp();
+  const { page, selected, openPerson, openPlace } = useApp();
   if (page === 'Mi espacio') return <GreetingHeading />;
   if (
     page === 'Lecturas' ||
     page === 'Tableros' ||
     page === 'Libroteca' ||
     page === 'Agenda' ||
-    page === 'Conexiones'
+    page === 'Conexiones' ||
+    page === 'Finanzas'
   )
     return null;
 
@@ -51,9 +52,7 @@ export function PageHeading() {
       ? { label: 'Nueva persona', run: () => openPerson() }
       : page === 'Lugares'
         ? { label: 'Nuevo lugar', run: () => openPlace() }
-        : page === 'Finanzas'
-          ? { label: 'Nuevo movimiento', run: () => openEntry('Movimiento') }
-          : null;
+        : null;
 
   return (
     <div className="page-heading">

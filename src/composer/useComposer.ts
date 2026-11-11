@@ -28,14 +28,23 @@ export type PeopleCue = {
   kin?: KinCue;
 };
 import {
-  allMoneyCategories,
   cleanDetails,
   deriveTitle,
+  isMoneyCategory,
   problemFor,
 } from "./logic";
 import { useImageUploads } from "./useImageUploads";
 
 const MAX_DOC_BYTES = 10 * 1024 * 1024;
+
+/** Datos con los que arranca un recuerdo nuevo (p. ej. un gasto sugerido desde Finanzas). */
+export type ComposerPrefill = {
+  title?: string;
+  date?: string;
+  amount?: number;
+  direction?: Direction;
+  tags?: string[];
+};
 
 type ComposerInit = {
   entry?: Entry;
@@ -45,6 +54,7 @@ type ComposerInit = {
   episodeId?: string;
   /** Borrador del diario desde el que se retoma (no es un recuerdo guardado). */
   draft?: DiaryDraft;
+  prefill?: ComposerPrefill;
 };
 
 /**
@@ -59,6 +69,7 @@ export function useComposer(
     details: initialDetails,
     episodeId: initialEpisode,
     draft,
+    prefill,
   }: ComposerInit,
   people: Person[],
   ties: Tie[] = [],
@@ -75,10 +86,12 @@ export function useComposer(
   );
 
   const [kind, setKindRaw] = useState<Kind>(entry?.kind ?? initialKind);
-  const [title, setTitleRaw] = useState(entry?.title ?? draft?.title ?? "");
+  const [title, setTitleRaw] = useState(
+    entry?.title ?? draft?.title ?? prefill?.title ?? "",
+  );
   const [body, setBodyRaw] = useState(entry?.body ?? draft?.body ?? "");
   const [tags, setTagsRaw] = useState<string[]>(
-    entry?.tags ?? draft?.tags ?? [],
+    entry?.tags ?? draft?.tags ?? prefill?.tags ?? [],
   );
   const [personIds, setPersonIdsRaw] = useState<string[]>(
     entry?.person_ids ?? draft?.personIds ?? links,
@@ -87,11 +100,14 @@ export function useComposer(
   const [date, setDateRaw] = useState(
     () =>
       draft?.date ??
+      (entry ? undefined : prefill?.date) ??
       todayInputValue(entry ? new Date(entry.created_at) : undefined),
   );
-  const [amount, setAmountRaw] = useState(entry?.amount ?? 0);
+  const [amount, setAmountRaw] = useState(
+    entry?.amount ?? prefill?.amount ?? 0,
+  );
   const [direction, setDirectionRaw] = useState<Direction>(
-    entry?.direction ?? "egreso",
+    entry?.direction ?? prefill?.direction ?? "egreso",
   );
   const [status, setStatusRaw] = useState<Status>(entry?.status ?? "pendiente");
   const [details, setDetailsRaw] = useState<EntryDetails>(
@@ -223,11 +239,11 @@ export function useComposer(
   }, []);
 
   /** Categoría de un movimiento: la primera etiqueta que sea una categoría conocida. */
-  const category = tags.find((t) => allMoneyCategories.includes(t));
+  const category = tags.find(isMoneyCategory);
   const setCategory = useCallback((name: string | undefined) => {
     setTouched(true);
     setTagsRaw((list) => {
-      const rest = list.filter((t) => !allMoneyCategories.includes(t));
+      const rest = list.filter((t) => !isMoneyCategory(t));
       return name ? [name, ...rest] : rest;
     });
   }, []);

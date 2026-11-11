@@ -14,6 +14,9 @@ import type {
   PlaceKind,
 } from "../data";
 import type { CapturePlan, MediaPiece, Piece } from "../lib/capture";
+import { amountsIn } from "../lib/capture";
+
+const LOAN = /\b(?:le |les )?prest[eé]\b|\bme prest(?:o|ó|aron)\b/i;
 import { normalizeText, splitList, todayInputValue } from "../lib/format";
 import { findMedia } from "../lib/moviePosters";
 import { ME } from "../lib/relations";
@@ -354,6 +357,11 @@ export async function saveCapture(
               date: p.date,
               amount: p.amount,
               direction: p.direction,
+              // «Le presté 50 mil a Juan»: es un préstamo, no un gasto (va a Deudas).
+              details:
+                LOAN.test(p.evidence) && amountsIn(p.evidence).length === 1
+                  ? { flow: "prestamo" }
+                  : {},
               episodeId,
             }),
             true,

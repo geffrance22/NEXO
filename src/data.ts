@@ -22,6 +22,14 @@ export type ReviewMemory = {
   last?: string | null;
 };
 export type Direction = "ingreso" | "egreso";
+/** El tipo real de un movimiento: solo gastos e ingresos cuentan como tales en los totales. */
+export type MoneyFlow =
+  | "gasto"
+  | "ingreso"
+  | "ahorro"
+  | "transferencia"
+  | "prestamo"
+  | "reembolso";
 export type Status = "pendiente" | "completado";
 export type Page =
   | "Mi espacio"
@@ -400,7 +408,39 @@ export type EntryDetails = {
   /** Qué tan bien lo entendiste, de 1 a 5. */
   confidence?: number;
   apply?: string;
+  /** Movimientos: medio o cuenta (Efectivo, Nequi, Débito…). */
   method?: string;
+  /**
+   * Movimientos: qué tipo de plata es. Sin valor se deduce de la dirección y la categoría
+   * (los registros antiguos): un egreso de «Ahorro» es ahorro, un ingreso de «Reembolso» es reembolso.
+   */
+  flow?: MoneyFlow;
+  /** Movimientos: aún por pagar o por cobrar (no cuenta en los totales hasta que se marque). */
+  pending?: boolean;
+  /** AAAA-MM-DD: cuándo se pagó o se cobró lo que estaba pendiente. */
+  paidOn?: string;
+  /** Transferencias: la cuenta a la que llegó la plata. */
+  toMethod?: string;
+  /** Movimientos en otra moneda: la moneda, el monto original y la tasa usada (pesos por unidad). */
+  currency?: string;
+  original?: number;
+  fx?: number;
+  /** Compra duradera (un equipo, un mueble…): sale en «Compras» con su costo por día. */
+  asset?: boolean;
+  /** AAAA-MM-DD: hasta cuándo tiene garantía. */
+  warrantyUntil?: string;
+  /** ¿Valió la pena? 1: me hizo feliz; -1: me arrepiento. */
+  worth?: number;
+  /** Deducible en la declaración de renta. */
+  deductible?: boolean;
+  /** Pagaste tú y se dividió: en cuántas partes y cuánto era lo tuyo. */
+  split?: { n: number; mine: number };
+  /** Se repite: al guardarlo nace un fijo en Finanzas (día del mes y cada cuánto). */
+  repeat?: { day: number; every: "mes" | "año" };
+  /** Enlaces con Finanzas: el fijo que lo registró, la meta a la que abona y la deuda que mueve. */
+  recurringId?: string;
+  goalId?: string;
+  debtId?: string;
   /**
    * Cápsula del tiempo (entradas del diario): queda sellada y oculta hasta `opensOn`
    * (AAAA-MM-DD). `once`: se ve una sola vez y se borra al cerrarla. `seenAt` (ISO): cuándo la

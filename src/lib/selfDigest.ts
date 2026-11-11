@@ -2,6 +2,7 @@ import type { Entry, MyProfile, Person, Workspace } from '../data';
 import { moodTone } from '../composer/moods';
 import { addDays, todayInputValue } from './format';
 import { genderOf } from './gender';
+import { totals } from '../finance/money';
 import { relationMeta, relationOf } from './people';
 import { ME, kindWord, tiesOf, tieKinds } from './relations';
 
@@ -96,10 +97,8 @@ export function buildSelfDigest(
     .map((e) => `${clip(e.title, 100)}${e.details.stage ? ` [${e.details.stage}]` : ''}`);
   const abiertos = of('Pendiente').filter((e) => e.status !== 'completado');
   const plata = recent.filter((e) => e.kind === 'Movimiento');
-  const sum = (dir: string) =>
-    Math.round(
-      plata.filter((e) => e.direction === dir).reduce((s, e) => s + Number(e.amount || 0), 0),
-    );
+  const plataTotals = totals(plata);
+  const sum = (dir: string) => Math.round(dir === 'ingreso' ? plataTotals.income : plataTotals.spent);
   const moods = recent.map((e) => moodTone(e.details.mood)).filter((m): m is number => typeof m === 'number');
 
   const digest = {

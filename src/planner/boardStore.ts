@@ -23,6 +23,16 @@ export type BoardSettings = {
   tz?: string;
   /** Fecha clave de un tablero hecho con plantilla de cuenta regresiva («la boda»). */
   anchor?: { date: string; label: string };
+  /** Vista Lienzo: dónde dejaste cada tarjeta y hacia dónde apunta cada flecha. */
+  canvas?: CanvasLayout;
+};
+/**
+ * Lienzo libre. `p`: posición de cada tarjeta (x, y). `d`: en cada vínculo («a|b»), la tarjeta de
+ * la que sale la flecha; sin dato, la línea no tiene punta.
+ */
+export type CanvasLayout = {
+  p?: Record<string, [number, number]>;
+  d?: Record<string, string>;
 };
 export type Board = {
   id: string;
@@ -407,6 +417,13 @@ export type SpecCard = {
   repeat?: Repeat;
   /** Días desde la fecha clave (negativos: antes). Con fecha clave, es su fecha límite. */
   offset?: number;
+  /** Al importar (p. ej., de Trello): fechas fijas, estado y la lista con lo ya marcado. */
+  due?: string | null;
+  starts?: string | null;
+  done?: boolean;
+  doneAt?: string | null;
+  archivedAt?: string | null;
+  checkItems?: { text: string; done: boolean; due?: string | null }[];
 };
 export type SpecColumn = { name: string; color?: string; cards: SpecCard[] };
 export type BoardSpec = {
@@ -729,20 +746,41 @@ export function useBoardList(notify: Notify) {
           body: card.body ?? "",
           rank: (j + 1) * 1024,
           tags: card.tags ?? [],
-          checks: (card.checks ?? []).map((text) => ({
-            id: crypto.randomUUID(),
-            text,
-            done: false,
-          })),
+          checks: card.checkItems
+            ? card.checkItems.map((k) => ({
+                id: crypto.randomUUID(),
+                text: k.text,
+                done: k.done,
+                ...(k.due && { due: k.due }),
+              }))
+            : (card.checks ?? []).map((text) => ({
+                id: crypto.randomUUID(),
+                text,
+                done: false,
+              })),
           color: card.color ?? "",
           ...(card.repeat && { repeat: card.repeat }),
+          ...(card.due && { due: card.due }),
+          ...(card.starts && { starts: card.starts }),
+          ...(card.done && {
+            done: true,
+            done_at: card.doneAt ?? new Date().toISOString(),
+          }),
+          ...(card.archivedAt && { archived_at: card.archivedAt }),
           ...(anchorDate &&
             typeof card.offset === "number" && {
               due: shiftDay(anchorDate, card.offset),
             }),
         })),
       );
-      await insertRows("board_cards", cards, ["color", "repeat"]);
+      await insertRows("board_cards", cards, [
+        "color",
+        "repeat",
+        "starts",
+        "done",
+        "done_at",
+        "archived_at",
+      ]);
       setAll((v) => [...(v ?? []), board]);
       return board.id;
     } catch (e) {
@@ -1589,6 +1627,8 @@ export function useBoard(boardId: string | null, notify: Notify) {
     progress,
     closed,
     reload: load,
+    /** Trae de nuevo las tarjetas de una columna (lo que cambió fuera de Tableros). */
+    refreshList: catchUpList,
     peek,
     peekColumn,
     /** Las tarjetas tal como están ahora (no las del último pintado). */

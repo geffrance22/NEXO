@@ -11,13 +11,11 @@ import { mergeIntoShelfBook } from "../composer/logic";
 import type {
   AppUser,
   Entry,
-  EntryDetails,
   EntryInput,
   Episode,
   EpisodeInput,
   EpisodeOrigin,
   Group,
-  Kind,
   Page,
   Person,
   Place,
@@ -57,6 +55,7 @@ import { UploadTray } from "../capturas/UploadTray";
 import { ShotPeek } from "../capturas/ShotPeek";
 import { NoteReminders } from "../notes/reminders";
 import { BoardInbox } from "../planner/BoardInbox";
+import { ColumnDock } from "../planner/ColumnDock";
 import { DiaryReader, type DiaryJob } from "../diary/reader/DiaryReader";
 import { isVaulted, useDiaryVault } from "../diary/vault";
 import { ProgressSheet } from "../library/ProgressSheet";
@@ -399,13 +398,14 @@ export function AppShell({ user }: { user: AppUser }) {
     selectedPlace,
     selectedEpisode,
     go,
-    openEntry: (kind?: Kind, links?: string[], details?: EntryDetails) =>
+    openEntry: (kind, links, details, prefill) =>
       setModal({
         type: "compose",
         init: {
           kind,
           links: links ?? (selected ? [selected.id] : []),
           details,
+          prefill,
           // Desde la ficha de un episodio, el recuerdo nuevo queda dentro de él.
           episodeId: page === "Episodios" ? selectedEpisode?.id : undefined,
         },
@@ -660,6 +660,7 @@ export function AppShell({ user }: { user: AppUser }) {
         <Toast message={message} action={action} onClose={clear} />
         <NoteReminders />
         <BoardInbox />
+        <ColumnDock />
         {diaryJob && (
           <DiaryReader
             key={diaryJob.entryId}
@@ -722,8 +723,23 @@ export function AppShell({ user }: { user: AppUser }) {
         )}
         {composing && (
           <ComposeModal
-            key={composing.draft?.id ?? composing.entry?.id ?? "new"}
+            key={
+              composing.draft?.id ??
+              composing.entry?.id ??
+              "new" + (composing.nonce ?? "")
+            }
             init={composing}
+            onAgain={() =>
+              setModal({
+                type: "compose",
+                init: {
+                  kind: "Movimiento",
+                  links: [],
+                  episodeId: composing.episodeId,
+                  nonce: Date.now(),
+                },
+              })
+            }
             onSave={(input, into) => {
               // Un libro que ya tenías en tu estantería: se actualiza esa ficha.
               const before = composing.entry ?? into;

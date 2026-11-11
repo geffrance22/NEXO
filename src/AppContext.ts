@@ -29,6 +29,7 @@ import type { Notify } from './hooks/useToast';
 import type { DiaryDraft } from './diary/drafts';
 import type { DiaryVault } from './diary/vault';
 import type { DiaryJob } from './diary/reader/DiaryReader';
+import type { ComposerPrefill } from './composer/useComposer';
 
 /** Accesos rápidos para alimentar la ficha de una persona sin abrir el formulario completo. */
 export type QuickMode = 'nota' | 'novedad' | 'dar' | 'recibir' | 'dato';
@@ -50,7 +51,12 @@ export type AppContextValue = {
    * Abre la ventana de nuevo recuerdo: con un tipo va directo a él; sin tipo, pregunta cuál.
    * `links` son las personas que arrancan vinculadas (por defecto, la persona abierta).
    */
-  openEntry: (kind?: Kind, links?: string[], details?: EntryDetails) => void;
+  openEntry: (
+    kind?: Kind,
+    links?: string[],
+    details?: EntryDetails,
+    prefill?: ComposerPrefill,
+  ) => void;
   /** Retoma un borrador del diario en la ventana de escribir. */
   openDraft: (draft: DiaryDraft) => void;
   /** Lectura con IA de una entrada del diario recién guardada (corre en segundo plano). */

@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import type { Place, PlaceKind } from '../data';
-import { normalizeText, shortDate } from '../lib/format';
+import { money, normalizeText, shortDate } from '../lib/format';
 import { relativeDay } from '../lib/people';
 import {
   placeKindList,
@@ -107,6 +107,12 @@ function PlaceDetail({ place }: { place: Place }) {
           <b>{mood ? `${mood.emoji} ${mood.label}` : '—'}</b>
           <span>Cómo se siente</span>
         </div>
+        {s.spentCount > 0 && (
+          <div title={`${s.spentCount} ${s.spentCount === 1 ? 'movimiento' : 'movimientos'}`}>
+            <b>{money(s.spent)}</b>
+            <span>Gastado aquí</span>
+          </div>
+        )}
       </div>
 
       <div className="pl-cols">

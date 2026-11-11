@@ -490,6 +490,13 @@
 .ep-card-budget.over i em {
   background: #c0553f;
 }
+/* Al 80 % del presupuesto: aviso antes de pasarse. */
+.ep-card-budget.warn span em {
+  color: #a8761a;
+}
+.ep-card-budget.warn i em {
+  background: #d9a23b;
+}
 .ep-flag {
   display: flex;
   align-items: center;

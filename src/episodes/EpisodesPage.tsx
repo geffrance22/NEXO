@@ -514,7 +514,11 @@ function EpisodeCard({ row, today }: { row: Row; today: string }) {
         <strong>{ep.title}</strong>
         {ep.summary && <p className="ep-card-sum">{ep.summary}</p>}
         {budgetPct !== null && (
-          <div className={'ep-card-budget' + (budgetPct > 100 ? ' over' : '')}>
+          <div
+            className={
+              'ep-card-budget' + (budgetPct > 100 ? ' over' : budgetPct >= 80 ? ' warn' : '')
+            }
+          >
             <span>
               <b>{money(s.spent)}</b> de {money(ep.budget!)}
               <em>{budgetPct}%</em>

@@ -24,6 +24,7 @@ import { QuoteOfDayCard } from '../library/QuoteOfDay';
 import { entryImages } from '../lib/moviePosters';
 import { commitmentKinds, commitmentOf, counterpartOf, isOpenTask } from '../lib/commitments';
 import { friendlyDate, money, todayInputValue } from '../lib/format';
+import { totals } from '../finance/money';
 import {
   closenessOf,
   isReachable,
@@ -372,14 +373,11 @@ function SummaryCard({ onShowTasks }: { onShowTasks: () => void }) {
   const open = workspace.entries.filter(isOpenTask);
   const promised = open.filter((e) => commitmentOf(e) === 'prometi').length;
   const active = workspace.episodes.filter((e) => e.status === 'activo').length;
-  const spent = workspace.entries
-    .filter(
-      (e) =>
-        e.kind === 'Movimiento' &&
-        e.direction === 'egreso' &&
-        todayInputValue(new Date(e.created_at)).startsWith(month),
-    )
-    .reduce((s, e) => s + e.amount, 0);
+  const spent = totals(
+    workspace.entries.filter(
+      (e) => e.kind === 'Movimiento' && todayInputValue(new Date(e.created_at)).startsWith(month),
+    ),
+  ).spent;
 
   return (
     <section className="hc hsum">

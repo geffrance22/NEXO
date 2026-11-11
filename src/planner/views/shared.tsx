@@ -14,6 +14,7 @@ import {
   List,
   Repeat,
   Table2,
+  Waypoints,
 } from "lucide-react";
 import { priorityLabels } from "../boardRules";
 import type { BoardCard, CardChanges, Column, Priority } from "../boardStore";
@@ -21,7 +22,13 @@ import { dueState, toneOf } from "../boardTheme";
 
 /** Cómo se mira un tablero. Las columnas son la vista de siempre. */
 export type BoardMode =
-  "columnas" | "lista" | "tabla" | "calendario" | "linea" | "matriz";
+  | "columnas"
+  | "lienzo"
+  | "lista"
+  | "tabla"
+  | "calendario"
+  | "linea"
+  | "matriz";
 
 export const MODES: {
   key: BoardMode;
@@ -34,6 +41,12 @@ export const MODES: {
     label: "Columnas",
     icon: <Columns3 size={15} />,
     hint: "Tablero por columnas",
+  },
+  {
+    key: "lienzo",
+    label: "Lienzo",
+    icon: <Waypoints size={15} />,
+    hint: "Tarjetas libres, unidas con flechas",
   },
   {
     key: "lista",

@@ -35,6 +35,7 @@ import {
   Pencil,
   Pin,
   PinOff,
+  PictureInPicture2,
   Plus,
   RectangleHorizontal,
   RotateCcw,
@@ -44,6 +45,7 @@ import {
   Tag,
   TextCursorInput,
   Trash2,
+  Trello,
   UnfoldHorizontal,
   X,
   Zap,
@@ -115,6 +117,7 @@ import {
   type Board,
   type BoardCard,
   type BoardClosing,
+  type CanvasLayout,
   type CardChanges,
   type NewCardInput,
   type Priority,
@@ -132,6 +135,9 @@ import { BOARD_GO, BOARD_LAST, useBoardView } from "./boardView";
 import { CardEditor } from "./CardEditor";
 import { RulesEditor } from "./RulesEditor";
 import { BoardViews } from "./views/BoardViews";
+import { CanvasView } from "./views/CanvasView";
+import { TrelloImport } from "./TrelloImport";
+import { dockColumn, DOCK_WROTE, undock, useDock } from "./dockStore";
 import {
   BoardClosingDialog,
   closingSummary,
@@ -210,6 +216,23 @@ function readHidden(): Record<string, 1> {
     return {};
   }
 }
+/** Copia en este equipo del lienzo de cada tablero. */
+const CANVAS = "nexo-board-canvas";
+function readCanvas(): Record<string, CanvasLayout> {
+  try {
+    const v = JSON.parse(localStorage.getItem(CANVAS) ?? "{}");
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+}
+const writeCanvas = (all: Record<string, CanvasLayout>) => {
+  try {
+    localStorage.setItem(CANVAS, JSON.stringify(all));
+  } catch {
+    /* sin almacenamiento */
+  }
+};
 function readFired(): Set<string> {
   try {
     const v = JSON.parse(localStorage.getItem(FIRED) ?? "[]");
@@ -259,6 +282,10 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   const cardTemplates = useCardTemplates();
   const [history, setHistory] = useState<{ card?: string } | null>(null);
   const [sharing, setSharing] = useState(false);
+  // Importar tableros de Trello.
+  const [importing, setImporting] = useState(false);
+  // La columna que va en la ventanita de abajo a la derecha (si hay una).
+  const docked = useDock();
   const list = useBoardList(notify);
   const [selected, setSelected] = useState(
     () => localStorage.getItem(LAST) ?? "",
@@ -279,7 +306,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   const archive = useArchive(inArchive, notify);
   // Tarjetas desplegadas y columnas plegadas (se recuerda en este equipo).
   const view = useBoardView();
-  // Columnas, lista, tabla, calendario, línea de tiempo o matriz (cada tablero la suya).
+  // Columnas, lienzo, lista, tabla, calendario, línea de tiempo o matriz (cada tablero la suya).
   const [mode, setMode] = useBoardMode(board?.id ?? null);
   const boardArchived = Boolean(board?.archived_at);
   const [triage, setTriage] = useState(false);
@@ -1820,6 +1847,57 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     add: (listId, title, due) => void addFrom(listId, [title], due),
   };
 
+  // ── Lienzo: dónde está cada tarjeta y el sentido de cada flecha ──
+  // Se guarda con el tablero (y en este equipo, por si falta la migración de ajustes).
+  const [localCanvas, setLocalCanvas] = useState<Record<string, CanvasLayout>>(readCanvas);
+  const canvasLayout: CanvasLayout = board
+    ? (board.settings.canvas ?? localCanvas[board.id] ?? {})
+    : {};
+  function saveCanvas(next: CanvasLayout, label?: string) {
+    if (!board) return;
+    const before = canvasLayout;
+    // Solo lo que sigue existiendo: tarjetas del tablero y vínculos vigentes.
+    const ids = new Set(api.peekAll().map((c) => c.id));
+    const clean: CanvasLayout = {
+      p: Object.fromEntries(
+        Object.entries(next.p ?? {}).filter(([id]) => ids.has(id)),
+      ),
+      d: Object.fromEntries(
+        Object.entries(next.d ?? {}).filter(([key]) => {
+          const [a, b] = key.split("|");
+          return links.has(a, b);
+        }),
+      ),
+    };
+    setLocalCanvas((all) => {
+      const n = { ...all, [board.id]: clean };
+      writeCanvas(n);
+      return n;
+    });
+    if (api.power)
+      list.update(board.id, { settings: { ...board.settings, canvas: clean } });
+    if (label)
+      notify(label + ".", {
+        label: "Deshacer",
+        icon: "undo",
+        run: () => saveCanvasNow.current(before),
+      });
+  }
+  const saveCanvasNow = useRef(saveCanvas);
+  saveCanvasNow.current = saveCanvas;
+
+  // Lo que cambiaste desde la ventanita de abajo a la derecha aparece aquí al momento.
+  const apiNow = useRef(api);
+  apiNow.current = api;
+  useEffect(() => {
+    const onDock = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      if (id && apiNow.current.peekColumn(id)) void apiNow.current.refreshList(id);
+    };
+    window.addEventListener(DOCK_WROTE, onDock);
+    return () => window.removeEventListener(DOCK_WROTE, onDock);
+  }, []);
+
   // ── Cerrar y archivar el tablero ──
   const closingStats = (): ClosingStats => {
     const firstCard = realCards
@@ -2101,6 +2179,11 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           {isPinned && renaming !== col.id && (
             <span className="bd-list-pin" title="Anclada a Mi espacio">
               <Pin size={13} />
+            </span>
+          )}
+          {docked?.list === col.id && renaming !== col.id && (
+            <span className="bd-list-pin" title="Anclada abajo a la derecha">
+              <PictureInPicture2 size={13} />
             </span>
           )}
           {renaming !== col.id &&
@@ -2584,6 +2667,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               if (id) pick(id);
             }}
             onTemplates={(key) => setGallery(key)}
+            onImport={() => setImporting(true)}
           />
         ) : api.status === "loading" ? (
           <Skeleton />
@@ -2594,6 +2678,18 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               Reintentar
             </button>
           </p>
+        ) : mode === "lienzo" ? (
+          <CanvasView
+            key={board.id}
+            api={viewApi}
+            boardId={board.id}
+            links={links.links}
+            layout={canvasLayout}
+            onLayout={saveCanvas}
+            onLink={(a, b) => links.link(a, b)}
+            onUnlink={unlinkCards}
+            create={(listId, title) => addFrom(listId, [title])}
+          />
         ) : mode !== "columnas" ? (
           <BoardViews mode={mode} api={viewApi} />
         ) : (
@@ -2938,6 +3034,20 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             <span>Nuevo tablero</span>
             <small>Plantillas</small>
           </button>
+          <button
+            type="button"
+            className="bd-pick-item bd-pick-new"
+            onClick={() => {
+              close();
+              setImporting(true);
+            }}
+          >
+            <i className="new">
+              <Trello size={13} />
+            </i>
+            <span>Importar de Trello</span>
+            <small>JSON</small>
+          </button>
         </Popover>
       )}
 
@@ -3266,6 +3376,38 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               Anclada ahora: «{list.pinned.name}». Desánclala para anclar esta.
             </p>
           )}
+          {!editingTemplate &&
+            (docked?.list === menuCol.id ? (
+              <MenuItem
+                icon={<PictureInPicture2 size={15} />}
+                onClick={() => {
+                  close();
+                  undock();
+                  notify("La columna ya no está abajo a la derecha.");
+                }}
+              >
+                Quitar de abajo a la derecha
+              </MenuItem>
+            ) : (
+              <MenuItem
+                icon={<PictureInPicture2 size={15} />}
+                hint={docked ? "Reemplaza la actual" : undefined}
+                onClick={() => {
+                  close();
+                  dockColumn({
+                    list: menuCol.id,
+                    board: menuCol.board_id,
+                    name: menuCol.name,
+                    color: menuCol.color,
+                  });
+                  notify(
+                    `«${menuCol.name.slice(0, 40)}» queda abajo a la derecha, en todas las secciones.`,
+                  );
+                }}
+              >
+                Anclar abajo a la derecha
+              </MenuItem>
+            ))}
           <p className="bd-pop-label">Color</p>
           <div className="bd-tones">
             <button
@@ -3677,6 +3819,22 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           onCreated={(id) => pick(id)}
           onEdit={(id) => pick(id)}
           onClose={() => setGallery(null)}
+        />
+      )}
+
+      {importing && (
+        <TrelloImport
+          list={list}
+          onDone={(id, count) => {
+            setImporting(false);
+            pick(id);
+            notify(
+              count === 1
+                ? "Tablero importado de Trello."
+                : `${count} tableros importados de Trello.`,
+            );
+          }}
+          onClose={() => setImporting(false)}
         />
       )}
 
@@ -4461,10 +4619,13 @@ function NewColumn({
 function Welcome({
   onCreate,
   onTemplates,
+  onImport,
 }: {
   onCreate: (name: string) => Promise<void>;
   /** Abre la galería de plantillas (con una preseleccionada). */
   onTemplates: (key: string) => void;
+  /** Abre el importador de Trello. */
+  onImport: () => void;
 }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -4520,6 +4681,9 @@ function Welcome({
           ))}
         </div>
       </div>
+      <button type="button" className="bd-welcome-import" onClick={onImport}>
+        <Trello size={14} /> ¿Vienes de Trello? Importa tus tableros
+      </button>
     </div>
   );
 }

@@ -15,6 +15,7 @@ import { isOpenTask } from '../lib/commitments';
 import { addDays, todayInputValue } from '../lib/format';
 import { daysToBirthday } from '../lib/people';
 import { placeOf } from '../lib/places';
+import { byCategory, costOf, flowOf, totals } from '../finance/money';
 
 export const day = (iso: string) => todayInputValue(new Date(iso));
 
@@ -101,15 +102,14 @@ export function weekOf(ws: Workspace, start: string, end: string) {
     .sort((a, b) => moodRank(b.mood!) - moodRank(a.mood!))[0];
 
   // Dinero
-  const money = entries.filter((e) => e.kind === 'Movimiento');
-  const expenses = money.filter((e) => e.direction === 'egreso');
-  const spent = expenses.reduce((s, e) => s + e.amount, 0);
-  const earned = money.filter((e) => e.direction === 'ingreso').reduce((s, e) => s + e.amount, 0);
-  const byCat = new Map<string, number>();
-  for (const e of expenses)
-    byCat.set(e.tags[0] ?? 'Otro', (byCat.get(e.tags[0] ?? 'Otro') ?? 0) + e.amount);
-  const categories = [...byCat.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
-  const biggest = [...expenses].sort((a, b) => b.amount - a.amount)[0] ?? null;
+  // Dinero: solo gastos e ingresos reales (sin transferencias, préstamos, ahorro ni pendientes).
+  const money = entries.filter((e) => e.kind === 'Movimiento' && !e.details.pending);
+  const expenses = money.filter((e) => flowOf(e) === 'gasto');
+  const { spent, income: earned } = totals(money);
+  const categories = byCategory(money)
+    .slice(0, 4)
+    .map((c) => [c.name, c.total] as [string, number]);
+  const biggest = [...expenses].sort((a, b) => costOf(b) - costOf(a))[0] ?? null;
 
   // Tu gente
   const news = ws.people

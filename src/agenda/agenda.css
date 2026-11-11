@@ -1,6 +1,6 @@
 /* ════════════════ Inicio: agenda de contexto ════════════════ */
 .ag {
-  padding: 22px 22px 18px;
+  padding: 14px 18px 16px;
   border: 1px solid #e9ede2;
   border-radius: 22px;
   background: #fff;
@@ -10,10 +10,10 @@
 }
 .ag-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 10px;
 }
 .ag-eyebrow {
   display: inline-flex;
@@ -35,24 +35,24 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 2px 10px;
-  margin-top: 5px;
+  gap: 2px 8px;
+  margin-top: 2px;
   font:
-    750 26px/1.15 'Manrope',
+    750 19px/1.15 'Manrope',
     sans-serif;
-  letter-spacing: -0.8px;
+  letter-spacing: -0.5px;
   color: #232c1c;
 }
 .ag-head h2 small {
   font:
-    500 13.5px 'DM Sans',
+    500 12.5px 'DM Sans',
     sans-serif;
   letter-spacing: 0;
   color: #939c8a;
 }
 .ag .ag-head .pp-icon-btn {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: 12px;
   color: #98a18e;
 }
@@ -353,7 +353,7 @@
 
 @media (max-width: 600px) {
   .ag {
-    padding: 18px 14px 14px;
+    padding: 12px 14px 14px;
   }
   .ag-card {
     flex-wrap: wrap;

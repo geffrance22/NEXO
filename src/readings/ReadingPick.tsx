@@ -70,7 +70,7 @@ const host = (url: string) => {
  * Recomendación de lectura para el inicio. Se mantiene durante la sesión; «Otra» elige otra al
  * azar. Al tocarla abre el artículo en Lecturas.
  */
-export function ReadingPick() {
+export function ReadingPick({ title }: { title?: string } = {}) {
   const { go } = useApp();
   const [pick, setPick] = useState<Pick | null>(remembered);
   const [state, setState] = useState<'idle' | 'loading' | 'empty' | 'error'>(
@@ -105,7 +105,7 @@ export function ReadingPick() {
     <section className="hc rp" aria-label="Lectura recomendada">
       <header className="hc-head">
         <h3>
-          <BookOpen size={15} /> Para leer
+          <BookOpen size={15} /> {title || 'Para leer'}
         </h3>
         {pick && (
           <button

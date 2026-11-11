@@ -33,7 +33,7 @@ const SHOWN = 5;
  * Mi espacio: la columna que anclaste desde Tableros, como acceso rápido. Muestra hasta cinco
  * tarjetas; se completan aquí mismo y un toque abre la tarjeta (o el tablero) en Tableros.
  */
-export function PinnedColumnCard() {
+export function PinnedColumnCard({ title }: { title?: string } = {}) {
   const { workspace, toggleEntry, patchEntry, notify, go } = useApp();
   const [col, setCol] = useState<Col | null>(null);
   const [cards, setCards] = useState<Row[]>([]);
@@ -160,7 +160,7 @@ export function PinnedColumnCard() {
       <header className="hc-head">
         <h3>
           <i className="hpin-dot" aria-hidden="true" />
-          <span className="hpin-name">{col.name}</span>
+          <span className="hpin-name">{title || col.name}</span>
           {open > 0 && <i>{open}</i>}
         </h3>
         <button

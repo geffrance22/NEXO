@@ -76,7 +76,7 @@ const whatsapp = (phone?: string) => {
  * Lo que merece tu atención hoy: pocas tarjetas, cada una con su motivo y una acción. Puedes
  * posponerlas o descartarlas, y elegir qué tipos ver.
  */
-export function TodayAgenda() {
+export function TodayAgenda({ title }: { title?: string } = {}) {
   const { workspace, notify } = useApp();
   const skip = useDismissed();
   const [prefs, setPrefs] = useState(loadPrefs);
@@ -116,7 +116,7 @@ export function TodayAgenda() {
             <Sparkles size={13} /> Qué merece tu atención
           </span>
           <h2>
-            Hoy <small>{label}</small>
+            {title || 'Hoy'} <small>{label}</small>
           </h2>
         </div>
         <button

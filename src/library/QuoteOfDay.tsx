@@ -33,7 +33,7 @@ function pickQuote(pool: BookQuote[], avoid?: BookQuote) {
  * añadiste ni cuántas tenga su libro). Queda fija hasta mañana; el botón elige otra, también al
  * azar. Sin citas guardadas, el bloque no aparece.
  */
-export function QuoteOfDayCard() {
+export function QuoteOfDayCard({ title }: { title?: string } = {}) {
   const { workspace, viewEntry } = useApp();
   const [day, setDay] = useState(() => todayInputValue());
   const [saved, setSaved] = useState(readSaved);
@@ -86,7 +86,7 @@ export function QuoteOfDayCard() {
     <section className="hc qd" aria-label="Cita del día" aria-live="polite">
       <header className="hc-head">
         <h3>
-          <Quote size={15} /> Cita del día
+          <Quote size={15} /> {title || 'Cita del día'}
         </h3>
         {quotes.length > 1 && (
           <button

@@ -23,7 +23,7 @@ const firstLine = (s: string) =>
  * «Notas» en Mi espacio: tus últimas notas libres (las que tienen un recordatorio vencido, primero).
  * Se abren y se editan aquí mismo, sin ir a Libroteca; lo que escribes se guarda al cerrar.
  */
-export function HomeNotes() {
+export function HomeNotes({ title }: { title?: string } = {}) {
   const { go, workspace } = useApp();
   const store = useNotes(true);
   const cmd = useNoteCommands(store);
@@ -58,7 +58,7 @@ export function HomeNotes() {
     <section className="nb kp-home" aria-labelledby="home-notes">
       <header className="nb-head">
         <h2 id="home-notes">
-          Notas {live.length > 0 && <span>{live.length.toLocaleString('es-CO')}</span>}
+          {title || 'Notas'} {live.length > 0 && <span>{live.length.toLocaleString('es-CO')}</span>}
         </h2>
         <div className="nb-head-end">
           {live.length > 0 && (

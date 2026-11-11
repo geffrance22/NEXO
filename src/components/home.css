@@ -1065,7 +1065,11 @@ html[data-theme='dark'] .fw-art img {
   .home-main {
     display: contents;
   }
-  .home-main > .ag {
+  /* El primer bloque del centro arriba; luego el panel; luego el resto del centro. */
+  .home-main > * {
+    order: 3;
+  }
+  .home-main > .hb:first-child {
     order: 1;
   }
   .home-side {
@@ -1077,9 +1081,6 @@ html[data-theme='dark'] .fw-art img {
   .home-side > * {
     margin-bottom: 12px;
     break-inside: avoid;
-  }
-  .home-main > .nb {
-    order: 3;
   }
 }
 @media (max-width: 600px) {

@@ -214,7 +214,19 @@ export type MyProfile = {
   readingGoals?: Record<string, number>;
   /** Carpetas propias del diario (en el orden en que se muestran). */
   diaryFolders?: DiaryFolder[];
+  /** Cómo armaste «Mi espacio»: qué bloques ves, en qué orden y con qué ajustes. */
+  home?: HomeLayout;
 };
+
+/** Un bloque de «Mi espacio»: su tipo, si se ve y sus ajustes (cantidad, filtros, cuándo…). */
+export type HomeBlock = {
+  key: string;
+  type: string;
+  on: boolean;
+  opts: Record<string, unknown>;
+};
+/** Los bloques del centro y del panel derecho de «Mi espacio», en orden. */
+export type HomeLayout = { v: 1; main: HomeBlock[]; side: HomeBlock[] };
 
 /** Tu ficha guardada y la lectura que hace la IA de todo lo que hay de ti en Nexo. */
 export type MyRecord = {

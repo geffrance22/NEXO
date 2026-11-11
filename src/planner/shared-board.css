@@ -1,0 +1,158 @@
+/* ════════════════ Tablero de solo lectura (enlace ?ver=…) ════════════════ */
+/* La página no está dentro de .bd: trae sus propias variables (las mismas de boards.css). */
+.shb,
+.shb-msg {
+  --bd-ink: #1f2b24;
+  --bd-muted: #6b7770;
+  --bd-accent: #2f6b55;
+  --bd-accent-soft: #e3f0ea;
+  --bd-col: #eef1ed;
+  --bd-card: #fff;
+  --bd-line: rgba(25, 40, 30, 0.1);
+  --bd-ok: #2f9a5c;
+  --bd-danger: #c8463f;
+  color: var(--bd-ink);
+  font-family: "DM Sans", sans-serif;
+}
+.shb-msg {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 100dvh;
+  padding: 24px;
+  background: #f8f9f6;
+  text-align: center;
+  color: var(--bd-muted);
+}
+.shb-msg p {
+  max-width: 360px;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.shb {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 0;
+  background: var(--bd-bg, #f3f5f1);
+  overflow: hidden;
+}
+.shb-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--bd-line);
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+.shb-bar h1 {
+  margin: 0;
+  overflow: hidden;
+  font:
+    750 18px/1.25 "Manrope",
+    sans-serif;
+  letter-spacing: -0.3px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shb-bar > div {
+  flex: 1;
+  min-width: 0;
+}
+.shb-bar small {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--bd-muted);
+}
+.shb-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: var(--bd-accent-soft);
+  color: var(--bd-accent);
+}
+.shb-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bd-muted);
+  cursor: pointer;
+}
+.shb-toggle input {
+  accent-color: var(--bd-accent);
+}
+/* Se desplaza agarrando el fondo o una tarjeta y arrastrando. */
+.shb-canvas {
+  cursor: grab;
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px 18px 22px;
+  overflow: auto hidden;
+}
+.shb-canvas.panning,
+.shb-canvas.panning * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+.shb-list {
+  max-height: 100%;
+}
+.shb-list .bd-list-head,
+.shb-card {
+  cursor: inherit;
+}
+.shb-card:hover {
+  transform: none;
+}
+.shb-body {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--bd-muted);
+}
+.shb-body summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.shb-body p {
+  margin: 6px 0 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* Con un fondo oscuro, la barra y las cifras se leen en claro. */
+.shb.on-dark .shb-bar {
+  border-bottom-color: rgba(255, 255, 255, 0.14);
+  background: rgba(20, 28, 24, 0.7);
+  color: #f2f5f1;
+}
+.shb.on-dark .shb-bar small,
+.shb.on-dark .shb-toggle {
+  color: rgba(242, 245, 241, 0.72);
+}
+@media (max-width: 720px) {
+  .shb-bar {
+    flex-wrap: wrap;
+  }
+  .shb-canvas {
+    padding: 12px;
+  }
+  .shb-list {
+    flex-basis: min(86vw, 300px);
+  }
+}

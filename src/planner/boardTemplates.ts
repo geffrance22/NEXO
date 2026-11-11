@@ -226,7 +226,7 @@ const GUIDE = [
   'En cada tarjeta: responsable, fecha límite, lista y enlace a los archivos. Si está bloqueada: qué falta, de quién y para cuándo.',
 ];
 
-export const builtinTemplates: BuiltinTemplate[] = [
+const baseTemplates: BuiltinTemplate[] = [
   {
     id: 'av-base',
     name: 'Base audiovisual',
@@ -762,6 +762,54 @@ export const builtinTemplates: BuiltinTemplate[] = [
     ),
   },
 ];
+
+// ───────────────────────── Cuenta regresiva ─────────────────────────
+// Al crear el tablero se elige la fecha del evento (la boda, el rodaje…) y cada tarjeta toma su
+// fecha límite de ahí: «−60» es 60 días antes, «+14» es dos semanas después.
+
+/** Cómo se llama la fecha clave de cada plantilla. */
+const ANCHOR: Record<string, string> = {
+  'av-base': 'Fecha del trabajo',
+  'av-xv': 'Fecha de los XV años',
+  'av-shoot': 'Fecha del photoshoot',
+  'av-boda': 'Fecha de la boda',
+  'av-musica': 'Fecha de la grabación',
+};
+/** Desfase por fase (índice 0 = fase 01). La fase «Cerrado» queda sin fecha. */
+const PHASE_OFFSET: (number | undefined)[] = [-45, -7, 0, 7, 14, 21, undefined];
+/** Desfase de tarjetas concretas, que no siguen el de su fase. */
+const CARD_OFFSET: Record<string, number> = {
+  'Ficha del trabajo': -60,
+  'Brief creativo': -50,
+  'Alcance y presupuesto': -55,
+  'Matriz de entregables': -40,
+  'Locaciones y permisos': -21,
+  'Plan de cobertura': -10,
+  'Plan B': -7,
+  'Hoja de llamado': -3,
+  'Equipo y respaldo': -2,
+  'Confirmación final con cliente y equipo': -2,
+};
+
+/** La plantilla con la fecha límite de cada tarjeta relativa a la fecha del evento. */
+function dated(t: BuiltinTemplate): BuiltinTemplate {
+  return {
+    ...t,
+    spec: {
+      ...t.spec,
+      anchor: ANCHOR[t.id] ?? 'Fecha clave',
+      columns: t.spec.columns.map((col, i) => ({
+        ...col,
+        cards: col.cards.map((card) => {
+          const offset = CARD_OFFSET[card.title] ?? PHASE_OFFSET[i];
+          return typeof offset === 'number' ? { ...card, offset } : card;
+        }),
+      })),
+    },
+  };
+}
+
+export const builtinTemplates: BuiltinTemplate[] = baseTemplates.map(dated);
 
 /** Tablero en blanco: las tres columnas de siempre. */
 export const blankSpec: BoardSpec = {

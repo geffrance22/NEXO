@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { supabase } from '../backend';
 import { todayInputValue } from '../lib/format';
 import { nextDue } from './boardRepeat';
+import { logCompletion } from './boardRoutine';
 import { BOARDS_CHANGED, normalizeCard, type BoardCard, type CardChanges } from './boardStore';
 import { isDivider } from './boardTheme';
 
@@ -36,7 +37,7 @@ export async function loadFeed() {
   try {
     const all: FeedCard[] = [];
     let archivedFilter = true;
-    for (let n = 0; n < 20000; n += 1000) {
+    for (let n = 0; ; n += 1000) {
       let q = supabase.from('planner_board_cards').select('*').order('id').range(n, n + 999);
       if (archivedFilter) q = q.is('archived_at', null);
       const { data, error } = await q;
@@ -49,7 +50,7 @@ export async function loadFeed() {
       if (error) throw error;
       all.push(
         ...((data ?? []) as FeedCard[])
-          .filter((c) => !c.board_is_template && !isDivider(c.title))
+          .filter((c) => !c.board_is_template && !c.board_archived_at && !isDivider(c.title))
           .map((c) => normalizeCard(c) as FeedCard),
       );
       if ((data ?? []).length < 1000) break;
@@ -181,12 +182,16 @@ export async function completeFeedCard(card: FeedCard) {
     due: card.due,
     checks: card.checks,
   };
+  // Con la migración 202611100008 la rutina guarda cada vez que se cumplió.
+  const logs = 'updated_at' in card;
+  if (logs && card.repeat) before.completions = card.completions;
   const changes: CardChanges = card.repeat
     ? {
         due: nextDue(card.repeat, card.due) ?? card.due,
         done: false,
         done_at: null,
         checks: card.checks.map((x) => ({ ...x, done: false })),
+        ...(logs && { completions: logCompletion(card) }),
       }
     : { done: true, done_at: new Date().toISOString() };
   const ok = await patchFeedCard(card.id, changes);

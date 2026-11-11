@@ -12,3 +12,6 @@ verify_jwt = false
 
 [functions.feed-fetch]
 verify_jwt = false
+
+[functions.board-sweep]
+verify_jwt = false

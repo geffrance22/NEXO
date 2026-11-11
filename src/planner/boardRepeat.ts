@@ -60,7 +60,7 @@ export const repeatHint: Record<Repeat, string> = {
 };
 
 /** Una vez la regla, desde una fecha. */
-function step(rule: Repeat, d: string): string {
+export function step(rule: Repeat, d: string): string {
   switch (rule) {
     case 'daily':
       return addDays(d, 1);

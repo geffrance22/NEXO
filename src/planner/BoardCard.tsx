@@ -17,6 +17,7 @@ import {
   Hourglass,
   Link2,
   ListChecks,
+  Lock,
   Plus,
   Repeat as RepeatIcon,
   Sunrise,
@@ -25,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import type { Person } from '../data';
+import { ageInDays } from '../lib/commitments';
 import { friendlyDate, todayInputValue } from '../lib/format';
 import { daysBetween } from '../lib/people';
 import { Avatar } from '../people/Avatar';
@@ -106,12 +108,15 @@ export function CardFace({
   linkedTask,
   open = { checks: false, body: false },
   inline,
+  blocked,
 }: {
   card: BoardCard;
   done: boolean;
   linkedTask: boolean;
   open?: Open;
   inline?: CardInline;
+  /** La tarjeta que todavía la bloquea (su título). */
+  blocked?: string;
 }) {
   const { workspace } = useApp();
   const due = dueState(card.due, done);
@@ -121,6 +126,20 @@ export function CardFace({
   const people = cardPeople(card, entry)
     .map((id) => workspace.people.find((p) => p.id === id))
     .filter((p): p is Person => Boolean(p));
+  // En espera de alguien (compromiso «espero» o «depende» de su pendiente): cuántos días van.
+  const kind = entry?.details.commitment;
+  const waitFor =
+    !done && entry && (kind === 'espero' || kind === 'depende')
+      ? (workspace.people.find((p) => p.id === entry.details.owner) ?? people[0])
+      : undefined;
+  const waitDays = waitFor && entry ? ageInDays(entry) : 0;
+  // El punto de la lista con fecha más próximo (sin tachar).
+  const nextStep = done
+    ? undefined
+    : card.checks
+        .filter((c) => !c.done && c.due)
+        .sort((a, b) => a.due!.localeCompare(b.due!))[0];
+  const stepDue = nextStep ? dueState(nextStep.due!, false) : null;
   const links = Boolean(card.note_id || card.episode_id || card.reading_id);
   const body = card.body.trim();
   const showChecks = open.checks && checks > 0;
@@ -154,8 +173,29 @@ export function CardFace({
         people.length > 0 ||
         card.repeat ||
         prio ||
-        snz) && (
+        snz ||
+        blocked ||
+        waitFor ||
+        stepDue) && (
         <div className="bd-badges">
+          {blocked && (
+            <span className="bd-blocked" title={`Bloqueada por «${blocked}»`}>
+              <Lock size={11} /> Bloqueada
+            </span>
+          )}
+          {waitFor && (
+            <span
+              className={'bd-wait' + (waitDays >= 7 ? ' long' : '')}
+              title={`En espera de ${waitFor.name} desde hace ${waitDays} ${waitDays === 1 ? 'día' : 'días'}`}
+            >
+              <Hourglass size={11} /> {waitFor.name.split(' ')[0]} · {waitDays} d
+            </span>
+          )}
+          {stepDue && nextStep && (stepDue.tone === 'late' || stepDue.tone === 'soon') && (
+            <span className={'bd-due step ' + stepDue.tone} title={`Punto «${nextStep.text}»`}>
+              <ListChecks size={11} /> {stepDue.label}
+            </span>
+          )}
           {prio && (
             <span className={'bd-prio ' + prio} title={`Prioridad ${priorityLabels[prio].toLowerCase()}`}>
               <Flag size={11} /> {priorityLabels[prio]}
@@ -400,6 +440,7 @@ export function CardTile({
   hooks,
   linkState,
   onHook,
+  blocked,
 }: {
   card: BoardCard;
   done: boolean;
@@ -423,6 +464,8 @@ export function CardTile({
   /** Mientras vinculas: es la tarjeta de origen o una ya vinculada con ella. */
   linkState?: 'source' | 'linked';
   onHook?: (side: 'left' | 'right') => void;
+  /** La tarjeta que todavía la bloquea (su título). */
+  blocked?: string;
 }) {
   const tone = toneOf(card.color);
   const snz = snoozeState(card);
@@ -444,7 +487,8 @@ export function CardTile({
         (selected ? ' selected' : '') +
         (snz?.on ? ' snoozed' : '') +
         (age.level ? ` aged aged-${age.level}` : '') +
-        (linkState ? ` link-${linkState}` : '')
+        (linkState ? ` link-${linkState}` : '') +
+        (blocked && !done ? ' blocked' : '')
       }
       style={tone ? ({ '--cc': tone.c } as CSSProperties) : undefined}
       data-card={card.id}
@@ -491,7 +535,14 @@ export function CardTile({
           <Check size={11} strokeWidth={3.2} />
         </button>
         <div className="bd-card-body">
-          <CardFace card={card} done={done} linkedTask={linkedTask} open={open} inline={inline} />
+          <CardFace
+            card={card}
+            done={done}
+            linkedTask={linkedTask}
+            open={open}
+            inline={inline}
+            blocked={done ? undefined : blocked}
+          />
           {age.level >= 2 && (
             <span className="bd-age" aria-hidden="true">
               <Hourglass size={11} /> {ageText(age.days)} sin cambios

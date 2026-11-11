@@ -55,6 +55,7 @@ export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
     "commitment",
     "owner",
     "beneficiary",
+    "waitingSince",
     "snoozed",
     "sourceId",
   ],

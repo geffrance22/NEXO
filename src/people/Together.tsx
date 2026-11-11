@@ -7,6 +7,7 @@ import {
   CalendarClock,
   Check,
   Clapperboard,
+  Columns3,
   Handshake,
   Layers,
   MapPin,
@@ -22,6 +23,8 @@ import { exchangeKinds, type PersonStats } from '../lib/people';
 import { placeKinds, placeOf } from '../lib/places';
 import { PhotoThumbs } from '../components/PhotoThumbs';
 import { RichText } from '../components/RichText';
+import { aimBoard } from '../planner/boardView';
+import { usePersonCards } from '../planner/personCards';
 
 const monthNames = [
   'enero',
@@ -176,10 +179,12 @@ export function Together({
     };
   }, [stats, workspace.episodes, workspace.places, id]);
 
+  const onBoards = usePersonCards(id);
   const commitments = commitmentsWith(id, workspace.entries);
-  const openCommitments = [...commitments.mine, ...commitments.theirs].sort((a, b) =>
-    (a.details.due ?? '9999').localeCompare(b.details.due ?? '9999'),
-  );
+  // El pendiente que nació en una tarjeta ya sale en «En tableros»: no se muestra dos veces.
+  const openCommitments = [...commitments.mine, ...commitments.theirs]
+    .filter((e) => !onBoards.entryIds.has(e.id))
+    .sort((a, b) => (a.details.due ?? '9999').localeCompare(b.details.due ?? '9999'));
   const exchanges = [...(person.profile.exchanges ?? [])]
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 3);
@@ -187,7 +192,11 @@ export function Together({
   const filters = kindOrder.filter((k) => data.counts.has(k));
 
   const since = data.first ? new Date(data.first.created_at) : null;
-  const empty = !data.shared.length && !openCommitments.length && !exchanges.length;
+  const empty =
+    !data.shared.length &&
+    !openCommitments.length &&
+    !onBoards.cards.length &&
+    !exchanges.length;
 
   return (
     <div className="pp-tab pj">
@@ -373,6 +382,43 @@ export function Together({
                 </div>
               );
             })}
+          </div>
+        </>
+      )}
+
+      {onBoards.cards.length > 0 && (
+        <>
+          <h4>
+            <Columns3 size={15} /> En tableros
+          </h4>
+          <div className="pj-list">
+            {onBoards.cards.slice(0, 6).map((c) => (
+              <div className="pj-row" key={c.id}>
+                <button
+                  type="button"
+                  className="pj-row-main"
+                  title="Abrir la tarjeta en su tablero"
+                  onClick={() => {
+                    aimBoard(c.board_id, c.list_id, c.id);
+                    go('Tableros');
+                  }}
+                >
+                  <strong>{c.title}</strong>
+                  <small>
+                    {c.board_name} · {c.list_name}
+                    {c.due && (
+                      <>
+                        {' · '}
+                        <CalendarClock size={11} /> {friendlyDate(c.due)}
+                      </>
+                    )}
+                  </small>
+                </button>
+              </div>
+            ))}
+            {onBoards.cards.length > 6 && (
+              <small className="pj-more">+{onBoards.cards.length - 6} más en tus tableros</small>
+            )}
           </div>
         </>
       )}

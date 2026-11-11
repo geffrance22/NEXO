@@ -4,6 +4,7 @@ import {
   Cake,
   Check,
   ClipboardCheck,
+  Columns3,
   Gift,
   Heart,
   History,
@@ -25,6 +26,8 @@ import { ME, groupsOf, kindWord, tiesOf } from '../lib/relations';
 import { genderOf } from '../lib/gender';
 import { updateKindList, updateKinds, updatesOf } from '../lib/updates';
 import { deduceTastes, tastesLabel, withTastes } from '../lib/tastes';
+import { aimBoard } from '../planner/boardView';
+import { usePersonCards } from '../planner/personCards';
 import { Avatar } from './Avatar';
 import './brief.css';
 
@@ -103,7 +106,7 @@ export function MeetingBrief({
           </button>
         </header>
         {mode === 'antes' ? (
-          <Before person={person} onNext={() => setMode('despues')} />
+          <Before person={person} onNext={() => setMode('despues')} onClose={onClose} />
         ) : (
           <After person={person} entry={entry} onDone={onClose} />
         )}
@@ -112,12 +115,24 @@ export function MeetingBrief({
   );
 }
 
-function Before({ person, onNext }: { person: Person; onNext: () => void }) {
-  const { workspace, patchPerson, viewEntry } = useApp();
+function Before({
+  person,
+  onNext,
+  onClose,
+}: {
+  person: Person;
+  onNext: () => void;
+  onClose: () => void;
+}) {
+  const { workspace, patchPerson, viewEntry, go } = useApp();
   const stats = useMemo(() => statsFor(person, workspace.entries), [person, workspace.entries]);
   const last = stats.interactions[0];
   const updates = updatesOf(person).slice(0, 3);
-  const { mine, theirs } = commitmentsWith(person.id, workspace.entries);
+  const onBoards = usePersonCards(person.id);
+  const all = commitmentsWith(person.id, workspace.entries);
+  // El pendiente que nació en una tarjeta sale en «En tus tableros», no dos veces.
+  const mine = all.mine.filter((e) => !onBoards.entryIds.has(e.id));
+  const theirs = all.theirs.filter((e) => !onBoards.entryIds.has(e.id));
   const [ask, setAsk] = useState('');
   const askNext = person.profile.askNext ?? [];
   const follow = (person.profile.updates ?? []).filter((u) => u.followUp && !u.done);
@@ -196,6 +211,40 @@ function Before({ person, onNext }: { person: Person; onNext: () => void }) {
               </span>
             </div>
           ))}
+        </section>
+      )}
+
+      {onBoards.cards.length > 0 && (
+        <section>
+          <h4>
+            <Columns3 size={15} /> En tus tableros
+          </h4>
+          {onBoards.cards.slice(0, 6).map((c) => (
+            <button
+              type="button"
+              className="mb-line mb-card"
+              key={c.id}
+              title="Abrir la tarjeta en su tablero"
+              onClick={() => {
+                aimBoard(c.board_id, c.list_id, c.id);
+                go('Tableros');
+                onClose();
+              }}
+            >
+              <i className="mb-tag board">{c.list_name}</i>
+              <span>
+                {c.title}
+                <small>
+                  {' '}
+                  · {c.board_name}
+                  {c.due && ` · ${friendlyDate(c.due)}`}
+                </small>
+              </span>
+            </button>
+          ))}
+          {onBoards.cards.length > 6 && (
+            <small className="mb-more">+{onBoards.cards.length - 6} más</small>
+          )}
         </section>
       )}
 

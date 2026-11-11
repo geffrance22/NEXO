@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { Sheet } from '../components/Sheet';
-import { snapshotBoard, type BoardListApi, type BoardSpec } from './boardStore';
+import { addDays, friendlyDate, todayInputValue } from '../lib/format';
+import { hasOffsets, snapshotBoard, type BoardListApi, type BoardSpec } from './boardStore';
 import { backgroundOf, tagTone, toneOf } from './boardTheme';
 import { blankSpec, builtinTemplates, countCards } from './boardTemplates';
 import './templates.css';
@@ -45,6 +46,8 @@ export function TemplateGallery({
   const [busy, setBusy] = useState<'create' | 'custom' | null>(null);
   const [specs, setSpecs] = useState<Record<string, BoardSpec | 'error'>>({});
   const [guideOpen, setGuideOpen] = useState(false);
+  // Plantillas con cuenta regresiva (la boda, el rodaje…): cada tarjeta toma su fecha de esta.
+  const [anchor, setAnchor] = useState(() => addDays(todayInputValue(), 30));
 
   const mine = list.templates;
   const builtin = key.startsWith('b:') ? builtinTemplates.find((t) => 'b:' + t.id === key) : null;
@@ -92,12 +95,27 @@ export function TemplateGallery({
     return { cols: spec.columns.length, cards, checks };
   }, [spec]);
   const bg = backgroundOf(spec?.background ?? own?.background);
+  const counting = Boolean(spec && key !== 'blank' && hasOffsets(spec));
+  const validAnchor = /^\d{4}-\d{2}-\d{2}$/.test(anchor);
+  // De la primera a la última fecha que tendrán las tarjetas, según el día elegido.
+  const span = useMemo(() => {
+    if (!spec || !counting || !validAnchor) return null;
+    const offs = spec.columns.flatMap((c) =>
+      c.cards.flatMap((x) => (typeof x.offset === 'number' ? [x.offset] : [])),
+    );
+    return offs.length
+      ? { from: addDays(anchor, Math.min(...offs)), to: addDays(anchor, Math.max(...offs)) }
+      : null;
+  }, [spec, counting, validAnchor, anchor]);
 
   const create = async () => {
     const n = name.replace(/\s*·\s*$/, '').trim();
-    if (!n || busy || !spec) return;
+    if (!n || busy || !spec || (counting && !validAnchor)) return;
     setBusy('create');
-    const id = key === 'blank' ? await list.create(n) : await list.createFrom(spec, n);
+    const id =
+      key === 'blank'
+        ? await list.create(n)
+        : await list.createFrom(spec, n, counting ? { anchor } : {});
     setBusy(null);
     if (id) {
       onCreated(id);
@@ -321,10 +339,31 @@ export function TemplateGallery({
                 onChange={(e) => setName(e.target.value)}
               />
             </label>
+            {counting && spec && (
+              <label className="bdt-anchor">
+                <span>{spec.anchor || 'Fecha clave'}</span>
+                <input
+                  type="date"
+                  value={anchor}
+                  aria-label={spec.anchor || 'Fecha clave'}
+                  onChange={(e) => setAnchor(e.target.value)}
+                />
+                <small>
+                  {span
+                    ? `Las tarjetas toman su fecha de aquí: de ${friendlyDate(span.from).toLowerCase()} a ${friendlyDate(span.to).toLowerCase()}.`
+                    : 'Elige el día: las tarjetas toman su fecha límite de él.'}
+                </small>
+              </label>
+            )}
             <button
               type="submit"
               className="bd-btn primary"
-              disabled={!name.replace(/\s*·\s*$/, '').trim() || Boolean(busy) || !spec}
+              disabled={
+                !name.replace(/\s*·\s*$/, '').trim() ||
+                Boolean(busy) ||
+                !spec ||
+                (counting && !validAnchor)
+              }
             >
               {busy === 'create' ? <LoaderCircle className="spin" size={15} /> : <Plus size={16} />}
               Crear tablero

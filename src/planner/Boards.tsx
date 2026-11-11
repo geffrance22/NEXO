@@ -25,8 +25,10 @@ import {
   FoldHorizontal,
   FolderInput,
   Highlighter,
+  History,
   Hourglass,
   LayoutTemplate,
+  Link2,
   Menu as MenuIcon,
   MoreHorizontal,
   Palette,
@@ -63,6 +65,8 @@ import { takeTriggers } from "./boardFeed";
 import { boardEntryInput, cardPeople, isBoardEntry } from "./boardPeople";
 import { hasQuick, parseQuick, tokenAt } from "./boardQuick";
 import { nextDue } from "./boardRepeat";
+import { loadRuns, saveRuns } from "./boardRuns";
+import { logCompletion } from "./boardRoutine";
 import {
   actionText,
   conditionsHold,
@@ -98,6 +102,8 @@ import { MenuItem, Popover } from "./BoardPopover";
 import {
   BOARD_SQL,
   byRank,
+  fetchPaged,
+  missingSyncText,
   PRIORITIES,
   snapshotBoard,
   snapshotBoardRows,
@@ -108,6 +114,7 @@ import {
   useBoardList,
   type Board,
   type BoardCard,
+  type BoardClosing,
   type CardChanges,
   type NewCardInput,
   type Priority,
@@ -124,8 +131,32 @@ import {
 import { BOARD_GO, BOARD_LAST, useBoardView } from "./boardView";
 import { CardEditor } from "./CardEditor";
 import { RulesEditor } from "./RulesEditor";
+import { BoardViews } from "./views/BoardViews";
+import {
+  BoardClosingDialog,
+  closingSummary,
+  type ClosingStats,
+} from "./views/BoardClosing";
+import { OverdueTriage } from "./views/OverdueTriage";
+import { useBoardMode, ViewSwitch, type ViewApi } from "./views/shared";
+import { cleanDetails } from "../composer/logic";
+import { BoardHistory } from "./views/BoardHistory";
+import { ShareBoardDialog } from "./views/ShareBoard";
+import { ColumnStack } from "./ColumnStack";
+import { useUndoStack } from "./boardUndo";
+import { blocksCard, otherOf, stillBlocks } from "./cardLinks";
+import {
+  slashAt,
+  takeSlash,
+  templateChanges,
+  useCardTemplates,
+  type CardTemplate,
+} from "./boardCardTemplates";
+import { FIELD_KEYS, type FieldKey } from "./boardRules";
 import "./boards.css";
 import "./rules.css";
+import "./views/views.css";
+import "./phases.css";
 
 const LAST = BOARD_LAST;
 const ARCHIVE = "archivados";
@@ -153,7 +184,23 @@ type Effect = {
   /** Cómo quedó tras las reglas (para no pisar lo que cambies después). */
   after?: BoardCard;
 };
-type Fired = { type: TriggerType; card: string; list: string };
+type Fired = {
+  type: TriggerType;
+  card: string;
+  list: string;
+  /** person: a quiénes se añadió. */
+  people?: string[];
+  /** field: qué campos cambiaron. */
+  fields?: FieldKey[];
+};
+/** Los campos que vigila «Cambia un campo» y que de verdad cambiaron. */
+const changedFields = (c: BoardCard, ch: CardChanges): FieldKey[] =>
+  FIELD_KEYS.filter(
+    (k) =>
+      k in ch &&
+      JSON.stringify((ch as Record<string, unknown>)[k] ?? null) !==
+        JSON.stringify((c as Record<string, unknown>)[k] ?? null),
+  );
 
 function readHidden(): Record<string, 1> {
   try {
@@ -179,7 +226,10 @@ const writeFired = (s: Set<string>) => {
   }
 };
 const ruleLabel = (r: Rule) =>
-  (r.name || `${triggerText(r.trigger)} → ${actionText(r.then[0], [], () => "")}`)
+  (
+    r.name ||
+    `${triggerText(r.trigger)} → ${actionText(r.then[0], [], () => "")}`
+  )
     .replace(/\s+/g, " ")
     .slice(0, 60);
 const plural = (n: number, one: string, many: string) =>
@@ -197,9 +247,18 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     patchEntry,
     removeEntry,
     createEntry,
-    notify,
+    notify: toast,
     confirm,
+    saveEpisode,
+    updateEpisode,
+    linkEntries,
   } = useApp();
+  // Cada «Deshacer» queda apilado: Ctrl + Z deshace paso a paso.
+  const undo = useUndoStack(toast);
+  const notify = undo.notify;
+  const cardTemplates = useCardTemplates();
+  const [history, setHistory] = useState<{ card?: string } | null>(null);
+  const [sharing, setSharing] = useState(false);
   const list = useBoardList(notify);
   const [selected, setSelected] = useState(
     () => localStorage.getItem(LAST) ?? "",
@@ -220,6 +279,11 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   const archive = useArchive(inArchive, notify);
   // Tarjetas desplegadas y columnas plegadas (se recuerda en este equipo).
   const view = useBoardView();
+  // Columnas, lista, tabla, calendario, línea de tiempo o matriz (cada tablero la suya).
+  const [mode, setMode] = useBoardMode(board?.id ?? null);
+  const boardArchived = Boolean(board?.archived_at);
+  const [triage, setTriage] = useState(false);
+  const [closing, setClosing] = useState(false);
 
   const [query, setQuery] = useState("");
   // Ocultar completadas: cada tablero lo recuerda por su lado.
@@ -241,6 +305,27 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   const [menu, setMenu] = useState<Menu | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [rulesFor, setRulesFor] = useState<string | null>(null);
+  // Ctrl + Z (o ⌘ + Z) deshace el último paso apilado, salvo cuando escribes en un campo.
+  const undoLast = useRef(undo.undoLast);
+  undoLast.current = undo.undoLast;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "z" || e.shiftKey || e.altKey) return;
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const t = e.target;
+      if (
+        t instanceof HTMLElement &&
+        (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
+      )
+        return;
+      // Con una ventana encima (la ficha, un diálogo), Ctrl + Z es de ella.
+      if (document.querySelector(".sheet-backdrop, .confirm-backdrop")) return;
+      e.preventDefault();
+      undoLast.current();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
   // Columnas que muestran sus tarjetas pospuestas.
   const [showSnoozed, setShowSnoozed] = useState<Set<string>>(() => new Set());
   // Selección múltiple (Ctrl o ⌘ + clic; Mayús + clic, un tramo).
@@ -274,6 +359,10 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     setQuery("");
     setSelection(new Set());
     setShowSnoozed(new Set());
+    setTriage(false);
+    setClosing(false);
+    setHistory(null);
+    setSharing(false);
   };
 
   // ── Completadas (también si el pendiente vinculado ya se hizo) ──
@@ -310,10 +399,23 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   const today = todayInputValue();
   const isSnoozed = (c: BoardCard) =>
     Boolean(c.snoozed_until && c.snoozed_until > today);
+  /** La tarjeta que todavía bloquea a esta (vínculo «bloquea» cuya condición no se cumplió). */
+  const blockerOf = (c: BoardCard) => {
+    for (const l of links.links) {
+      if (!blocksCard(l, c.id)) continue;
+      const b = api.peek(l.blocker!);
+      if (stillBlocks(l, b, (id) => (api.peek(id) ? isDone(api.peek(id)!) : true)))
+        return b;
+    }
+    return undefined;
+  };
+  const peopleOf = (c: BoardCard) => cardPeople(c, tasks.get(c.entry_id ?? ""));
   const ruleCtx: RuleCtx = {
     today,
     isDone,
-    people: (c) => cardPeople(c, tasks.get(c.entry_id ?? "")).length,
+    people: (c) => peopleOf(c).length,
+    peopleOf,
+    blocked: (c) => Boolean(blockerOf(c)),
   };
 
   /** Deja de esperar la vuelta de una tarjeta que se repite (como si no se hubiera completado). */
@@ -338,11 +440,23 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   function toggleDone(
     c: BoardCard,
     patch: (ch: CardChanges) => void,
-    opts: { rules?: boolean; quiet?: boolean } = {},
+    opts: { rules?: boolean; quiet?: boolean; force?: boolean } = {},
   ): () => void {
     // Un segundo toque mientras la que se repite «vuelve»: se cancela, sin más.
     if (cancelRecur(c.id)) return () => {};
     const next = !isDone(c);
+    // Bloqueada por otra: se avisa (y se puede completar igual).
+    const blocker = next && !opts.force && !opts.quiet ? blockerOf(c) : undefined;
+    if (blocker) {
+      notify(
+        `«${c.title.slice(0, 40)}» depende de «${blocker.title.slice(0, 40)}», que aún no está lista.`,
+        {
+          label: "Completar igual",
+          run: () => void toggleDone(api.peek(c.id) ?? c, patch, { ...opts, force: true }),
+        },
+      );
+      return () => {};
+    }
     const task = tasks.get(c.entry_id ?? "");
     if (next && c.repeat) return recur(c, patch, opts.quiet);
     const before = { done: c.done, done_at: c.done_at };
@@ -353,9 +467,56 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
       const t = tasksNow.current.get(c.entry_id ?? "");
       if (t && (t.status === "completado") === next) toggleEntry(t);
     };
-    if (opts.rules !== false)
-      fire([{ type: next ? "done" : "undone", card: c.id, list: c.list_id }], undo);
+    if (opts.rules !== false) {
+      const events: Fired[] = [
+        { type: next ? "done" : "undone", card: c.id, list: c.list_id },
+      ];
+      if (next && emptiedBy(c.list_id, [c.id]))
+        events.push({ type: "emptied", card: c.id, list: c.list_id });
+      const acted = fire(events, undo);
+      if (!acted && next && !opts.quiet) announceUnblocked([c.id], undo, true);
+    }
     return undo;
+  }
+  /** ¿La columna se queda sin tarjetas abiertas si se van (o se completan) estas? */
+  function emptiedBy(listId: string, leaving: string[]) {
+    const out = new Set(leaving);
+    const all = api.peekAll().filter((x) => x.list_id === listId && !isDivider(x.title));
+    return (
+      all.some((x) => out.has(x.id)) &&
+      !all.some((x) => !out.has(x.id) && !isDone(x) && !isSnoozed(x))
+    );
+  }
+  /** Avisa qué tarjetas quedaron libres porque estas se completaron o se movieron. */
+  function announceUnblocked(ids: string[], undoIt?: () => void, assumeDone = false) {
+    const doneNow = (id: string) =>
+      (assumeDone && ids.includes(id)) || (api.peek(id) ? isDone(api.peek(id)!) : true);
+    const freed = links.links
+      .filter((l) => l.kind === "blocks" && l.blocker && ids.includes(l.blocker))
+      .map((l) => ({ l, dep: api.peek(otherOf(l, l.blocker!)) }))
+      .filter(
+        ({ l, dep }) =>
+          dep &&
+          !isDone(dep) &&
+          !stillBlocks(l, api.peek(l.blocker!), doneNow) &&
+          !links.links.some(
+            (o) =>
+              o !== l &&
+              blocksCard(o, dep.id) &&
+              stillBlocks(o, api.peek(o.blocker!), doneNow),
+          ),
+      )
+      .map(({ dep }) => dep!);
+    if (!freed.length) return false;
+    notify(
+      freed.length === 1
+        ? `«${freed[0].title.slice(0, 50)}» ya no está bloqueada: puedes seguir con ella.`
+        : `${freed.length} tarjetas ya no están bloqueadas.`,
+      undoIt
+        ? { label: "Deshacer", icon: "undo", run: undoIt }
+        : { label: "Abrir", icon: "open", run: () => setOpenId(freed[0].id) },
+    );
+    return true;
   }
   /**
    * Completar una que se repite: se marca un instante y vuelve abierta, con su lista limpia.
@@ -367,7 +528,11 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     quiet = false,
   ): () => void {
     const due = nextDue(c.repeat, c.due) ?? c.due;
-    const before = { due: c.due, checks: c.checks };
+    const before = {
+      due: c.due,
+      checks: c.checks,
+      ...(api.sync && { completions: c.completions }),
+    };
     const task = tasks.get(c.entry_id ?? "");
     setRecurring((s) => new Set(s).add(c.id));
     const back = () => {
@@ -384,6 +549,8 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         done: false,
         done_at: null,
         checks: c.checks.map((x) => ({ ...x, done: false })),
+        // Queda en el registro de la rutina (cuántas veces, racha, calendario de puntos).
+        ...(api.sync && { completions: logCompletion(c) }),
       });
       if (task)
         void patchEntry(task, {
@@ -425,10 +592,11 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     const t = boardTask(c);
     if (!t) return;
     const next: Parameters<typeof patchEntry>[1] = {};
-    if (ch.title !== undefined && ch.title !== t.title)
-      next.title = ch.title;
-    if (ch.body !== undefined && ch.body !== t.body)
-      next.body = ch.body;
+    // El pendiente guarda hasta 180 caracteres de título y 4000 de descripción (como la base).
+    const title = ch.title?.slice(0, 180);
+    const body = ch.body?.slice(0, 4000);
+    if (title !== undefined && title !== t.title) next.title = title;
+    if (body !== undefined && body !== t.body) next.body = body;
     if (ch.due !== undefined && (ch.due ?? undefined) !== t.details.due)
       next.details = { ...t.details, due: ch.due ?? undefined };
     if (Object.keys(next).length) void patchEntry(t, next);
@@ -448,19 +616,22 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   };
   /** Igual, pero leyendo de la base las tarjetas de una columna o un tablero (incluye archivadas). */
   async function dropTasksOf(filter: { list?: string; board?: string }) {
-    const q = filter.list
-      ? supabase
-          .from("board_cards")
-          .select("entry_id")
-          .eq("list_id", filter.list)
-      : supabase
-          .from("planner_board_cards")
-          .select("entry_id")
-          .eq("board_id", filter.board!);
-    const { data } = await q.not("entry_id", "is", null).limit(5000);
-    dropTasks(
-      ((data ?? []) as { entry_id: string | null }[]).map((r) => r.entry_id),
+    const { rows } = await fetchPaged<{ id: string; entry_id: string | null }>(
+      (from, to, count) => {
+        const opts = count ? { count: "exact" as const } : undefined;
+        const q = filter.list
+          ? supabase
+              .from("board_cards")
+              .select("id,entry_id", opts)
+              .eq("list_id", filter.list)
+          : supabase
+              .from("planner_board_cards")
+              .select("id,entry_id", opts)
+              .eq("board_id", filter.board!);
+        return q.not("entry_id", "is", null).order("id").range(from, to);
+      },
     );
+    dropTasks(rows.map((r) => r.entry_id));
   }
 
   // ───────────────────────── Reglas ─────────────────────────
@@ -486,7 +657,8 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   const remember = (effects: Map<string, Effect>, id: string) => {
     if (effects.has(id)) return;
     const card = api.peek(id);
-    if (card) effects.set(id, { before: card, wasDone: isDone(card), archived: false });
+    if (card)
+      effects.set(id, { before: card, wasDone: isDone(card), archived: false });
   };
 
   /** Aplica las acciones de una regla a una tarjeta, en orden. Devuelve si cambió algo. */
@@ -504,7 +676,10 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
       if (!card) break; // archivada por una acción anterior
       const ch = fieldChanges(card, a, today);
       if (ch) {
-        if (!api.power && ("priority" in ch || "highlight" in ch || "snoozed_until" in ch))
+        if (
+          !api.power &&
+          ("priority" in ch || "highlight" in ch || "snoozed_until" in ch)
+        )
           continue;
         api.patchCard(id, ch);
         syncTask(card, ch);
@@ -527,7 +702,8 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         }
       } else if (a.type === "move") {
         const target = a.list;
-        if (!target || target === card.list_id || !api.peekColumn(target)) continue;
+        if (!target || target === card.list_id || !api.peekColumn(target))
+          continue;
         if (blocked(target, 1)) continue;
         const from = card.list_id;
         // Al final de verdad (moveCards lo ajusta a lo que haya ahora).
@@ -547,6 +723,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     depth: number,
     seen: Set<string>,
     effects: Map<string, Effect>,
+    ev?: Pick<Fired, "people" | "fields">,
   ): string[] {
     if (depth > 5 || editingTemplate) return [];
     const col = api.peekColumn(listId);
@@ -554,6 +731,20 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     const out: string[] = [];
     for (const rule of col.rules.rules) {
       if (!rule.on || rule.trigger.type !== type) continue;
+      // «Se le añade una persona»: cualquiera, o esa en concreto.
+      if (
+        type === "person" &&
+        rule.trigger.value &&
+        !(ev?.people ?? []).includes(rule.trigger.value)
+      )
+        continue;
+      // «Cambia un campo»: cualquiera de los vigilados, o ese en concreto.
+      if (type === "field") {
+        const changed = ev?.fields ?? [];
+        if (!changed.length) continue;
+        if (rule.trigger.field && !changed.includes(rule.trigger.field))
+          continue;
+      }
       const key = rule.id + "|" + id;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -569,7 +760,8 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
    * solo si siguen como la regla los dejó (lo que tocaste después se respeta).
    */
   function revert(effects: Map<string, Effect>) {
-    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    const same = (a: unknown, b: unknown) =>
+      JSON.stringify(a) === JSON.stringify(b);
     const keys: (keyof CardChanges)[] = [
       "list_id",
       "rank",
@@ -610,7 +802,8 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     undo?: () => void,
   ) {
     if (!names.length || !effects.size) return false;
-    for (const [id, e] of effects) e.after = api.peek(id) ?? e.after ?? e.before;
+    for (const [id, e] of effects)
+      e.after = api.peek(id) ?? e.after ?? e.before;
     const uniq = [...new Set(names)];
     const what =
       uniq.length === 1 ? `Regla «${uniq[0]}»` : `${uniq.length} reglas`;
@@ -636,7 +829,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     const effects = new Map<string, Effect>();
     const seen = new Set<string>();
     const names = events.flatMap((e) =>
-      runTrigger(e.type, e.card, e.list, 0, seen, effects),
+      runTrigger(e.type, e.card, e.list, 0, seen, effects, e),
     );
     return announce(names, effects, "Se aplicó: ", undo);
   }
@@ -652,7 +845,8 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     for (const id of ids) {
       // Se vuelve a mirar: una acción anterior pudo moverla o cambiarla.
       const c = api.peek(id);
-      if (!c || c.list_id !== listId || !conditionsHold(rule, c, ruleCtx)) continue;
+      if (!c || c.list_id !== listId || !conditionsHold(rule, c, ruleCtx))
+        continue;
       seen.add(rule.id + "|" + c.id);
       if (applyRule(rule, c.id, 0, seen, effects)) n++;
     }
@@ -665,8 +859,17 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
    * que se completó): si lo deshaces, no vuelve a actuar.
    */
   function sweep() {
-    if (api.status !== "ready" || editingTemplate || inArchive) return;
-    const memo = readFired();
+    if (
+      !board ||
+      api.status !== "ready" ||
+      editingTemplate ||
+      inArchive ||
+      boardArchived
+    )
+      return;
+    // Lo aplicado aquí (este equipo) y lo que anotaron la base y el servidor.
+    const memo = new Set([...readFired(), ...runs.current]);
+    const fresh: string[] = [];
     const effects = new Map<string, Effect>();
     const seen = new Set<string>();
     const names: string[] = [];
@@ -683,11 +886,15 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           const c = api.peek(id);
           // Solo con la fecha real en que se completó.
           if (!c || !isDone(c) || !c.done_at) continue;
-          if (daysBetween(todayInputValue(new Date(c.done_at)), today) < cfg.autoArchive)
+          if (
+            daysBetween(todayInputValue(new Date(c.done_at)), today) <
+            cfg.autoArchive
+          )
             continue;
           const key = `auto|${c.id}|${c.done_at}`;
           if (memo.has(key)) continue;
           memo.add(key);
+          fresh.push(key);
           remember(effects, c.id);
           effects.get(c.id)!.after = c;
           if (api.archiveCard(c.id)) {
@@ -705,16 +912,40 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           const key = `${rule.id}|${c.id}|${stampOf(rule.trigger, c)}`;
           if (memo.has(key)) continue;
           memo.add(key);
-          if (applyRule(rule, c.id, 0, seen, effects)) names.push(ruleLabel(rule));
+          fresh.push(key);
+          if (applyRule(rule, c.id, 0, seen, effects))
+            names.push(ruleLabel(rule));
         }
       }
     }
     writeFired(memo);
+    if (fresh.length) {
+      fresh.forEach((k) => runs.current.add(k));
+      void saveRuns(board.id, fresh);
+    }
     if (archived) {
       list.setArchived((n) => n + archived);
       names.push(`Archivar completadas`);
     }
     announce(names, effects, "Automático: ");
+  }
+  // Lo ya aplicado que anotó la base para el tablero abierto (este equipo, otros y el servidor).
+  const runs = useRef(new Set<string>());
+  const runsFor = useRef("");
+  const runsAt = useRef("");
+  /** Trae lo anotado: todo al abrir el tablero y, después, solo lo nuevo desde la última vez. */
+  async function refreshRuns() {
+    if (!board) return;
+    const id = board.id;
+    const first = runsFor.current !== id;
+    const since = first ? undefined : runsAt.current;
+    const stamp = new Date(Date.now() - 60_000).toISOString();
+    const loaded = await loadRuns(id, since);
+    if (board.id !== id) return;
+    if (first) runs.current = new Set();
+    loaded.forEach((k) => runs.current.add(k));
+    runsFor.current = id;
+    runsAt.current = stamp;
   }
   const sweepNow = useRef(sweep);
   sweepNow.current = sweep;
@@ -723,12 +954,18 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   // Al abrir el tablero: lo que quedó pendiente desde fuera (completar en la Agenda) y lo programado.
   useEffect(() => {
     if (api.status !== "ready" || !board) return;
-    const t = window.setTimeout(() => {
+    let live = true;
+    const t = window.setTimeout(async () => {
+      // Antes de revisar lo programado, lo que ya anotó la base (otros equipos, el servidor).
+      await refreshRuns();
+      if (!live) return;
       const pend = takeTriggers(new Set(api.columns.map((c) => c.id)));
       // Solo lo que sigue siendo cierto (si lo deshiciste, no cuenta).
       const real = pend.filter((p) => {
         const c = api.peek(p.card);
-        return c && c.list_id === p.list && isDone(c) === (p.trigger === "done");
+        return (
+          c && c.list_id === p.list && isDone(c) === (p.trigger === "done")
+        );
       });
       if (real.length)
         fireNow.current(
@@ -736,13 +973,15 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         );
       sweepNow.current();
     }, 700);
-    const every = window.setInterval(() => sweepNow.current(), SWEEP_EVERY);
-    const onFocus = () => sweepNow.current();
-    window.addEventListener("focus", onFocus);
+    // Cada vuelta mira antes lo que el servidor haya aplicado (así no se repite aquí).
+    const again = () => void refreshRuns().then(() => live && sweepNow.current());
+    const every = window.setInterval(again, SWEEP_EVERY);
+    window.addEventListener("focus", again);
     return () => {
+      live = false;
+      window.removeEventListener("focus", again);
       window.clearTimeout(t);
       window.clearInterval(every);
-      window.removeEventListener("focus", onFocus);
     };
   }, [api.status, board?.id]);
 
@@ -762,18 +1001,44 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     const incoming = moving.filter((c) => c.list_id !== listId);
     if (incoming.length && blocked(listId, incoming.length)) return null;
     const from = new Map(incoming.map((c) => [c.id, c.list_id]));
+    // Columnas que tenían tarjetas abiertas y tal vez se queden sin ninguna.
+    const sources = [...new Set(incoming.map((c) => c.list_id))].filter(
+      (s) => openIn(s) > 0,
+    );
     api.moveCards(
       moving.map((c) => c.id),
       listId,
       index,
     );
-    return fire(
-      incoming.flatMap((c): Fired[] => [
-        { type: "leave", card: c.id, list: from.get(c.id)! },
-        { type: "enter", card: c.id, list: listId },
-      ]),
-      undo,
-    );
+    const events = incoming.flatMap((c): Fired[] => [
+      { type: "leave", card: c.id, list: from.get(c.id)! },
+      { type: "enter", card: c.id, list: listId },
+    ]);
+    for (const s of sources) {
+      const last = incoming.find((c) => c.list_id === s);
+      if (last && openIn(s) === 0)
+        events.push({ type: "emptied", card: last.id, list: s });
+    }
+    let acted = fire(events, undo);
+    // Si una tarjeta bloqueaba a otra «hasta que llegue a esta columna», se avisa que quedó libre.
+    if (!acted && incoming.length)
+      acted = announceUnblocked(
+        incoming.map((c) => c.id),
+        undo,
+      );
+    return acted;
+  }
+  /** Cuántas tarjetas abiertas (ni completadas ni pospuestas) tiene una columna. */
+  function openIn(listId: string) {
+    return api
+      .peekAll()
+      .filter(
+        (x) =>
+          x.list_id === listId &&
+          !isDivider(x.title) &&
+          !isDone(x) &&
+          !isSnoozed(x),
+      ).length;
   }
 
   /** Lo que se hace desde la tarjeta en la columna, sin abrirla. */
@@ -1197,28 +1462,45 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     if (ch.list_id && ch.list_id !== openCard.list_id) {
       const { list_id, ...rest } = ch;
       if (
-        moveWithRules([openCard.id], list_id, byList.get(list_id)?.length ?? 0) ===
-        null
+        moveWithRules(
+          [openCard.id],
+          list_id,
+          byList.get(list_id)?.length ?? 0,
+        ) === null
       )
         return;
       if (Object.keys(rest).length) api.patchCard(openCard.id, rest);
       return;
     }
     const was = openCard.checks;
+    const fields = changedFields(openCard, ch);
     api.patchCard(openCard.id, ch);
+    const events: Fired[] = [];
+    if (fields.length)
+      events.push({
+        type: "field",
+        card: openCard.id,
+        list: openCard.list_id,
+        fields,
+      });
     if (
       ch.checks?.length &&
       ch.checks.every((x) => x.done) &&
       !(was.length && was.every((x) => x.done))
     )
-      fire([{ type: "checks", card: openCard.id, list: openCard.list_id }]);
+      events.push({
+        type: "checks",
+        card: openCard.id,
+        list: openCard.list_id,
+      });
+    if (events.length) fire(events);
   };
 
   /**
    * Añade tarjetas con escritura rápida: #etiqueta, @persona, !prioridad y **resaltada**. Las
    * personas van en un pendiente vinculado (como al añadirlas desde la ficha).
    */
-  function addFrom(listId: string, items: NewCardInput[]) {
+  function addFrom(listId: string, items: NewCardInput[], due?: string | null) {
     const parsed = items
       .map((i) => {
         const raw = typeof i === "string" ? i : i.title;
@@ -1230,14 +1512,15 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             tags: q.tags,
             priority: q.priority,
             highlight: q.highlight,
+            ...(due && { due }),
           },
           people: q.people,
         };
       })
       .filter((p) => p.input.title.trim());
-    if (!parsed.length) return;
+    if (!parsed.length) return [];
     const real = parsed.filter((p) => !isDivider(p.input.title)).length;
-    if (real && blocked(listId, real)) return;
+    if (real && blocked(listId, real)) return [];
     if (!api.power && parsed.some((p) => p.input.priority || p.input.highlight))
       notify(
         "La prioridad y el resaltado no se guardaron: falta la migración 202611090002_board_power.sql.",
@@ -1245,7 +1528,9 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     const made = api.addCards(
       listId,
       parsed.map((p) =>
-        api.power ? p.input : { ...p.input, priority: "" as const, highlight: false },
+        api.power
+          ? p.input
+          : { ...p.input, priority: "" as const, highlight: false },
       ),
     );
     made.forEach((card, k) => {
@@ -1255,22 +1540,42 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         (e) => e && api.patchIfPresent(card.id, { entry_id: e.id }),
       );
     });
-    fire(
-      made
-        .filter((c) => !isDivider(c.title))
-        .map((c) => ({ type: "create" as const, card: c.id, list: listId })),
-    );
+    const events: Fired[] = made
+      .filter((c) => !isDivider(c.title))
+      .map((c) => ({ type: "create" as const, card: c.id, list: listId }));
+    // Con @personas en el título, también corre «Se le añade una persona».
+    made.forEach((card, k) => {
+      const ids = parsed[k]?.people ?? [];
+      if (ids.length)
+        events.push({ type: "person", card: card.id, list: listId, people: ids });
+    });
+    fire(events);
+    return made;
+  }
+
+  /** Una tarjeta desde una plantilla de tarjeta (/reunion): trae su lista, etiquetas y fecha. */
+  function addFromTemplate(listId: string, title: string, tpl: CardTemplate) {
+    const made = addFrom(listId, [title || tpl.title || tpl.name]);
+    made.forEach((card) => {
+      const ch = templateChanges(tpl, card);
+      if (!api.power) delete ch.priority;
+      if (Object.keys(ch).length) api.patchCard(card.id, ch);
+    });
   }
 
   /** Pospone (o despierta, con null) estas tarjetas. */
   function snoozeCards(ids: string[], until: string | null) {
-    if (!api.power) return notify("Para posponer ejecuta supabase/migrations/202611090002_board_power.sql en el SQL Editor de Supabase.");
+    if (!api.power)
+      return notify(
+        "Para posponer ejecuta supabase/migrations/202611090002_board_power.sql en el SQL Editor de Supabase.",
+      );
     const before = ids
       .map((id) => api.peek(id))
       .filter((c): c is BoardCard => Boolean(c))
       .map((c) => ({ id: c.id, snoozed_until: c.snoozed_until }));
     before.forEach((b) => api.patchCard(b.id, { snoozed_until: until }));
-    if (until) setSelection((s) => new Set([...s].filter((id) => !ids.includes(id))));
+    if (until)
+      setSelection((s) => new Set([...s].filter((id) => !ids.includes(id))));
     const n = before.length;
     notify(
       until
@@ -1291,11 +1596,9 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
 
   // ── Acciones en grupo (selección) ──
   /** Cambia campos de las seleccionadas; «Deshacer» deja cada una como estaba. */
-  function bulkPatch(
-    label: string,
-    fn: (c: BoardCard) => CardChanges | null,
-  ) {
+  function bulkPatch(label: string, fn: (c: BoardCard) => CardChanges | null) {
     const undo: { id: string; ch: CardChanges }[] = [];
+    const events: Fired[] = [];
     for (const c of picked) {
       const ch = fn(c);
       if (!ch || !Object.keys(ch).length) continue;
@@ -1303,6 +1606,9 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         Object.keys(ch).map((k) => [k, c[k as keyof CardChanges]]),
       ) as CardChanges;
       undo.push({ id: c.id, ch: back });
+      const fields = changedFields(c, ch);
+      if (fields.length)
+        events.push({ type: "field", card: c.id, list: c.list_id, fields });
       api.patchCard(c.id, ch);
       syncTask(c, ch);
     }
@@ -1312,6 +1618,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
       icon: "undo",
       run: () => undo.forEach((u) => api.patchIfPresent(u.id, u.ch)),
     });
+    if (events.length) fire(events);
   }
   function bulkDone() {
     const allDone = picked.every(isDone);
@@ -1366,21 +1673,27 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     );
   }
   function bulkArchive() {
-    if (!api.extras) return notify(`Para archivar ejecuta ${BOARD_SQL} en el SQL Editor de Supabase.`);
+    if (!api.extras)
+      return notify(
+        `Para archivar ejecuta ${BOARD_SQL} en el SQL Editor de Supabase.`,
+      );
     const moved = picked
       .map((c) => api.archiveCard(c.id))
       .filter((c): c is BoardCard => Boolean(c));
     clearSelection();
     if (!moved.length) return;
     list.setArchived((n) => n + moved.length);
-    notify(`${plural(moved.length, "tarjeta archivada", "tarjetas archivadas")}.`, {
-      label: "Deshacer",
-      icon: "undo",
-      run: () => {
-        moved.forEach((c) => api.unarchiveCard(c));
-        list.setArchived((n) => Math.max(0, n - moved.length));
+    notify(
+      `${plural(moved.length, "tarjeta archivada", "tarjetas archivadas")}.`,
+      {
+        label: "Deshacer",
+        icon: "undo",
+        run: () => {
+          moved.forEach((c) => api.unarchiveCard(c));
+          list.setArchived((n) => Math.max(0, n - moved.length));
+        },
       },
-    });
+    );
   }
   function bulkDelete() {
     const tied = links.of(picked.map((c) => c.id));
@@ -1392,15 +1705,18 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     const keep = dropTasksLater(
       removed.filter((c) => boardTask(c)).map((c) => c.entry_id),
     );
-    notify(`${plural(removed.length, "tarjeta eliminada", "tarjetas eliminadas")}.`, {
-      label: "Deshacer",
-      icon: "undo",
-      run: () => {
-        keep();
-        removed.forEach((c) => api.restoreCard(c));
-        links.restore(tied);
+    notify(
+      `${plural(removed.length, "tarjeta eliminada", "tarjetas eliminadas")}.`,
+      {
+        label: "Deshacer",
+        icon: "undo",
+        run: () => {
+          keep();
+          removed.forEach((c) => api.restoreCard(c));
+          links.restore(tied);
+        },
       },
-    });
+    );
   }
 
   const bg = backgroundOf(board?.background);
@@ -1410,6 +1726,211 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   const snoozedCount = realCards.filter(isSnoozed).length;
   const cols = api.columns;
   const aging = board?.settings.aging ?? 0;
+
+  // ── Avance acumulado: lo completado (también lo ya archivado) sobre el total ──
+  const progressTotal = activeCount + api.closed;
+  const progressPct = progressTotal
+    ? Math.round((100 * (doneCount + api.closed)) / progressTotal)
+    : 0;
+
+  // ── Vencidas (para el triage) ──
+  const overdue = realCards.filter(
+    (c) => c.due && c.due < today && !isDone(c) && !isSnoozed(c),
+  );
+  /** Cuántas abiertas vencen ese día (para repartir la carga sin pasar del tope). */
+  const loadOn = (date: string) =>
+    api
+      .peekAll()
+      .filter(
+        (c) =>
+          c.due === date && !isDivider(c.title) && !isDone(c) && !isSnoozed(c),
+      ).length;
+  /** Cambia campos de una tarjeta (y de su pendiente) y devuelve cómo deshacerlo. */
+  function patchBack(c: BoardCard, ch: CardChanges) {
+    const before = Object.fromEntries(
+      Object.keys(ch).map((k) => [k, c[k as keyof CardChanges] ?? null]),
+    ) as CardChanges;
+    api.patchCard(c.id, ch);
+    syncTask(c, ch);
+    return () => {
+      const now = api.peek(c.id);
+      if (!now) return;
+      api.patchCard(c.id, before);
+      syncTask(now, before);
+    };
+  }
+  function triageDrop(c: BoardCard) {
+    if (c.repeat) {
+      // Una rutina no se suelta: se salta esta vez y vuelve en la fecha siguiente.
+      return patchBack(c, { due: nextDue(c.repeat, c.due) ?? c.due });
+    }
+    const gone = api.archiveCard(c.id);
+    if (!gone) return () => {};
+    list.setArchived((n) => n + 1);
+    return () => {
+      api.unarchiveCard(gone);
+      list.setArchived((n) => Math.max(0, n - 1));
+    };
+  }
+
+  // ── Lo que necesitan las otras vistas ──
+  // Se recalcula cuando cambia algo que decide qué se ve (no en cada pintado).
+  const viewCards = useMemo(
+    () => realCards.filter(visible),
+    [api.cards, query, hideDone, showSnoozed, recurring, tasks, today], // eslint-disable-line
+  );
+  const viewApi: ViewApi = {
+    cards: viewCards,
+    columns: cols,
+    today,
+    power: api.power,
+    sync: api.sync,
+    isDone,
+    linked,
+    open: (c) => setOpenId(c.id),
+    toggle: (c) => void toggleDone(c, (ch) => api.patchCard(c.id, ch)),
+    patch: (c, ch, label) => {
+      const fields = changedFields(c, ch);
+      const undo = patchBack(c, ch);
+      if (label)
+        notify(label + ".", { label: "Deshacer", icon: "undo", run: undo });
+      // Editar desde la tabla, el calendario o la matriz también corre «Cambia un campo».
+      if (fields.length)
+        fire([{ type: "field", card: c.id, list: c.list_id, fields }]);
+    },
+    move: (c, listId) => {
+      if (listId === c.list_id) return;
+      const back = { list_id: c.list_id, rank: c.rank };
+      const ruled = moveWithRules(
+        [c.id],
+        listId,
+        byList.get(listId)?.length ?? 0,
+        () => api.patchIfPresent(c.id, back),
+      );
+      if (ruled === false)
+        notify(
+          `Movida a «${api.peekColumn(listId)?.name.slice(0, 40) ?? "la columna"}».`,
+          {
+            label: "Deshacer",
+            icon: "undo",
+            run: () => api.patchIfPresent(c.id, back),
+          },
+        );
+    },
+    add: (listId, title, due) => void addFrom(listId, [title], due),
+  };
+
+  // ── Cerrar y archivar el tablero ──
+  const closingStats = (): ClosingStats => {
+    const firstCard = realCards
+      .map((c) => c.created_at)
+      .filter((x): x is string => Boolean(x))
+      .sort()[0];
+    const start = [board?.created_at, firstCard]
+      .filter((x): x is string => Boolean(x))
+      .sort()[0];
+    return {
+      from: start ? todayInputValue(new Date(start)) : today,
+      to: today,
+      cards: progressTotal,
+      done: doneCount + api.closed,
+    };
+  };
+  async function archiveBoard(
+    closingData: BoardClosing,
+    learn: boolean,
+    asEpisode = false,
+  ) {
+    if (!board) return;
+    const gone = board;
+    setClosing(false);
+    let data = closingData;
+    if (learn) {
+      const saved = await createEntry(
+        {
+          title: `Cierre de «${gone.name.slice(0, 120)}»`,
+          body: closingSummary(gone.name, closingData),
+          kind: "Aprendizaje",
+          tags: ["tablero", "cierre"],
+          personIds: [],
+          date: today,
+          amount: 0,
+          direction: "egreso",
+          status: "pendiente",
+          images: [],
+          details: cleanDetails("Aprendizaje", {
+            source: "Práctica",
+            sourceName: gone.name.slice(0, 120),
+          }),
+          file: null,
+          removeFile: false,
+        },
+        true,
+      );
+      if (saved) data = { ...data, learningId: saved.id };
+    }
+    // Un proyecto cerrado: el tablero queda también como episodio, con su gente y su resultado.
+    if (asEpisode) {
+      const outcome = [
+        data.well?.trim() && `Salió bien:\n${data.well.trim()}`,
+        data.different?.trim() && `Haría distinto:\n${data.different.trim()}`,
+      ]
+        .filter(Boolean)
+        .join("\n\n")
+        .slice(0, 4000);
+      const summary = `${data.done ?? 0} de ${data.cards ?? 0} tarjetas completadas en el tablero «${gone.name.slice(0, 100)}».`;
+      const ends = data.to ?? today;
+      const existing = data.episodeId
+        ? workspace.episodes.find((e) => e.id === data.episodeId)
+        : undefined;
+      if (existing) {
+        await updateEpisode(
+          existing,
+          { status: "cerrado", ends_on: ends, summary, outcome },
+          true,
+        );
+      } else {
+        const people = [...new Set(realCards.flatMap((c) => peopleOf(c)))];
+        const starts = data.from && data.from <= ends ? data.from : null;
+        const ep = await saveEpisode(
+          {
+            title: gone.name.slice(0, 120),
+            kind: "proyecto",
+            status: "cerrado",
+            starts_on: starts,
+            ends_on: ends,
+            summary,
+            source: "",
+            person_ids: people.slice(0, 60),
+            place_ids: [],
+            budget: null,
+            outcome,
+          },
+          true,
+        );
+        if (ep) {
+          data = { ...data, episodeId: ep.id };
+          // El aprendizaje del cierre pasa a ser parte del episodio.
+          if (data.learningId) await linkEntries([data.learningId], ep.id, true);
+        } else notify("No se pudo guardar el episodio; el tablero se archiva igual.");
+      }
+    }
+    const ok = await list.archiveBoard(gone.id, data);
+    if (!ok) return;
+    const rest = (list.boards ?? []).filter((b) => b.id !== gone.id);
+    pick(rest[0]?.id ?? "");
+    notify(
+      `«${gone.name.slice(0, 40)}» archivado${data.learningId ? " y su cierre quedó como aprendizaje" : ""}${data.episodeId ? (data.learningId ? " y como episodio" : " y quedó como episodio") : ""}.`,
+      {
+        label: "Deshacer",
+        icon: "undo",
+        run: () => {
+          list.unarchiveBoard(gone.id);
+          pick(gone.id);
+        },
+      },
+    );
+  }
   const boardTags = useMemo(() => {
     const seen = new Map<string, string>();
     for (const c of api.cards)
@@ -1509,6 +2030,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           inline={inlineFor(c)}
           selected={selection.has(c.id)}
           age={ageOf(c, aging, cardDone, today)}
+          blocked={cardDone ? undefined : blockerOf(c)?.title}
           onOpen={() => !dnd.wasDrag() && setOpenId(c.id)}
           onSelect={(mode) => !dnd.wasDrag() && selectCard(c, mode)}
           onToggle={() => void toggleDone(c, (ch) => api.patchCard(c.id, ch))}
@@ -1581,29 +2103,32 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               <Pin size={13} />
             </span>
           )}
-          {renaming !== col.id && (ruleCount > 0 || cfg.sort || cfg.autoArchive > 0) && (
-            <button
-              type="button"
-              className="bd-list-rules"
-              data-nodrag
-              title={[
-                ruleCount && plural(ruleCount, "regla activa", "reglas activas"),
-                cfg.sort && `Orden: ${sortLabels[cfg.sort].toLowerCase()}`,
-                cfg.autoArchive && `Archiva lo completado a los ${cfg.autoArchive} días`,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-              aria-label="Reglas de la columna"
-              onClick={() => setRulesFor(col.id)}
-            >
-              {cfg.sort && !ruleCount ? (
-                <ArrowDownWideNarrow size={12} />
-              ) : (
-                <Zap size={12} />
-              )}
-              {ruleCount > 0 && <span>{ruleCount}</span>}
-            </button>
-          )}
+          {renaming !== col.id &&
+            (ruleCount > 0 || cfg.sort || cfg.autoArchive > 0) && (
+              <button
+                type="button"
+                className="bd-list-rules"
+                data-nodrag
+                title={[
+                  ruleCount &&
+                    plural(ruleCount, "regla activa", "reglas activas"),
+                  cfg.sort && `Orden: ${sortLabels[cfg.sort].toLowerCase()}`,
+                  cfg.autoArchive &&
+                    `Archiva lo completado a los ${cfg.autoArchive} días`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+                aria-label="Reglas de la columna"
+                onClick={() => setRulesFor(col.id)}
+              >
+                {cfg.sort && !ruleCount ? (
+                  <ArrowDownWideNarrow size={12} />
+                ) : (
+                  <Zap size={12} />
+                )}
+                {ruleCount > 0 && <span>{ruleCount}</span>}
+              </button>
+            )}
           <span
             className={"bd-list-count" + (over ? " over" : full ? " full" : "")}
             title={
@@ -1644,15 +2169,21 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           >
             <MoreHorizontal size={17} />
           </button>
+          {all.length > 0 && done > 0 && (
+            <i
+              className="bd-list-progress"
+              aria-hidden="true"
+              title={`${Math.round((100 * done) / all.length)} % completado`}
+              style={{ "--p": done / all.length } as CSSProperties}
+            />
+          )}
         </header>
-        <div
-          className="bd-stack"
-          data-stack
+        <ColumnStack
+          items={items}
           onDoubleClick={(e) =>
             e.target === e.currentTarget && setComposer(col.id)
           }
         >
-          {items}
           {!shown.length && !here && all.length > 0 && composer !== col.id && (
             <p className="bd-list-none">
               {needle
@@ -1666,11 +2197,13 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             <Composer
               people={workspace.people}
               tags={boardTags}
+              templates={cardTemplates.all}
               onAdd={(titles) => addFrom(col.id, titles)}
+              onTemplate={(title, tpl) => addFromTemplate(col.id, title, tpl)}
               onClose={() => setComposer(null)}
             />
           )}
-        </div>
+        </ColumnStack>
         {(composer !== col.id || sleeping > 0) && (
           <footer className="bd-list-foot">
             {composer !== col.id && (
@@ -1691,7 +2224,9 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             {sleeping > 0 && !needle && (
               <button
                 type="button"
-                className={"bd-snz-toggle" + (showSnoozed.has(col.id) ? " on" : "")}
+                className={
+                  "bd-snz-toggle" + (showSnoozed.has(col.id) ? " on" : "")
+                }
                 aria-pressed={showSnoozed.has(col.id)}
                 title={
                   showSnoozed.has(col.id)
@@ -1815,7 +2350,64 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             {doneCount > 0 &&
               ` · ${doneCount} ${doneCount === 1 ? "completada" : "completadas"}`}
             {snoozedCount > 0 && ` · ${snoozedCount} pospuestas`}
+            {progressTotal > 0 && (
+              <b
+                className="bd-stats-pct"
+                title={`Avance acumulado: ${doneCount + api.closed} de ${progressTotal}${api.closed ? ` (incluye ${api.closed} completadas ya archivadas)` : ""}`}
+              >
+                {progressPct} %
+              </b>
+            )}
           </span>
+        )}
+        {board?.settings.anchor && !inArchive && !editingTemplate && (
+          <span
+            className="bd-anchor"
+            title={`${board.settings.anchor.label}: ${friendlyDate(board.settings.anchor.date).toLowerCase()}`}
+          >
+            <CalendarClock size={13} />
+            {(() => {
+              const left = daysBetween(today, board.settings.anchor.date);
+              return left > 0
+                ? `Faltan ${plural(left, "día", "días")}`
+                : left === 0
+                  ? "Es hoy"
+                  : `Hace ${plural(-left, "día", "días")}`;
+            })()}
+          </span>
+        )}
+        {board &&
+          !inArchive &&
+          api.status === "ready" &&
+          overdue.length > 0 &&
+          !boardArchived && (
+            <button
+              type="button"
+              className="bd-overdue"
+              title="Revisarlas una por una o repartirlas en los próximos días"
+              onClick={() => setTriage(true)}
+            >
+              <AlarmClock size={13} />
+              {overdue.length} {overdue.length === 1 ? "vencida" : "vencidas"}
+            </button>
+          )}
+        {board && !inArchive && api.status === "ready" && (
+          <ViewSwitch
+            mode={mode}
+            onChange={(m) => {
+              clearSelection();
+              setComposer(null);
+              setDraftAt(null);
+              setMode(m);
+            }}
+          />
+        )}
+        {board && !inArchive && api.status === "ready" && progressTotal > 0 && (
+          <i
+            className="bd-progress"
+            aria-hidden="true"
+            style={{ "--p": progressPct / 100 } as CSSProperties}
+          />
         )}
         <div className="bd-bar-end">
           {(board || inArchive) && (
@@ -1868,8 +2460,11 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               </button>
               <button
                 type="button"
-                className="bd-btn primary"
-                onClick={() => setDraftAt(cols.length)}
+                className="bd-btn primary bd-add-col"
+                onClick={() => {
+                  setMode("columnas");
+                  setDraftAt(cols.length);
+                }}
               >
                 <Plus size={16} /> Columna
               </button>
@@ -1918,6 +2513,44 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         </div>
       )}
 
+      {board && boardArchived && (
+        <div className="bd-template-bar bd-archived-bar" role="status">
+          <span className="bd-template-mark" aria-hidden="true">
+            <Archive size={15} />
+          </span>
+          <p>
+            <b>
+              Tablero archivado{" "}
+              {friendlyDate(
+                todayInputValue(new Date(board.archived_at!)),
+                today,
+              ).toLowerCase()}
+              .
+            </b>{" "}
+            {board.closing?.well
+              ? `Salió bien: ${board.closing.well.slice(0, 120)}${board.closing.well.length > 120 ? "…" : ""}`
+              : "No aparece en la Agenda ni en el saludo; sus reglas no corren."}
+          </p>
+          <button
+            type="button"
+            className="bd-btn primary sm"
+            onClick={() => {
+              list.unarchiveBoard(board.id);
+              notify(`«${board.name.slice(0, 40)}» volvió a tus tableros.`);
+            }}
+          >
+            <RotateCcw size={14} /> Reabrir
+          </button>
+        </div>
+      )}
+
+      {board && !inArchive && api.progress && (
+        <p className="bd-notice bd-loading-note" role="status">
+          Cargando {api.progress.loaded.toLocaleString("es")} de{" "}
+          {api.progress.total.toLocaleString("es")} tarjetas…
+        </p>
+      )}
+
       {board && !inArchive && !api.extras && api.status === "ready" && (
         <p className="bd-notice">
           Para completar, archivar y dar color, ejecuta <code>{BOARD_SQL}</code>{" "}
@@ -1961,6 +2594,8 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               Reintentar
             </button>
           </p>
+        ) : mode !== "columnas" ? (
+          <BoardViews mode={mode} api={viewApi} />
         ) : (
           <div
             ref={canvas}
@@ -2165,7 +2800,10 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
                               </span>
                               <div className="bd-card-body">
                                 <span className="bd-card-title">
-                                  <CardText text={c.title} whole={c.highlight} />
+                                  <CardText
+                                    text={c.title}
+                                    whole={c.highlight}
+                                  />
                                 </span>
                               </div>
                             </div>
@@ -2218,6 +2856,41 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             {list.archived > 0 && <small>{list.archived}</small>}
             {inArchive && <Check size={15} />}
           </button>
+          {list.archivedBoards.length > 0 && (
+            <>
+              <p className="bd-pop-label">Tableros cerrados</p>
+              <div className="bd-pick-list short">
+                {list.archivedBoards.map((b) => {
+                  const on = !inArchive && b.id === board?.id;
+                  const pct = b.closing?.cards
+                    ? Math.round(
+                        (100 * (b.closing.done ?? 0)) / b.closing.cards,
+                      )
+                    : null;
+                  return (
+                    <button
+                      type="button"
+                      key={b.id}
+                      className={"bd-pick-item closed" + (on ? " on" : "")}
+                      title={
+                        b.closing?.to
+                          ? `Cerrado el ${b.closing.to}`
+                          : "Archivado"
+                      }
+                      onClick={() => pick(b.id)}
+                    >
+                      <i
+                        style={{ background: backgroundOf(b.background).css }}
+                      />
+                      <span>{b.name}</span>
+                      {pct !== null && <small>{pct} %</small>}
+                      {on && <Check size={15} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
           {list.templates.length > 0 && (
             <>
               <p className="bd-pop-label">Mis plantillas</p>
@@ -2438,6 +3111,39 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             >
               Guardar como plantilla
             </MenuItem>
+          )}
+          {!editingTemplate && !boardArchived && (
+            <MenuItem
+              icon={<Archive size={15} />}
+              hint={progressTotal ? `${progressPct} %` : undefined}
+              onClick={() => {
+                close();
+                if (!api.sync) return notify(missingSyncText);
+                setClosing(true);
+              }}
+            >
+              Cerrar y archivar tablero…
+            </MenuItem>
+          )}
+          {!editingTemplate && (
+            <>
+              <MenuItem
+                icon={<History size={15} />}
+                onClick={() => {
+                  close();
+                  if (!api.sync) return notify(missingSyncText);
+                  setHistory({});
+                }}
+              >
+                Historial y métricas…
+              </MenuItem>
+              <MenuItem
+                icon={<Link2 size={15} />}
+                onClick={() => (close(), setSharing(true))}
+              >
+                Compartir con un cliente…
+              </MenuItem>
+            </>
           )}
           <MenuItem
             icon={<Trash2 size={15} />}
@@ -2671,7 +3377,10 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
                     className="bd-pick-item"
                     onClick={() => (close(), bulkMove(c.id))}
                   >
-                    <i className="dot" style={{ background: t?.c ?? "#c3cbc5" }} />
+                    <i
+                      className="dot"
+                      style={{ background: t?.c ?? "#c3cbc5" }}
+                    />
                     <span>{c.name}</span>
                     <small>{byList.get(c.id)?.length ?? 0}</small>
                   </button>
@@ -2727,7 +3436,9 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
                 onClick={() => {
                   close();
                   bulkPatch("Sin fecha", (c) =>
-                    c.due ? { due: null, ...(c.repeat && { repeat: "" as const }) } : null,
+                    c.due
+                      ? { due: null, ...(c.repeat && { repeat: "" as const }) }
+                      : null,
                   );
                 }}
               >
@@ -2747,12 +3458,17 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
                   onClick={() => {
                     close();
                     bulkPatch(
-                      p ? `Prioridad ${priorityLabels[p].toLowerCase()}` : "Sin prioridad",
+                      p
+                        ? `Prioridad ${priorityLabels[p].toLowerCase()}`
+                        : "Sin prioridad",
                       (c) => (c.priority === p ? null : { priority: p }),
                     );
                   }}
                 >
-                  <Flag size={14} className={"bd-pick-lead bd-prio-ico " + (p || "none")} />
+                  <Flag
+                    size={14}
+                    className={"bd-pick-lead bd-prio-ico " + (p || "none")}
+                  />
                   <span>{priorityLabels[p]}</span>
                 </button>
               ))}
@@ -2795,7 +3511,9 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
                   aria-label="Sin color"
                   onClick={() => {
                     close();
-                    bulkPatch("Sin color", (c) => (c.color ? { color: "" } : null));
+                    bulkPatch("Sin color", (c) =>
+                      c.color ? { color: "" } : null,
+                    );
                   }}
                 />
                 {tones.map((t) => (
@@ -2866,9 +3584,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
                 key={what}
                 aria-haspopup="menu"
                 aria-expanded={menu?.kind === "bulk" && menu.what === what}
-                disabled={
-                  !api.power && (what === "prio" || what === "snooze")
-                }
+                disabled={!api.power && (what === "prio" || what === "snooze")}
                 onClick={(e) =>
                   setMenu({
                     kind: "bulk",
@@ -2939,7 +3655,15 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               tags={boardTags}
               power={api.power}
               ctx={ruleCtx}
-              onSave={(rules) => api.updateColumn(col.id, { rules })}
+              onSave={(rules) => {
+                api.updateColumn(col.id, { rules });
+                // El servidor corre las reglas «a una hora» en la zona horaria de quien las crea.
+                const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                if (board && !editingTemplate && tz && board.settings.tz !== tz)
+                  list.update(board.id, {
+                    settings: { ...board.settings, tz },
+                  });
+              }}
               onRunNow={(rule) => runRuleNow(rule, col.id)}
               onClose={() => setRulesFor(null)}
             />
@@ -2964,7 +3688,27 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           done={isDone(openCard)}
           extras={inArchive || api.extras}
           power={api.power}
+          sync={inArchive ? "updated_at" in openCard : api.sync}
           aging={aging}
+          links={inArchive ? undefined : links}
+          boardCards={inArchive ? undefined : realCards}
+          isDoneId={(id) => {
+            const c = api.peek(id);
+            return c ? isDone(c) : true;
+          }}
+          onPeopleAdded={(ids) => {
+            if (inArchive || !ids.length) return;
+            const c = api.peek(openCard.id);
+            if (c)
+              fire([
+                { type: "person", card: c.id, list: c.list_id, people: ids },
+              ]);
+          }}
+          onHistory={
+            inArchive || !api.sync
+              ? undefined
+              : () => setHistory({ card: openCard.id })
+          }
           onPatch={patchOpen}
           onToggleDone={() => void toggleDone(openCard, patchOpen)}
           onArchive={() =>
@@ -2977,6 +3721,92 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           }}
           onClose={() => setOpenId(null)}
         />
+      )}
+
+      {triage && board && (
+        <OverdueTriage
+          cards={overdue}
+          columns={cols}
+          today={today}
+          load={loadOn}
+          canDrop={api.extras}
+          onSet={(c, due) => {
+            const now = api.peek(c.id);
+            return now ? patchBack(now, { due }) : () => {};
+          }}
+          onDrop={(c) => {
+            const now = api.peek(c.id);
+            return now ? triageDrop(now) : () => {};
+          }}
+          onSpread={(plan) => {
+            const undos = plan
+              .map((p) => {
+                const now = api.peek(p.card.id);
+                return now ? patchBack(now, { due: p.due }) : null;
+              })
+              .filter((u): u is () => void => Boolean(u));
+            return () => undos.forEach((u) => u());
+          }}
+          onOpen={(c) => {
+            setTriage(false);
+            setOpenId(c.id);
+          }}
+          onClose={() => setTriage(false)}
+        />
+      )}
+
+      {closing && board && (
+        <BoardClosingDialog
+          board={board}
+          stats={closingStats()}
+          onArchive={(data, learn, episode) =>
+            void archiveBoard(data, learn, episode)
+          }
+          onClose={() => setClosing(false)}
+        />
+      )}
+
+      {history && board && (
+        <BoardHistory
+          boardId={board.id}
+          cardId={history.card}
+          cards={api.peekAll()}
+          columns={cols}
+          steps={undo.steps}
+          onUndoTo={undo.undoTo}
+          onOpen={(id) => {
+            setHistory(null);
+            setOpenId(id);
+          }}
+          onRevert={(id, fields) => {
+            const c = api.peek(id);
+            if (!c) return;
+            // Volver atrás no dispara reglas ni cuenta como completar: solo devuelve los campos.
+            const { list_id, ...rest } = fields;
+            const backToList =
+              list_id && list_id !== c.list_id && api.peekColumn(list_id)
+                ? list_id
+                : null;
+            const undoFields = Object.keys(rest).length
+              ? patchBack(c, rest)
+              : () => {};
+            if (backToList) api.moveCard(id, backToList, Infinity);
+            notify("Cambio revertido.", {
+              label: "Deshacer",
+              icon: "undo",
+              run: () => {
+                undoFields();
+                if (backToList && api.peek(id))
+                  api.moveCard(id, c.list_id, Infinity);
+              },
+            });
+          }}
+          onClose={() => setHistory(null)}
+        />
+      )}
+
+      {sharing && board && !editingTemplate && (
+        <ShareBoardDialog board={board} onClose={() => setSharing(false)} />
       )}
     </section>
   );
@@ -3117,12 +3947,18 @@ const linesOf = (text: string) =>
 function Composer({
   people,
   tags,
+  templates,
   onAdd,
+  onTemplate,
   onClose,
 }: {
   people: Person[];
   tags: string[];
+  /** Plantillas de tarjeta que se invocan con /nombre. */
+  templates: CardTemplate[];
   onAdd: (items: NewCardInput[]) => void;
+  /** Una tarjeta desde una plantilla («/reunion Equipo de diseño»). */
+  onTemplate: (title: string, template: CardTemplate) => void;
   onClose: () => void;
 }) {
   const [text, setText] = useState("");
@@ -3153,11 +3989,36 @@ function Composer({
   }, [pending]);
 
   const lines = text.split("\n").filter((l) => l.trim()).length;
-  // Sugerencias para la @ o el # que estás escribiendo.
-  const token = pending || noSuggest ? null : tokenAt(text, caret);
-  const suggestions = useMemo(() => {
+  // Sugerencias para la @, el # o la /plantilla que estás escribiendo.
+  const slash = pending || noSuggest ? null : slashAt(text, caret);
+  const token =
+    pending || noSuggest
+      ? null
+      : (tokenAt(text, caret) ??
+        (slash
+          ? { kind: "/" as const, query: slash.query, start: slash.start }
+          : null));
+  type Suggest = {
+    key: string;
+    label: string;
+    insert: string;
+    person?: Person;
+    slash?: boolean;
+  };
+  const suggestions = useMemo<Suggest[]>(() => {
     if (!token) return [];
     const q = normalizeText(token.query);
+    if (token.kind === "/")
+      return templates
+        .filter((t) => !q || t.slug.startsWith(q) || normalizeText(t.name).startsWith(q))
+        .slice(0, 6)
+        .map((t) => ({
+          key: "/" + t.slug,
+          label: t.name,
+          insert: "/" + t.slug,
+          person: undefined,
+          slash: true,
+        }));
     if (token.kind === "@") {
       const starts = (p: Person) =>
         normalizeText(p.name)
@@ -3173,7 +4034,12 @@ function Composer({
             a.name.localeCompare(b.name, "es"),
         )
         .slice(0, 6)
-        .map((p) => ({ key: p.id, label: p.name, insert: "@" + p.name, person: p }));
+        .map((p) => ({
+          key: p.id,
+          label: p.name,
+          insert: "@" + p.name,
+          person: p,
+        }));
     }
     return tags
       .filter((t) => normalizeText(t).startsWith(q) && normalizeText(t) !== q)
@@ -3182,7 +4048,8 @@ function Composer({
   }, [token?.kind, token?.query, people, tags]);
   const choose = (s: (typeof suggestions)[number]) => {
     if (!token) return;
-    const next = text.slice(0, token.start) + s.insert + " " + text.slice(caret);
+    const next =
+      text.slice(0, token.start) + s.insert + " " + text.slice(caret);
     const at = token.start + s.insert.length + 1;
     setText(next);
     setPickIdx(0);
@@ -3212,7 +4079,18 @@ function Composer({
       .map((t) => t.trim())
       .filter(Boolean);
     if (!titles.length) return;
-    onAdd(titles);
+    // «/reunion Equipo de diseño»: la tarjeta nace con lo que trae la plantilla.
+    const plain: string[] = [];
+    for (const t of titles) {
+      const hit = t.includes("/") ? takeSlash(t, templates) : null;
+      if (!hit) {
+        plain.push(t);
+        continue;
+      }
+      if (plain.length) onAdd(plain.splice(0));
+      onTemplate(hit.rest, hit.template);
+    }
+    if (plain.length) onAdd(plain);
     done();
   };
 
@@ -3341,6 +4219,10 @@ function Composer({
               >
                 {s.person ? (
                   <Avatar person={s.person} size={20} />
+                ) : s.slash ? (
+                  <i className="bd-suggest-slash" aria-hidden="true">
+                    /
+                  </i>
                 ) : (
                   <i
                     className="bd-suggest-tag"

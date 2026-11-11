@@ -15,6 +15,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { Sheet } from '../components/Sheet';
+import { useApp } from '../AppContext';
 import {
   actionInfo,
   actionOrder,
@@ -25,17 +26,21 @@ import {
   conditionsHold,
   dueLabels,
   emptyRules,
+  FIELD_KEYS,
+  fieldLabels,
   priorityLabels,
   recipes,
   sortLabels,
   triggerInfo,
   triggerText,
+  weekdayNames,
   type Action,
   type ActionType,
   type ColumnRules,
   type CondType,
   type Condition,
   type DueMode,
+  type FieldKey,
   type Rule,
   type RuleCtx,
   type SortKey,
@@ -48,18 +53,20 @@ import './rules.css';
 const colorName = (k: string) => (k ? (toneOf(k)?.label.toLowerCase() ?? k) : 'sin color');
 const PRIOS: Priority[] = ['alta', 'media', 'baja', ''];
 const TRIGGER_GROUPS: { label: string; items: TriggerType[] }[] = [
-  { label: 'Al mover', items: ['create', 'enter', 'leave'] },
-  { label: 'Al trabajarla', items: ['done', 'undone', 'checks'] },
-  { label: 'Con el tiempo', items: ['overdue', 'due_soon', 'idle'] },
+  { label: 'Al mover', items: ['create', 'enter', 'leave', 'emptied'] },
+  { label: 'Al trabajarla', items: ['done', 'undone', 'checks', 'person', 'field'] },
+  { label: 'Con el tiempo', items: ['overdue', 'due_soon', 'idle', 'schedule'] },
 ];
 
 /** Una frase que cuenta la regla: «Cuando llega aquí · si tiene «x» → Completar, Mover…». */
-export function ruleSentence(rule: Rule, _cols?: Column[]) {
+export function ruleSentence(rule: Rule, _cols?: Column[], personName?: (id: string) => string) {
   const when = rule.when.length
     ? ' · si ' +
-      rule.when.map((c) => condText(c, colorName)).join(rule.match === 'any' ? ' o ' : ' y ')
+      rule.when
+        .map((c) => condText(c, colorName, personName))
+        .join(rule.match === 'any' ? ' o ' : ' y ')
     : '';
-  return `${triggerText(rule.trigger)}${when}`;
+  return `${triggerText(rule.trigger, personName)}${when}`;
 }
 
 /**
@@ -423,6 +430,46 @@ export function RulesEditor({
   );
 }
 
+/** Elegir una persona de tu gente (las favoritas primero). */
+function PersonPick({
+  value,
+  anyLabel,
+  onChange,
+}: {
+  value: string;
+  /** Con texto, se puede dejar sin persona («Cualquiera»). */
+  anyLabel?: string;
+  onChange: (id: string) => void;
+}) {
+  const { workspace } = useApp();
+  const people = useMemo(
+    () =>
+      [...workspace.people].sort(
+        (a, b) =>
+          Number(Boolean(b.profile.favorite)) - Number(Boolean(a.profile.favorite)) ||
+          a.name.localeCompare(b.name, 'es'),
+      ),
+    [workspace.people],
+  );
+  return (
+    <select value={value} aria-label="Persona" onChange={(e) => onChange(e.target.value)}>
+      <option value="">{anyLabel ?? 'Elige a alguien…'}</option>
+      {people.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** El nombre corto de una persona (para describir reglas). */
+function usePersonName() {
+  const { workspace } = useApp();
+  return (id: string) =>
+    workspace.people.find((p) => p.id === id)?.name.split(' ').slice(0, 2).join(' ') ?? 'alguien';
+}
+
 /** Una regla guardada: interruptor, frase y acciones. */
 function RuleRow({
   rule,
@@ -444,6 +491,7 @@ function RuleRow({
   onRun: () => number;
 }) {
   const [ran, setRan] = useState<number | null>(null);
+  const personName = usePersonName();
   return (
     <div className={'bdr-rule' + (rule.on ? '' : ' off')}>
       <button
@@ -459,7 +507,7 @@ function RuleRow({
       <div className="bdr-rule-main" onDoubleClick={onEdit}>
         {rule.name && <strong>{rule.name}</strong>}
         <p className="bdr-when">
-          <span className="bdr-kw">Cuando</span> {ruleSentence(rule, columns)}
+          <span className="bdr-kw">Cuando</span> {ruleSentence(rule, columns, personName)}
         </p>
         <div className="bdr-then">
           <ArrowRight size={13} />
@@ -535,6 +583,7 @@ function RuleBuilder({
       'Escribe la etiqueta.',
     r.when.some((c) => (c.type === 'tag' || c.type === 'no_tag' || c.type === 'title') && !c.value?.trim()) &&
       'Completa las condiciones.',
+    r.when.some((c) => c.type === 'person' && !c.value) && 'Elige la persona de la condición.',
     r.then.some((a) => a.type === 'add_checks' && !a.items?.some((x) => x.trim())) &&
       'Escribe los puntos de la lista.',
   ].filter(Boolean) as string[];
@@ -580,6 +629,8 @@ function RuleBuilder({
                         trigger: {
                           type: t,
                           days: t === 'idle' ? 7 : t === 'due_soon' ? 1 : undefined,
+                          ...(t === 'schedule' && { time: '08:00', weekday: 1 }),
+                          ...(t === 'field' && { field: 'due' as const }),
                         },
                       }))
                     }
@@ -606,6 +657,64 @@ function RuleBuilder({
                 }))
               }
             />
+          </label>
+        )}
+        {r.trigger.type === 'schedule' && (
+          <div className="bdr-inline">
+            <select
+              value={r.trigger.weekday ?? -1}
+              aria-label="Qué día"
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setR((x) => ({ ...x, trigger: { ...x.trigger, weekday: v < 0 ? undefined : v } }));
+              }}
+            >
+              <option value={-1}>Todos los días</option>
+              {[1, 2, 3, 4, 5, 6, 0].map((d) => (
+                <option key={d} value={d}>
+                  Cada {weekdayNames[d]}
+                </option>
+              ))}
+            </select>
+            a las
+            <input
+              type="time"
+              value={r.trigger.time ?? '08:00'}
+              aria-label="Hora"
+              onChange={(e) =>
+                setR((x) => ({ ...x, trigger: { ...x.trigger, time: e.target.value || '08:00' } }))
+              }
+            />
+          </div>
+        )}
+        {r.trigger.type === 'person' && (
+          <label className="bdr-inline">
+            Persona
+            <PersonPick
+              value={r.trigger.value ?? ''}
+              anyLabel="Cualquiera"
+              onChange={(v) => setR((x) => ({ ...x, trigger: { ...x.trigger, value: v || undefined } }))}
+            />
+          </label>
+        )}
+        {r.trigger.type === 'field' && (
+          <label className="bdr-inline">
+            Campo
+            <select
+              value={r.trigger.field ?? 'due'}
+              onChange={(e) =>
+                setR((x) => ({
+                  ...x,
+                  trigger: { ...x.trigger, field: e.target.value as FieldKey },
+                }))
+              }
+            >
+              {FIELD_KEYS.map((f) => (
+                <option key={f} value={f}>
+                  {fieldLabels[f][0].toUpperCase() + fieldLabels[f].slice(1)}
+                </option>
+              ))}
+            </select>
           </label>
         )}
         <small className="bdr-hint">{info.hint}.</small>
@@ -657,6 +766,9 @@ function RuleBuilder({
             )}
             {condInfo[c.type].value === 'color' && (
               <Swatches value={c.value ?? ''} onChange={(v) => setCond(i, { ...c, value: v })} />
+            )}
+            {condInfo[c.type].value === 'person' && (
+              <PersonPick value={c.value ?? ''} onChange={(v) => setCond(i, { ...c, value: v })} />
             )}
             <button
               type="button"

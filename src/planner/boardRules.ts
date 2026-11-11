@@ -5,7 +5,10 @@ import type { BoardCard, CardChanges, Column, Priority } from './boardStore';
 /**
  * Reglas por columna: «Cuando [algo pasa] y [se cumple esto], entonces [haz esto]». Además, cada
  * columna puede tener un límite de tarjetas, un orden automático y archivar sola lo completado.
- * Todo se guarda en `board_lists.rules` (migración 202611090002) y se ejecuta en la app.
+ * Todo se guarda en `board_lists.rules` (migración 202611090002) y se ejecuta en la app. Las
+ * reglas programadas (fechas, días quieta, hora fija) las corre también el servidor cada 5
+ * minutos (supabase/functions/board-sweep, con su propia copia de este motor: si cambias una
+ * regla aquí, cámbiala allí también).
  */
 
 // ───────────────────────── Tipos ─────────────────────────
@@ -19,8 +22,37 @@ export type TriggerType =
   | 'checks'
   | 'overdue'
   | 'due_soon'
-  | 'idle';
-export type Trigger = { type: TriggerType; days?: number };
+  | 'idle'
+  | 'schedule'
+  | 'emptied'
+  | 'person'
+  | 'field';
+/** Campos que vigila el disparador «Cambia un campo». */
+export type FieldKey = 'due' | 'priority' | 'tags' | 'color' | 'title' | 'body' | 'checks' | 'highlight' | 'starts';
+export const FIELD_KEYS: FieldKey[] = ['due', 'priority', 'tags', 'color', 'title', 'body', 'checks', 'highlight', 'starts'];
+export const fieldLabels: Record<FieldKey, string> = {
+  due: 'la fecha límite',
+  priority: 'la prioridad',
+  tags: 'las etiquetas',
+  color: 'el color',
+  title: 'el título',
+  body: 'la descripción',
+  checks: 'la lista de verificación',
+  highlight: 'el resaltado',
+  starts: 'la fecha de inicio',
+};
+export type Trigger = {
+  type: TriggerType;
+  days?: number;
+  /** schedule: hora «HH:MM» (hora local del tablero). */
+  time?: string;
+  /** schedule: día de la semana (0 = domingo); sin valor, todos los días. */
+  weekday?: number;
+  /** person: la persona (sin valor, cualquiera). */
+  value?: string;
+  /** field: qué campo. */
+  field?: FieldKey;
+};
 
 export type CondType =
   | 'tag'
@@ -33,7 +65,10 @@ export type CondType =
   | 'has_checks'
   | 'title'
   | 'highlight'
-  | 'color';
+  | 'color'
+  | 'person'
+  | 'blocked'
+  | 'not_blocked';
 export type Condition = { type: CondType; value?: string };
 
 export type ActionType =
@@ -108,6 +143,10 @@ const TRIGGERS: TriggerType[] = [
   'overdue',
   'due_soon',
   'idle',
+  'schedule',
+  'emptied',
+  'person',
+  'field',
 ];
 const CONDS: CondType[] = [
   'tag',
@@ -121,6 +160,9 @@ const CONDS: CondType[] = [
   'title',
   'highlight',
   'color',
+  'person',
+  'blocked',
+  'not_blocked',
 ];
 const ACTIONS: ActionType[] = [
   'move',
@@ -141,7 +183,8 @@ const ACTIONS: ActionType[] = [
 ];
 const SORTS: SortKey[] = ['', 'due', 'priority', 'newest', 'oldest', 'title', 'stale'];
 /** Disparadores que se revisan solos cada tanto (no dependen de lo que hagas). */
-export const SCHEDULED: TriggerType[] = ['overdue', 'due_soon', 'idle'];
+export const SCHEDULED: TriggerType[] = ['overdue', 'due_soon', 'idle', 'schedule'];
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const num = (v: unknown, min: number, max: number, def: number) =>
   typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : def;
@@ -185,6 +228,17 @@ export function normalizeRules(raw: unknown): ColumnRules {
         trigger: {
           type: t.type as TriggerType,
           days: typeof t.days === 'number' ? num(t.days, 0, 365, 1) : undefined,
+          ...(t.type === 'schedule' && {
+            time: typeof t.time === 'string' && TIME_RE.test(t.time) ? t.time : '08:00',
+            weekday:
+              typeof t.weekday === 'number' && t.weekday >= 0 && t.weekday <= 6
+                ? Math.round(t.weekday)
+                : undefined,
+          }),
+          ...(t.type === 'person' && { value: str(t.value, 60) || undefined }),
+          ...(t.type === 'field' && {
+            field: FIELD_KEYS.includes(t.field as FieldKey) ? (t.field as FieldKey) : 'due',
+          }),
         },
         match: r.match === 'any' ? 'any' : 'all',
         when,
@@ -210,6 +264,12 @@ export type RuleCtx = {
   isDone: (c: BoardCard) => boolean;
   /** Cuántas personas tiene la tarjeta. */
   people: (c: BoardCard) => number;
+  /** Las personas de la tarjeta (ids). */
+  peopleOf?: (c: BoardCard) => string[];
+  /** ¿Otra tarjeta la bloquea todavía? */
+  blocked?: (c: BoardCard) => boolean;
+  /** Ahora (para las reglas a una hora fija). */
+  now?: Date;
 };
 
 const norm = (s: string) =>
@@ -248,6 +308,12 @@ export function condHolds(c: BoardCard, cond: Condition, ctx: RuleCtx) {
       return c.highlight;
     case 'color':
       return (c.color || '') === (cond.value ?? '');
+    case 'person':
+      return Boolean(cond.value) && (ctx.peopleOf?.(c) ?? []).includes(cond.value!);
+    case 'blocked':
+      return Boolean(ctx.blocked?.(c));
+    case 'not_blocked':
+      return !ctx.blocked?.(c);
   }
 }
 export function conditionsHold(rule: Rule, c: BoardCard, ctx: RuleCtx) {
@@ -257,8 +323,17 @@ export function conditionsHold(rule: Rule, c: BoardCard, ctx: RuleCtx) {
     : rule.when.every((x) => condHolds(c, x, ctx));
 }
 
+/** ¿Ya llegó la hora de una regla a hora fija hoy? (una vez por día que toca). */
+export function scheduleDue(t: Trigger, now: Date) {
+  if (t.weekday !== undefined && now.getDay() !== t.weekday) return false;
+  const [h, m] = (t.time ?? '08:00').split(':').map(Number);
+  return now.getHours() * 60 + now.getMinutes() >= h * 60 + m;
+}
+
 /** ¿Toca ahora un disparador programado para esta tarjeta? */
 export function scheduledHit(t: Trigger, c: BoardCard, ctx: RuleCtx) {
+  // A hora fija vale para todas las de la columna (también las completadas).
+  if (t.type === 'schedule') return scheduleDue(t, ctx.now ?? new Date());
   if (ctx.isDone(c)) return false;
   if (t.type === 'overdue') return Boolean(c.due && c.due < ctx.today);
   if (t.type === 'due_soon') {
@@ -273,8 +348,8 @@ export function scheduledHit(t: Trigger, c: BoardCard, ctx: RuleCtx) {
   return false;
 }
 /** Para no repetir una regla programada sobre la misma situación (la misma fecha, la misma llegada). */
-export const stampOf = (t: Trigger, c: BoardCard) =>
-  t.type === 'idle' ? (sinceOf(c) ?? '') : (c.due ?? '');
+export const stampOf = (t: Trigger, c: BoardCard, today = todayInputValue()) =>
+  t.type === 'idle' ? (sinceOf(c) ?? '') : t.type === 'schedule' ? today : (c.due ?? '');
 
 /** Fecha que pone una acción «fecha límite». */
 export function dueFor(a: Action, today = todayInputValue()) {
@@ -387,11 +462,29 @@ export const triggerInfo: Record<TriggerType, { label: string; hint: string; day
     hint: 'Se revisa sola, una vez por llegada',
     days: 'Días sin moverse',
   },
+  schedule: {
+    label: 'A una hora fija',
+    hint: 'Cada día o un día de la semana, a esa hora, con todas las de la columna',
+  },
+  emptied: {
+    label: 'Sale la última tarjeta',
+    hint: 'Cuando la columna queda sin tarjetas abiertas (al mover o completar la última)',
+  },
+  person: {
+    label: 'Se le añade una persona',
+    hint: 'Al añadir a alguien (o a una persona en concreto) a una tarjeta de aquí',
+  },
+  field: {
+    label: 'Cambia un campo',
+    hint: 'Al cambiar ese dato de una tarjeta de aquí (tú, no otra regla)',
+  },
 };
 export const triggerOrder = TRIGGERS;
 
-export const condInfo: Record<CondType, { label: string; value?: 'tag' | 'priority' | 'text' | 'color' }> =
-  {
+export const condInfo: Record<
+  CondType,
+  { label: string; value?: 'tag' | 'priority' | 'text' | 'color' | 'person' }
+> = {
     tag: { label: 'Tiene la etiqueta', value: 'tag' },
     no_tag: { label: 'No tiene la etiqueta', value: 'tag' },
     priority: { label: 'Su prioridad es', value: 'priority' },
@@ -403,6 +496,9 @@ export const condInfo: Record<CondType, { label: string; value?: 'tag' | 'priori
     title: { label: 'El título contiene', value: 'text' },
     highlight: { label: 'Está resaltada' },
     color: { label: 'Su color es', value: 'color' },
+    person: { label: 'Está con la persona', value: 'person' },
+    blocked: { label: 'Está bloqueada por otra' },
+    not_blocked: { label: 'No está bloqueada' },
   };
 export const condOrder = CONDS;
 
@@ -452,17 +548,31 @@ export const sortLabels: Record<SortKey, string> = {
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const q = (s?: string) => `«${(s ?? '').slice(0, 40)}»`;
 
-export function triggerText(t: Trigger) {
+const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+export const weekdayNames = WEEKDAYS;
+
+export function triggerText(t: Trigger, personName?: (id: string) => string) {
   if (t.type === 'due_soon')
     return t.days ? `Faltan ${plural(t.days, 'día', 'días')} para su fecha` : 'Vence hoy';
   if (t.type === 'idle') return `Lleva ${plural(t.days ?? 7, 'día', 'días')} quieta aquí`;
+  if (t.type === 'schedule')
+    return `${t.weekday === undefined ? 'Cada día' : `Cada ${WEEKDAYS[t.weekday]}`} a las ${t.time ?? '08:00'}`;
+  if (t.type === 'person')
+    return t.value ? `Se añade a ${personName?.(t.value) ?? 'una persona'}` : 'Se le añade una persona';
+  if (t.type === 'field') return `Cambia ${fieldLabels[t.field ?? 'due']}`;
   return triggerInfo[t.type].label;
 }
-export function condText(c: Condition, colorName: (k: string) => string) {
+export function condText(
+  c: Condition,
+  colorName: (k: string) => string,
+  personName?: (id: string) => string,
+) {
   const info = condInfo[c.type];
   if (info.value === 'priority')
     return `${info.label.toLowerCase()} ${priorityLabels[(c.value ?? '') as Priority].toLowerCase()}`;
   if (info.value === 'color') return `${info.label.toLowerCase()} ${colorName(c.value ?? '')}`;
+  if (info.value === 'person')
+    return `${info.label.toLowerCase()} ${q(personName?.(c.value ?? '') ?? 'elegida')}`;
   if (info.value) return `${info.label.toLowerCase()} ${q(c.value)}`;
   return info.label.toLowerCase();
 }

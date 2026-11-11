@@ -56,6 +56,7 @@ import { Agenda, Libroteca } from "../library/Libroteca";
 import { UploadTray } from "../capturas/UploadTray";
 import { ShotPeek } from "../capturas/ShotPeek";
 import { NoteReminders } from "../notes/reminders";
+import { BoardInbox } from "../planner/BoardInbox";
 import { DiaryReader, type DiaryJob } from "../diary/reader/DiaryReader";
 import { isVaulted, useDiaryVault } from "../diary/vault";
 import { ProgressSheet } from "../library/ProgressSheet";
@@ -658,6 +659,7 @@ export function AppShell({ user }: { user: AppUser }) {
         </div>
         <Toast message={message} action={action} onClose={clear} />
         <NoteReminders />
+        <BoardInbox />
         {diaryJob && (
           <DiaryReader
             key={diaryJob.entryId}

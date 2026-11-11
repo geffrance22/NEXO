@@ -5,7 +5,13 @@ import { Sheet } from '../components/Sheet';
 import { Plus, X } from 'lucide-react';
 import './planner.css';
 export type Named = { id: string; name: string };
-export type Check = { id: string; text: string; done: boolean };
+export type Check = {
+  id: string;
+  text: string;
+  done: boolean;
+  /** Fecha propia del punto (AAAA-MM-DD), opcional. */
+  due?: string | null;
+};
 export type Note = {
   id: string;
   title: string;

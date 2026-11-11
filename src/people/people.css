@@ -4206,3 +4206,10 @@ body:has(.nx-peek) :is(.sheet-backdrop, .modal-backdrop) {
   background: #f1f2ee;
   color: #6f7966;
 }
+
+.pj-more {
+  display: block;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #9aa391;
+}

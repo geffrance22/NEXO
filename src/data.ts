@@ -373,6 +373,8 @@ export type EntryDetails = {
   owner?: string;
   /** Para quién es (prometí): id de persona. */
   beneficiary?: string;
+  /** AAAA-MM-DD: desde cuándo esperas (espero / depende); sin valor, desde que lo creaste. */
+  waitingSince?: string;
   /** AAAA-MM-DD: pospuesto hasta esa fecha en tu agenda. */
   snoozed?: string;
   /**

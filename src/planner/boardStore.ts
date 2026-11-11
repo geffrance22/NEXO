@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../backend";
 import type { Notify } from "../hooks/useToast";
+import { dateInTitle } from "./boardDates";
+import { isMissingPhase2, markPhase2Missing, missingPhase2Text } from "./boardPhase";
 import { isRepeat, parseRepeat, type Repeat } from "./boardRepeat";
 import { normalizeRules, type ColumnRules } from "./boardRules";
 import type { Card, Check } from "./shared";
@@ -17,6 +19,10 @@ export type BoardSettings = {
   greeting?: boolean;
   /** Las tarjetas sin cambios se ven más apagadas pasados estos días (0 o nada: no). */
   aging?: number;
+  /** Zona horaria de quien lo usa (para las reglas a hora fija que corre el servidor). */
+  tz?: string;
+  /** Fecha clave de un tablero hecho con plantilla de cuenta regresiva («la boda»). */
+  anchor?: { date: string; label: string };
 };
 export type Board = {
   id: string;
@@ -27,7 +33,26 @@ export type Board = {
   is_template?: boolean;
   description?: string;
   settings: BoardSettings;
+  /** Archivado con su cierre (migración 202611100008): no sale en la lista, pero no se borra. */
+  archived_at?: string | null;
+  closing?: BoardClosing;
 };
+/** Lo que queda escrito al archivar un tablero. */
+export type BoardClosing = {
+  /** Del primer día al cierre. */
+  from?: string;
+  to?: string;
+  cards?: number;
+  done?: number;
+  well?: string;
+  different?: string;
+  /** El aprendizaje que se guardó con el cierre. */
+  learningId?: string;
+  /** El episodio (proyecto cerrado) que se guardó con el cierre. */
+  episodeId?: string;
+};
+/** Una vez que se cumplió una rutina: la fecha que cerró y cuándo la marcaste. */
+export type Completion = { due: string; at: string };
 export type Column = {
   id: string;
   board_id: string;
@@ -57,12 +82,21 @@ export type BoardCard = Card & {
   /** Desde cuándo está en su columna. */
   list_since?: string;
   created_at?: string;
+  /** Fecha de inicio (línea de tiempo) y registro de rutinas (migración 202611100008). */
+  starts: string | null;
+  completions: Completion[];
+  /** Recordatorio (migración 202611100009): cuándo avisar y cuándo se avisó. */
+  remind_at?: string | null;
+  reminded_at?: string | null;
+  /** Último cambio de la fila, también al reordenar (sincronización incremental). */
+  updated_at?: string;
   /** Solo en la vista. */
   board_id?: string;
   list_name?: string;
   board_name?: string;
   board_is_template?: boolean;
   board_settings?: BoardSettings | null;
+  board_archived_at?: string | null;
 };
 export type CardChanges = Partial<
   Pick<
@@ -82,6 +116,10 @@ export type CardChanges = Partial<
     | "priority"
     | "highlight"
     | "snoozed_until"
+    | "starts"
+    | "completions"
+    | "remind_at"
+    | "reminded_at"
     | "entry_id"
     | "person_id"
     | "episode_id"
@@ -99,6 +137,8 @@ export type NewCardInput =
       tags?: string[];
       priority?: Priority;
       highlight?: boolean;
+      /** Fecha límite ya elegida (p. ej., al crearla desde un día del calendario). */
+      due?: string | null;
     };
 
 /** Migración que quita el tope de caracteres de títulos y descripciones de tarjetas. */
@@ -121,6 +161,14 @@ const EXTRA = new Set([
 ]);
 /** Campos de la migración 202611090002. */
 const POWER = new Set(["priority", "highlight", "snoozed_until"]);
+/** Vistas, rutinas, archivar tableros y sincronización (migración 202611100008). */
+export const SYNC_SQL = "supabase/migrations/202611100008_board_views_sync.sql";
+const PHASE = new Set(["starts", "completions"]);
+export const isMissingSync = (e: { message?: string }) =>
+  /\bstarts\b|completions|closing|board_archived_at|updated_at|boards\.archived_at/.test(
+    e.message ?? "",
+  );
+export const missingSyncText = `Para fechas de inicio, rutinas, archivar tableros y sincronizar entre equipos ejecuta ${SYNC_SQL} en el SQL Editor de Supabase.`;
 /** Falta la migración 016 (repetir y plantillas). Se mira antes que la 014. */
 const isMissing016 = (e: { message?: string }) =>
   /\brepeat\b|is_template|description|board_is_template/.test(e.message ?? "");
@@ -132,6 +180,8 @@ export const isMissingPower = (e: { message?: string }) =>
 const isMissing = (e: { code?: string; message?: string }) =>
   !isMissing016(e) &&
   !isMissingPower(e) &&
+  !isMissingSync(e) &&
+  !isMissingPhase2(e) &&
   (e.code === "42703" ||
     e.code === "PGRST204" ||
     /archived_at|done_at|\bdone\b|background|\bcolor\b|list_name|board_name/.test(
@@ -226,8 +276,16 @@ function cardRow(c: BoardCard, extras: boolean, power = true) {
     if (c.touched_at) row.touched_at = c.touched_at;
     if (c.list_since) row.list_since = c.list_since;
   }
+  if (c.starts) row.starts = c.starts;
+  if (c.completions?.length) row.completions = c.completions;
+  if (c.remind_at) row.remind_at = c.remind_at;
+  if (c.reminded_at) row.reminded_at = c.reminded_at;
   return row;
 }
+const isCompletion = (v: unknown): v is Completion =>
+  Boolean(v) &&
+  typeof (v as Completion).due === "string" &&
+  typeof (v as Completion).at === "string";
 export const normalizeCard = (c: Partial<BoardCard> & Card): BoardCard => ({
   ...c,
   tags: c.tags ?? [],
@@ -240,6 +298,10 @@ export const normalizeCard = (c: Partial<BoardCard> & Card): BoardCard => ({
   priority: isPriority(c.priority) ? c.priority : "",
   highlight: Boolean(c.highlight),
   snoozed_until: c.snoozed_until ?? null,
+  starts: c.starts ?? null,
+  completions: Array.isArray(c.completions)
+    ? (c.completions as unknown[]).filter(isCompletion)
+    : [],
 });
 const normalizeColumn = (x: Partial<Column> & { id: string }): Column => ({
   board_id: "",
@@ -260,7 +322,78 @@ const normalizeBoard = (b: Partial<Board> & { id: string }): Board => ({
     b.settings && typeof b.settings === "object" && !Array.isArray(b.settings)
       ? b.settings
       : {},
+  archived_at: b.archived_at ?? null,
+  closing:
+    b.closing && typeof b.closing === "object" && !Array.isArray(b.closing)
+      ? b.closing
+      : {},
 });
+
+// ───────────────────────── Lectura por páginas (sin tope) ─────────────────────────
+
+type PgError = { code?: string; message: string };
+type Page<T> = {
+  data: T[] | null;
+  error: PgError | null;
+  count?: number | null;
+};
+/** Filas por pedido: el máximo que devuelve PostgREST por defecto. */
+export const PAGE = 1000;
+/**
+ * Trae todas las filas de una consulta, de a mil. El primer pedido cuenta el total; los demás
+ * van de a cuatro en paralelo. `page(from, to, count)` arma la consulta (con su orden estable).
+ */
+export async function fetchPaged<T>(
+  page: (from: number, to: number, count: boolean) => PromiseLike<Page<T>>,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<{ rows: T[]; error: PgError | null; total: number }> {
+  const first = await page(0, PAGE - 1, true);
+  if (first.error) return { rows: [], error: first.error, total: 0 };
+  const rows = [...(first.data ?? [])];
+  const total = first.count ?? rows.length;
+  if (rows.length < PAGE) return { rows, error: null, total: rows.length };
+  if (first.count == null) {
+    // Sin conteo: de a una página hasta que se acaben.
+    for (let n = PAGE; ; n += PAGE) {
+      const r = await page(n, n + PAGE - 1, false);
+      if (r.error) return { rows, error: r.error, total: rows.length };
+      rows.push(...(r.data ?? []));
+      onProgress?.(rows.length, rows.length);
+      if ((r.data ?? []).length < PAGE)
+        return { rows, error: null, total: rows.length };
+    }
+  }
+  onProgress?.(rows.length, total);
+  const starts: number[] = [];
+  for (let n = PAGE; n < total; n += PAGE) starts.push(n);
+  const parts: T[][] = new Array(starts.length);
+  let error: PgError | null = null;
+  for (let i = 0; i < starts.length; i += 4) {
+    const batch = starts.slice(i, i + 4);
+    const res = await Promise.all(
+      batch.map((n) => page(n, n + PAGE - 1, false)),
+    );
+    for (let k = 0; k < res.length; k++) {
+      if (res[k].error) error = res[k].error;
+      parts[i + k] = res[k].data ?? [];
+    }
+    if (error) break;
+    onProgress?.(rows.length + parts.flat().length, total);
+  }
+  for (const p of parts) if (p) rows.push(...p);
+  // Si alguna página quedó a medias, lo repetido (por cambios mientras se leía) se descarta.
+  const seen = new Set<string>();
+  const unique = rows.filter((r) => {
+    const id = (r as { id?: string }).id;
+    if (!id) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  return { rows: unique, error, total };
+}
+/** Tarjetas de un tablero a partir de las cuales el tablero se siente pesado: se avisa. */
+export const HEAVY_BOARD = 8000;
 
 // ───────────────────────── Copiar tableros (plantillas) ─────────────────────────
 
@@ -272,9 +405,29 @@ export type SpecCard = {
   checks?: string[];
   color?: string;
   repeat?: Repeat;
+  /** Días desde la fecha clave (negativos: antes). Con fecha clave, es su fecha límite. */
+  offset?: number;
 };
 export type SpecColumn = { name: string; color?: string; cards: SpecCard[] };
-export type BoardSpec = { background?: string; columns: SpecColumn[] };
+export type BoardSpec = {
+  background?: string;
+  columns: SpecColumn[];
+  /** Plantilla de cuenta regresiva: cómo se llama la fecha clave («Fecha de la boda»). */
+  anchor?: string;
+};
+/** ¿La plantilla tiene fechas relativas a una fecha clave? */
+export const hasOffsets = (spec: BoardSpec) =>
+  spec.columns.some((c) => c.cards.some((x) => typeof x.offset === "number"));
+const shiftDay = (iso: string, days: number) => {
+  const d = new Date(iso + "T12:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+const daysFrom = (a: string, b: string) =>
+  Math.round(
+    (new Date(b + "T12:00:00").getTime() - new Date(a + "T12:00:00").getTime()) /
+      86_400_000,
+  );
 
 /** El contenido de un tablero (columnas y tarjetas sin archivar), sin fechas ni vínculos. */
 export async function snapshotBoard(boardId: string): Promise<BoardSpec> {
@@ -289,25 +442,29 @@ export async function snapshotBoard(boardId: string): Promise<BoardSpec> {
   ]);
   if (b.error) throw b.error;
   if (l.error) throw l.error;
-  let c = await supabase
-    .from("planner_board_cards")
-    .select("*")
-    .eq("board_id", boardId)
-    .is("archived_at", null)
-    .order("rank")
-    .order("id")
-    .limit(5000);
-  if (c.error)
-    c = await supabase
-      .from("planner_board_cards")
-      .select("*")
-      .eq("board_id", boardId)
-      .order("rank")
-      .limit(5000);
+  const paged = (archived: boolean) =>
+    fetchPaged<BoardCard>((from, to, count) => {
+      let q = supabase
+        .from("planner_board_cards")
+        .select("*", count ? { count: "exact" } : undefined)
+        .eq("board_id", boardId);
+      if (archived) q = q.is("archived_at", null);
+      return q.order("rank").order("id").range(from, to);
+    });
+  let c = await paged(true);
+  if (c.error) c = await paged(false);
   if (c.error) throw c.error;
-  const cards = ((c.data ?? []) as BoardCard[]).map(normalizeCard);
+  const cards = c.rows.map(normalizeCard);
+  // Fechas relativas: a la fecha clave del tablero o, sin ella, a la última fecha límite.
+  const board = b.data as Board;
+  const settings = (board.settings ?? {}) as BoardSettings;
+  const dues = cards.map((x) => x.due).filter((d): d is string => Boolean(d));
+  const anchorDate =
+    settings.anchor?.date ?? (dues.length ? [...dues].sort().at(-1)! : null);
   return {
-    background: (b.data as Board).background ?? "",
+    background: board.background ?? "",
+    ...(anchorDate &&
+      dues.length && { anchor: settings.anchor?.label || "Fecha clave" }),
     columns: ((l.data ?? []) as Column[]).map((col) => ({
       name: col.name,
       color: col.color ?? "",
@@ -320,6 +477,7 @@ export async function snapshotBoard(boardId: string): Promise<BoardSpec> {
           checks: x.checks.map((k) => k.text),
           color: x.color,
           repeat: x.repeat,
+          ...(anchorDate && x.due && { offset: daysFrom(anchorDate, x.due) }),
         })),
     })),
   };
@@ -385,7 +543,11 @@ export async function snapshotColumns(listIds: string[]): Promise<Snapshot> {
   return { lists, cards };
 }
 export async function snapshotBoardRows(boardId: string): Promise<Snapshot> {
-  const b = await supabase.from("boards").select("*").eq("id", boardId).single();
+  const b = await supabase
+    .from("boards")
+    .select("*")
+    .eq("id", boardId)
+    .single();
   if (b.error) throw b.error;
   const lists = await allRows("board_lists", "board_id", [boardId]);
   const cards = lists.length
@@ -508,8 +670,17 @@ export function useBoardList(notify: Notify) {
   const createFrom = async (
     spec: BoardSpec,
     name: string,
-    opts: { template?: boolean; description?: string } = {},
+    opts: { template?: boolean; description?: string; anchor?: string } = {},
   ) => {
+    // Cuenta regresiva: cada tarjeta con desfase toma su fecha de la fecha clave. Una plantilla
+    // tuya se guarda con hoy como fecha clave (así se conservan los desfases).
+    const offsets = hasOffsets(spec);
+    const anchorDate = offsets
+      ? (opts.anchor ?? new Date().toISOString().slice(0, 10))
+      : null;
+    const settings: BoardSettings | null = anchorDate
+      ? { anchor: { date: anchorDate, label: spec.anchor ?? "Fecha clave" } }
+      : null;
     const board = normalizeBoard({
       id: crypto.randomUUID(),
       name: name.trim().slice(0, 120) || "Tablero",
@@ -517,6 +688,7 @@ export function useBoardList(notify: Notify) {
       created_at: new Date().toISOString(),
       is_template: Boolean(opts.template),
       description: (opts.description ?? "").slice(0, 2000),
+      ...(settings && { settings }),
     });
     try {
       const row: Record<string, unknown> = { id: board.id, name: board.name };
@@ -524,7 +696,14 @@ export function useBoardList(notify: Notify) {
       if (board.is_template) row.is_template = true;
       if (board.description && board.is_template)
         row.description = board.description;
-      const ins = await supabase.from("boards").insert(row);
+      if (settings) row.settings = settings;
+      let ins = await supabase.from("boards").insert(row);
+      if (ins.error && settings) {
+        // Sin ajustes (migración 202611090002): las fechas igual quedan en las tarjetas.
+        delete row.settings;
+        board.settings = {};
+        ins = await supabase.from("boards").insert(row);
+      }
       if (ins.error) {
         if (board.is_template) throw ins.error;
         // Sin las migraciones nuevas: el tablero igual, sin fondo.
@@ -557,6 +736,10 @@ export function useBoardList(notify: Notify) {
           })),
           color: card.color ?? "",
           ...(card.repeat && { repeat: card.repeat }),
+          ...(anchorDate &&
+            typeof card.offset === "number" && {
+              due: shiftDay(anchorDate, card.offset),
+            }),
         })),
       );
       await insertRows("board_cards", cards, ["color", "repeat"]);
@@ -648,11 +831,60 @@ export function useBoardList(notify: Notify) {
   /** Al deshacer el borrado de la columna anclada. */
   const notePin = (col: PinnedColumn) => setPinned(col);
 
+  /**
+   * Archiva un tablero (sin borrarlo) con su cierre. Sale de la lista, sus tarjetas dejan de
+   * aparecer en la Agenda y en el saludo, y se puede volver a abrir cuando quieras.
+   */
+  const archiveBoard = async (id: string, closing: BoardClosing) => {
+    const at = new Date().toISOString();
+    const before = all?.find((b) => b.id === id);
+    setAll(
+      (v) =>
+        v?.map((b) => (b.id === id ? { ...b, archived_at: at, closing } : b)) ??
+        v,
+    );
+    try {
+      await enqueue([id], () =>
+        check(
+          supabase
+            .from("boards")
+            .update({ archived_at: at, closing })
+            .eq("id", id),
+        ),
+      );
+      return true;
+    } catch (e) {
+      if (before) setAll((v) => v?.map((b) => (b.id === id ? before : b)) ?? v);
+      const err = e as { message?: string };
+      notify(
+        isMissingSync(err) || /archived_at|closing/.test(err.message ?? "")
+          ? missingSyncText
+          : "No se pudo archivar: " + (err.message ?? "error"),
+      );
+      return false;
+    }
+  };
+  /** Lo devuelve a la lista (el cierre se conserva por si lo vuelves a archivar). */
+  const unarchiveBoard = (id: string) => {
+    setAll(
+      (v) =>
+        v?.map((b) => (b.id === id ? { ...b, archived_at: null } : b)) ?? v,
+    );
+    enqueue([id], () =>
+      check(supabase.from("boards").update({ archived_at: null }).eq("id", id)),
+    ).catch(fail);
+  };
+
   return {
-    /** Todos: tableros y plantillas tuyas. */
+    /** Todos: tableros y plantillas tuyas (también los archivados). */
     all,
-    boards: all?.filter((b) => !b.is_template) ?? null,
+    boards: all?.filter((b) => !b.is_template && !b.archived_at) ?? null,
     templates: all?.filter((b) => b.is_template) ?? [],
+    archivedBoards: (all ?? [])
+      .filter((b) => !b.is_template && b.archived_at)
+      .sort((a, b) => (b.archived_at ?? "").localeCompare(a.archived_at ?? "")),
+    archiveBoard,
+    unarchiveBoard,
     error,
     archived,
     setArchived,
@@ -674,6 +906,47 @@ export type BoardListApi = ReturnType<typeof useBoardList>;
 
 // ───────────────────────── Columnas y tarjetas de un tablero ─────────────────────────
 
+/** El cambio más reciente que se conoce (para pedir solo lo que vino después). */
+function maxUpdated(
+  cards: { updated_at?: string }[],
+  lists: Record<string, unknown>[],
+  floor: string | null = null,
+) {
+  let max = floor;
+  for (const c of cards)
+    if (c.updated_at && (!max || c.updated_at > max)) max = c.updated_at;
+  for (const l of lists) {
+    const u = l.updated_at as string | undefined;
+    if (u && (!max || u > max)) max = u;
+  }
+  return max;
+}
+/** ¿Lo que llegó es lo mismo que ya se ve? (Evita volver a pintar por el eco de lo tuyo.) */
+function sameCard(a: BoardCard, b: BoardCard) {
+  const keys: (keyof BoardCard)[] = [
+    "list_id",
+    "rank",
+    "title",
+    "body",
+    "due",
+    "done",
+    "done_at",
+    "color",
+    "repeat",
+    "priority",
+    "highlight",
+    "snoozed_until",
+    "entry_id",
+    "starts",
+  ];
+  if (keys.some((k) => a[k] !== b[k])) return false;
+  return (
+    JSON.stringify(a.tags) === JSON.stringify(b.tags) &&
+    JSON.stringify(a.checks) === JSON.stringify(b.checks) &&
+    a.completions.length === b.completions.length
+  );
+}
+
 export function useBoard(boardId: string | null, notify: Notify) {
   const [columns, setColumns] = useState<Column[]>([]);
   const [cards, setCards] = useState<BoardCard[]>([]);
@@ -682,10 +955,23 @@ export function useBoard(boardId: string | null, notify: Notify) {
   );
   const [extras, setExtras] = useState(true);
   const [power, setPower] = useState(true);
-  const live = useRef({ columns, cards, extras, power });
-  live.current = { columns, cards, extras, power };
+  /** Existe la migración 202611100008 (updated_at, tiempo real, rutinas). */
+  const [sync, setSync] = useState(true);
+  /** Al cargar un tablero grande: cuántas van. */
+  const [progress, setProgress] = useState<{
+    loaded: number;
+    total: number;
+  } | null>(null);
+  /** Completadas y ya archivadas (cuentan para el avance acumulado). */
+  const [closed, setClosed] = useState(0);
+  const live = useRef({ columns, cards, extras, power, sync });
+  live.current = { columns, cards, extras, power, sync };
   const current = useRef(boardId);
   current.current = boardId;
+  const syncedAt = useRef<string | null>(null);
+  const loadedAt = useRef(0);
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
 
   /**
    * Cambia las tarjetas (o columnas) y deja el valor nuevo listo al momento: así varias acciones
@@ -705,6 +991,21 @@ export function useBoard(boardId: string | null, notify: Notify) {
   const load = useCallback(async () => {
     const id = current.current;
     if (!id) return;
+    const cardsOf = (archivedFilter: boolean) =>
+      fetchPaged<BoardCard>(
+        (from, to, count) => {
+          let q = supabase
+            .from("planner_board_cards")
+            .select("*", count ? { count: "exact" } : undefined)
+            .eq("board_id", id);
+          if (archivedFilter) q = q.is("archived_at", null);
+          return q.order("rank").order("id").range(from, to);
+        },
+        (loaded, total) =>
+          current.current === id &&
+          total > PAGE * 2 &&
+          setProgress({ loaded, total }),
+      );
     const [l, c] = await Promise.all([
       supabase
         .from("board_lists")
@@ -712,28 +1013,17 @@ export function useBoard(boardId: string | null, notify: Notify) {
         .eq("board_id", id)
         .order("rank")
         .order("id"),
-      supabase
-        .from("planner_board_cards")
-        .select("*")
-        .eq("board_id", id)
-        .is("archived_at", null)
-        .order("rank")
-        .order("id")
-        .limit(5000),
+      cardsOf(true),
     ]);
-    let rows = c.data as BoardCard[] | null;
+    let rows: BoardCard[] = c.rows;
+    let result = c;
     let hasExtras = true;
-    if (c.error && isMissing(c.error)) {
+    if (c.error && !c.rows.length && isMissing(c.error)) {
       // Sin la migración 014: todo menos completar, archivar y colores.
       hasExtras = false;
-      const plain = await supabase
-        .from("planner_board_cards")
-        .select("*")
-        .eq("board_id", id)
-        .order("rank")
-        .limit(5000);
-      rows = plain.data as BoardCard[] | null;
-    } else if (c.error) {
+      result = await cardsOf(false);
+      rows = result.rows;
+    } else if (c.error && !c.rows.length) {
       if (current.current === id) setStatus("error");
       return;
     }
@@ -741,19 +1031,201 @@ export function useBoard(boardId: string | null, notify: Notify) {
     if (l.error) return setStatus("error");
     const cols = ((l.data ?? []) as Column[]).map(normalizeColumn);
     const raw = (l.data ?? []) as Record<string, unknown>[];
-    const next = (rows ?? []).map(normalizeCard);
+    const next = rows.map(normalizeCard);
     live.current = { ...live.current, columns: cols, cards: next };
     setColumns(cols);
     setCards(next);
     setExtras(hasExtras);
     setPower(!raw.length || "rules" in raw[0]);
+    setSync(
+      raw.length
+        ? "updated_at" in raw[0]
+        : !rows.length || "updated_at" in (rows[0] as object),
+    );
+    setProgress(null);
+    syncedAt.current = maxUpdated(next, raw);
+    loadedAt.current = Date.now();
+    const notify = notifyRef.current;
+    // Nunca en silencio: si faltó algo, se dice cuánto; si es enorme, también.
+    if (result.error)
+      notify(
+        `Se cargaron ${next.length.toLocaleString("es")} de ${result.total.toLocaleString("es")} tarjetas: falló la conexión a mitad.`,
+        { label: "Reintentar", icon: "undo", run: () => void load() },
+      );
+    else if (next.length >= HEAVY_BOARD)
+      notify(
+        `Este tablero tiene ${next.length.toLocaleString("es")} tarjetas abiertas. Se cargaron todas; archivar lo completado lo hará más ágil.`,
+      );
     setStatus("ready");
+    void loadClosed(id);
   }, []);
+
+  /** Lo completado y archivado cuenta para el avance acumulado (Boda al 62 %). */
+  const loadClosed = async (id: string) => {
+    const r = await supabase
+      .from("planner_board_cards")
+      .select("id", { count: "exact", head: true })
+      .eq("board_id", id)
+      .not("archived_at", "is", null)
+      .eq("done", true);
+    if (current.current === id) setClosed(r.error ? 0 : (r.count ?? 0));
+  };
+
+  /**
+   * Sincronización incremental: solo lo que cambió desde la última vez (updated_at). Se usa al
+   * volver a la pestaña y al reconectar; el tiempo real trae lo demás al momento.
+   */
+  const catchUp = useCallback(async () => {
+    const id = current.current;
+    if (!id || !live.current.sync || !syncedAt.current) return;
+    // Mucho tiempo fuera: más simple volver a leer todo.
+    if (Date.now() - loadedAt.current > 30 * 60_000) return void load();
+    const since = syncedAt.current;
+    const [l, c] = await Promise.all([
+      supabase
+        .from("board_lists")
+        .select("*")
+        .eq("board_id", id)
+        .gt("updated_at", since),
+      fetchPaged<BoardCard>((from, to, count) =>
+        supabase
+          .from("planner_board_cards")
+          .select("*", count ? { count: "exact" } : undefined)
+          .eq("board_id", id)
+          .gt("updated_at", since)
+          .order("updated_at")
+          .order("id")
+          .range(from, to),
+      ),
+    ]);
+    if (current.current !== id || l.error || c.error) return;
+    for (const row of (l.data ?? []) as Record<string, unknown>[])
+      mergeColumn(row);
+    for (const row of c.rows)
+      mergeCard(row as unknown as Record<string, unknown>);
+    syncedAt.current = maxUpdated(
+      c.rows,
+      (l.data ?? []) as Record<string, unknown>[],
+      since,
+    );
+  }, [load]);
+
+  /** Algo que llegó del servidor (tiempo real o puesta al día). Lo que tienes a medio guardar manda. */
+  function mergeCard(row: Record<string, unknown>) {
+    const id = row.id as string;
+    if (!id || queue.has(id)) return;
+    const stamp = row.updated_at as string | undefined;
+    if (stamp && stamp > (syncedAt.current ?? "")) syncedAt.current = stamp;
+    const mine = live.current.columns.some((c) => c.id === row.list_id);
+    const had = live.current.cards.find((c) => c.id === id);
+    if (!mine || row.archived_at) {
+      if (had) putCards((v) => v.filter((c) => c.id !== id));
+      return;
+    }
+    // Las filas de board_cards no traen los campos de la vista: se conservan los de antes.
+    const next = normalizeCard({ ...(had ?? {}), ...row } as BoardCard);
+    if (had && sameCard(had, next)) return;
+    putCards((v) =>
+      had ? v.map((c) => (c.id === id ? next : c)) : [...v, next],
+    );
+  }
+  function mergeColumn(row: Record<string, unknown>) {
+    const id = row.id as string;
+    if (!id || queue.has(id)) return;
+    const had = live.current.columns.find((c) => c.id === id);
+    if (row.board_id !== current.current) {
+      if (had) {
+        putColumns((v) => v.filter((c) => c.id !== id));
+        putCards((v) => v.filter((c) => c.list_id !== id));
+      }
+      return;
+    }
+    const next = normalizeColumn(row as Partial<Column> & { id: string });
+    putColumns((v) =>
+      had ? v.map((c) => (c.id === id ? next : c)) : [...v, next],
+    );
+    // Una columna que llega de otro tablero trae sus tarjetas.
+    if (!had) void catchUpList(id);
+  }
+  const catchUpList = async (listId: string) => {
+    const r = await fetchPaged<BoardCard>((from, to, count) =>
+      supabase
+        .from("planner_board_cards")
+        .select("*", count ? { count: "exact" } : undefined)
+        .eq("list_id", listId)
+        .is("archived_at", null)
+        .order("rank")
+        .order("id")
+        .range(from, to),
+    );
+    if (!r.error)
+      r.rows.forEach((row) =>
+        mergeCard(row as unknown as Record<string, unknown>),
+      );
+  };
+  const mergeRef = useRef({ mergeCard, mergeColumn });
+  mergeRef.current = { mergeCard, mergeColumn };
+
+  // Tiempo real: lo que haces en la computadora aparece en el celular (y al revés).
+  useEffect(() => {
+    if (!boardId || status !== "ready" || !sync) return;
+    const channel = supabase
+      .channel(`board-${boardId}-${crypto.randomUUID().slice(0, 8)}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "board_cards" },
+        (p) => {
+          if (p.eventType === "DELETE") {
+            const id = (p.old as { id?: string }).id;
+            if (
+              id &&
+              !queue.has(id) &&
+              live.current.cards.some((c) => c.id === id)
+            )
+              putCards((v) => v.filter((c) => c.id !== id));
+            return;
+          }
+          mergeRef.current.mergeCard(p.new as Record<string, unknown>);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "board_lists" },
+        (p) => {
+          if (p.eventType === "DELETE") {
+            const id = (p.old as { id?: string }).id;
+            if (!id || queue.has(id)) return;
+            if (live.current.columns.some((c) => c.id === id)) {
+              putColumns((v) => v.filter((c) => c.id !== id));
+              putCards((v) => v.filter((c) => c.list_id !== id));
+            }
+            return;
+          }
+          mergeRef.current.mergeColumn(p.new as Record<string, unknown>);
+        },
+      )
+      .subscribe((s) => {
+        // Al (re)conectar se recupera lo que pasó mientras no había conexión.
+        if (s === "SUBSCRIBED") void catchUp();
+      });
+    const onBack = () =>
+      document.visibilityState === "visible" && void catchUp();
+    document.addEventListener("visibilitychange", onBack);
+    window.addEventListener("online", onBack);
+    return () => {
+      document.removeEventListener("visibilitychange", onBack);
+      window.removeEventListener("online", onBack);
+      void supabase.removeChannel(channel);
+    };
+  }, [boardId, status, sync, catchUp]);
 
   useEffect(() => {
     live.current = { ...live.current, columns: [], cards: [] };
     setColumns([]);
     setCards([]);
+    setClosed(0);
+    setProgress(null);
+    syncedAt.current = null;
     setStatus("loading");
     if (boardId) void load();
   }, [boardId, load]);
@@ -761,7 +1233,13 @@ export function useBoard(boardId: string | null, notify: Notify) {
   const fail = useCallback(
     (e: { code?: string; message?: string }) => {
       if (isMissing016(e)) notify(missing016Text);
-      else if (isMissingPower(e)) {
+      else if (isMissingPhase2(e)) {
+        markPhase2Missing();
+        notify(missingPhase2Text);
+      } else if (isMissingSync(e)) {
+        setSync(false);
+        notify(missingSyncText);
+      } else if (isMissingPower(e)) {
         setPower(false);
         notify(missingPowerText);
       } else if (/title_check/.test(e.message ?? ""))
@@ -788,6 +1266,11 @@ export function useBoard(boardId: string | null, notify: Notify) {
   const needPower = () => {
     if (live.current.power) return true;
     notify(missingPowerText);
+    return false;
+  };
+  const needSync = () => {
+    if (live.current.sync) return true;
+    notify(missingSyncText);
     return false;
   };
 
@@ -907,15 +1390,17 @@ export function useBoard(boardId: string | null, notify: Notify) {
     const made = clean.map((item) => {
       last += 1024;
       const rep = parseRepeat(item.title);
+      // «Llamar al banco el viernes»: la fecha sale sola del título.
+      const when = rep ? null : dateInTitle(item.title);
       return normalizeCard({
         id: crypto.randomUUID(),
         list_id: list,
-        title: rep?.title ?? item.title,
+        title: rep?.title ?? when?.title ?? item.title,
         body: item.body,
         tags: item.tags ?? [],
         checks: [],
         rank: last,
-        due: rep?.due ?? null,
+        due: rep?.due ?? when?.due ?? item.due ?? null,
         entry_id: null,
         episode_id: null,
         person_id: null,
@@ -974,6 +1459,7 @@ export function useBoard(boardId: string | null, notify: Notify) {
     const keys = Object.keys(changes);
     if (keys.some((k) => EXTRA.has(k)) && !needExtras()) return;
     if (keys.some((k) => POWER.has(k)) && !needPower()) return;
+    if (keys.some((k) => PHASE.has(k)) && !needSync()) return;
     const now = new Date().toISOString();
     const before = peek(id);
     const local: Partial<BoardCard> = { ...changes };
@@ -1099,6 +1585,9 @@ export function useBoard(boardId: string | null, notify: Notify) {
     status,
     extras,
     power,
+    sync,
+    progress,
+    closed,
     reload: load,
     peek,
     peekColumn,

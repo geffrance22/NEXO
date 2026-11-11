@@ -5,6 +5,7 @@ import {
   Archive,
   ArchiveRestore,
   ArrowUpRight,
+  Bell,
   BookOpen,
   Calendar,
   Check,
@@ -12,15 +13,21 @@ import {
   ChevronDown,
   Columns3,
   Flag,
+  GitBranch,
   Highlighter,
+  History,
   Hourglass,
   Layers,
+  LayoutTemplate,
   Link2,
   ListChecks,
   LoaderCircle,
+  Lock,
+  MessageCircle,
   Palette,
   Plus,
   Repeat as RepeatIcon,
+  RotateCcw,
   Tag,
   Trash2,
   UsersRound,
@@ -29,6 +36,15 @@ import {
 import { useApp } from '../AppContext';
 import { supabase } from '../backend';
 import { Sheet } from '../components/Sheet';
+import type { CommitmentKind, Entry, Person } from '../data';
+import {
+  ageInDays,
+  commitmentKindList,
+  commitmentKinds,
+  commitmentOf,
+  nudgeText,
+  whatsappLink,
+} from '../lib/commitments';
 import { episodeKindOf } from '../lib/episodes';
 import { addDays, friendlyDate, nextMonday, shortDate, todayInputValue } from '../lib/format';
 import { relationMeta, relationOf, searchText } from '../lib/people';
@@ -50,6 +66,17 @@ import {
   type Repeat,
 } from './boardRepeat';
 import type { Check as CheckItem } from './shared';
+import { RoutineStats } from './views/RoutineStats';
+import { blocksCard, otherOf, stillBlocks, type CardLinksApi, type LinkCond } from './cardLinks';
+import {
+  saveCardTemplate,
+  slashAt,
+  takeSlash,
+  templateChanges,
+  templateFromCard,
+  useCardTemplates,
+} from './boardCardTemplates';
+import { missingPhase2Text, usePhase2 } from './boardPhase';
 
 /** Texto que se guarda solo: al dejar de escribir, al salir del campo o al cerrar. */
 function useDraft(value: string, commit: (v: string) => void, delay = 700) {
@@ -95,12 +122,18 @@ export function CardEditor({
   done,
   extras,
   power = true,
+  sync = true,
   aging = 0,
   onPatch,
   onToggleDone,
   onArchive,
   onDelete,
   onClose,
+  links,
+  boardCards = [],
+  isDoneId,
+  onPeopleAdded,
+  onHistory,
 }: {
   card: BoardCard;
   /** Columnas del tablero (vacío en Archivados). */
@@ -110,6 +143,8 @@ export function CardEditor({
   extras: boolean;
   /** Ya existe la migración 202611090002 (prioridad, resaltar, posponer). */
   power?: boolean;
+  /** Ya existe la migración 202611100008 (inicio, rutinas). */
+  sync?: boolean;
   /** Días para «Tarjetas que envejecen» en su tablero (0: no). */
   aging?: number;
   onPatch: (changes: CardChanges) => void;
@@ -118,8 +153,20 @@ export function CardEditor({
   onArchive: () => void;
   onDelete: () => void;
   onClose: () => void;
+  /** Vínculos entre tarjetas del tablero (sin ellos no se ven las dependencias). */
+  links?: CardLinksApi;
+  /** Las demás tarjetas del tablero (para elegir dependencias). */
+  boardCards?: BoardCard[];
+  isDoneId?: (id: string) => boolean;
+  /** Se añadieron personas (para las reglas «Se le añade una persona»). */
+  onPeopleAdded?: (ids: string[]) => void;
+  /** Abre el historial de esta tarjeta. */
+  onHistory?: () => void;
 }) {
   const archived = Boolean(card.archived_at);
+  const { notify } = useApp();
+  const phase2 = usePhase2();
+  const templates = useCardTemplates();
   const title = useDraft(card.title, (v) => {
     const t = v.replace(/\s+/g, ' ').trim();
     if (t && t !== card.title) onPatch({ title: t });
@@ -131,6 +178,8 @@ export function CardEditor({
   const [colMenu, setColMenu] = useState<DOMRect | null>(null);
   const [repeatMenu, setRepeatMenu] = useState<DOMRect | null>(null);
   const [snoozeMenu, setSnoozeMenu] = useState<DOMRect | null>(null);
+  const [dateFor, setDateFor] = useState<string | null>(null);
+  const [itemCaret, setItemCaret] = useState(0);
   const snz = snoozeState(card);
   const age = ageOf(card, aging, done);
   const due = dueState(card.due, done);
@@ -138,6 +187,7 @@ export function CardEditor({
   const pct = card.checks.length ? Math.round((100 * ticked) / card.checks.length) : 0;
   const tone = toneOf(card.color);
   const column = columns.find((c) => c.id === card.list_id);
+  const today = todayInputValue();
 
   const setChecks = (checks: CheckItem[]) => onPatch({ checks });
   const addTag = () => {
@@ -148,7 +198,24 @@ export function CardEditor({
     if (parts.length) onPatch({ tags: [...new Set([...card.tags, ...parts])] });
     setTag('');
   };
+  /** «/reunion» en la lista: aplica la plantilla de tarjeta (suma lo que trae). */
+  const applySlash = (text: string) => {
+    const hit = takeSlash(text.trim(), templates.all);
+    if (!hit) return false;
+    const ch = templateChanges(hit.template, card);
+    if (!power) {
+      delete ch.priority;
+    }
+    if (Object.keys(ch).length) onPatch(ch);
+    notify(
+      Object.keys(ch).length
+        ? `Plantilla «${hit.template.name}» aplicada.`
+        : `La tarjeta ya tenía todo lo de «${hit.template.name}».`,
+    );
+    return true;
+  };
   const addItem = () => {
+    if (item.trim().startsWith('/') && applySlash(item)) return setItem('');
     const lines = item
       .split('\n')
       .map((t) => t.trim())
@@ -163,6 +230,24 @@ export function CardEditor({
         })),
       ]);
     setItem('');
+  };
+  const slash = slashAt(item, itemCaret);
+  const slashHits = slash
+    ? templates.all
+        .filter((t) => t.slug.startsWith(slash.query.toLowerCase()) || !slash.query)
+        .slice(0, 6)
+    : [];
+  const [naming, setNaming] = useState<string | null>(null);
+  const saveAsTemplate = async (name: string) => {
+    if (!name.trim()) return;
+    setNaming(null);
+    const tpl = templateFromCard(card, name);
+    const res = await saveCardTemplate(tpl);
+    notify(
+      res.ok
+        ? `Plantilla guardada: escribe /${tpl.slug} al crear una tarjeta${res.local ? ' (solo en este equipo)' : ''}.`
+        : 'No se pudo guardar la plantilla: ' + (res.error ?? 'error'),
+    );
   };
   const leave = (to: () => void) => {
     title.flush();
@@ -382,6 +467,44 @@ export function CardEditor({
                           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
                         }}
                       />
+                      {dateFor === c.id ? (
+                        <input
+                          type="date"
+                          className="bdm-check-date"
+                          autoFocus
+                          defaultValue={c.due ?? ''}
+                          aria-label="Fecha del punto"
+                          onBlur={(e) => {
+                            const v = e.target.value || null;
+                            if (v !== (c.due ?? null))
+                              setChecks(card.checks.map((x) => (x.id === c.id ? { ...x, due: v } : x)));
+                            setDateFor(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                            if (e.key === 'Escape') {
+                              e.stopPropagation();
+                              setDateFor(null);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          className={
+                            'bdm-check-due' +
+                            (c.due ? ' on' : '') +
+                            (c.due && !c.done && c.due < today ? ' late' : '') +
+                            (c.due && !c.done && c.due === today ? ' today' : '')
+                          }
+                          title={c.due ? `Para ${friendlyDate(c.due).toLowerCase()} · cambiar` : 'Ponerle fecha'}
+                          aria-label={c.due ? `Fecha: ${friendlyDate(c.due)}` : 'Ponerle fecha al punto'}
+                          onClick={() => setDateFor(c.id)}
+                        >
+                          <Calendar size={12} />
+                          {c.due && <span>{friendlyDate(c.due, today)}</span>}
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="bdm-icon"
@@ -405,9 +528,19 @@ export function CardEditor({
               <Plus size={14} />
               <input
                 value={item}
-                placeholder="Añadir un punto…"
+                placeholder="Añadir un punto… (o /plantilla)"
                 aria-label="Nuevo punto"
-                onChange={(e) => setItem(e.target.value)}
+                onChange={(e) => {
+                  setItem(e.target.value);
+                  setItemCaret(e.target.selectionStart ?? e.target.value.length);
+                }}
+                onSelect={(e) => setItemCaret(e.currentTarget.selectionStart ?? 0)}
+                onKeyDown={(e) => {
+                  if (slashHits.length && e.key === 'Tab') {
+                    e.preventDefault();
+                    setItem('/' + slashHits[0].slug);
+                  }
+                }}
                 onPaste={(e) => {
                   const text = e.clipboardData.getData('text');
                   if (!text.includes('\n')) return;
@@ -416,14 +549,54 @@ export function CardEditor({
                   setTimeout(() => (e.target as HTMLInputElement).form?.requestSubmit());
                 }}
               />
+              {slashHits.length > 0 && (
+                <ul className="bdm-slash" role="listbox" aria-label="Plantillas de tarjeta">
+                  {slashHits.map((t) => (
+                    <li key={t.slug}>
+                      <button
+                        type="button"
+                        onPointerDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          applySlash('/' + t.slug);
+                          setItem('');
+                        }}
+                      >
+                        <LayoutTemplate size={13} /> <b>/{t.slug}</b> <span>{t.name}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </form>
           </section>
+
+          {links && !archived && (
+            <section className="bdm-sec">
+              <h3>
+                <GitBranch size={15} /> Dependencias
+              </h3>
+              <Dependencies
+                card={card}
+                links={links}
+                cards={boardCards}
+                columns={columns}
+                isDoneId={isDoneId ?? (() => false)}
+                typed={links.typed && phase2 !== false}
+              />
+            </section>
+          )}
 
           <section className="bdm-sec">
             <h3>
               <Link2 size={15} /> Vínculos de Nexo
             </h3>
-            <NexoLinks card={card} done={done} onPatch={onPatch} leave={leave} />
+            <NexoLinks
+              card={card}
+              done={done}
+              onPatch={onPatch}
+              leave={leave}
+              onPeopleAdded={onPeopleAdded}
+            />
           </section>
         </div>
 
@@ -467,6 +640,81 @@ export function CardEditor({
             </div>
           </section>
 
+          {sync && !archived && (
+            <section>
+              <h4>
+                <Bell size={13} /> Recordatorio
+              </h4>
+              <input
+                type="datetime-local"
+                value={card.remind_at ? toLocalInput(card.remind_at) : ''}
+                aria-label="Recordatorio"
+                disabled={phase2 === false}
+                onChange={(e) =>
+                  onPatch({
+                    remind_at: e.target.value ? new Date(e.target.value).toISOString() : null,
+                    reminded_at: null,
+                  })
+                }
+              />
+              <div className="bdm-quick">
+                {(
+                  [
+                    ['En 1 h', () => new Date(Date.now() + 3_600_000)],
+                    ['Mañana 9:00', () => atHour(addDays(today, 1), 9)],
+                    ...(card.due ? ([['El día, 9:00', () => atHour(card.due!, 9)]] as const) : []),
+                  ] as const
+                ).map(([label, at]) => (
+                  <button
+                    type="button"
+                    key={label}
+                    disabled={phase2 === false}
+                    onClick={() => {
+                      if ('Notification' in window && Notification.permission === 'default')
+                        void Notification.requestPermission().catch(() => undefined);
+                      onPatch({ remind_at: at().toISOString(), reminded_at: null });
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+                {card.remind_at && (
+                  <button
+                    type="button"
+                    onClick={() => onPatch({ remind_at: null, reminded_at: null })}
+                  >
+                    Quitar
+                  </button>
+                )}
+              </div>
+              <small className="bdm-repeat-hint">
+                {phase2 === false
+                  ? missingPhase2Text
+                  : card.reminded_at
+                    ? 'Ya te avisó. Cambia la hora para que vuelva a avisar.'
+                    : 'Te avisa aunque no tengas Nexo abierto si el servidor está programado.'}
+              </small>
+            </section>
+          )}
+
+          {sync && !archived && (
+            <section>
+              <h4>
+                <Calendar size={13} /> Inicio
+              </h4>
+              <input
+                type="date"
+                value={card.starts || ''}
+                max={card.due || undefined}
+                aria-label="Fecha de inicio"
+                onChange={(e) => onPatch({ starts: e.target.value || null })}
+              />
+              <small className="bdm-repeat-hint">
+                Con inicio y fecha límite se ve como una barra en la línea de tiempo.
+              </small>
+            </section>
+          )}
+
           <section>
             <h4>
               <RepeatIcon size={13} /> Repetir
@@ -487,6 +735,7 @@ export function CardEditor({
                 Al completarla vuelve sola, con la fecha siguiente.
               </small>
             )}
+            <RoutineStats card={card} sync={sync} />
             {repeatMenu && (
               <Popover
                 anchor={repeatMenu}
@@ -688,6 +937,40 @@ export function CardEditor({
               {archived ? 'Desarchivar' : 'Archivar'}
             </button>
             {!archived && !done && <small>Complétala para poder archivarla.</small>}
+            {onHistory && (
+              <button type="button" onClick={onHistory}>
+                <History size={14} /> Historial
+              </button>
+            )}
+            {naming === null ? (
+              <button type="button" onClick={() => setNaming(card.title.slice(0, 40))}>
+                <LayoutTemplate size={14} /> Guardar como plantilla de tarjeta
+              </button>
+            ) : (
+              <form
+                className="bdm-add small"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void saveAsTemplate(naming);
+                }}
+              >
+                <LayoutTemplate size={13} />
+                <input
+                  autoFocus
+                  value={naming}
+                  maxLength={80}
+                  placeholder="Nombre (se invoca con /nombre)"
+                  aria-label="Nombre de la plantilla de tarjeta"
+                  onChange={(e) => setNaming(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.stopPropagation();
+                      setNaming(null);
+                    }
+                  }}
+                />
+              </form>
+            )}
             <button type="button" className="danger" onClick={onDelete}>
               <Trash2 size={14} /> Eliminar
             </button>
@@ -713,6 +996,302 @@ const host = (url?: string) => {
     return '';
   }
 };
+const pad = (n: number) => String(n).padStart(2, '0');
+/** ISO → valor de un campo datetime-local (hora de este equipo). */
+const toLocalInput = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+const atHour = (day: string, h: number) => new Date(`${day}T${pad(h)}:00:00`);
+
+/**
+ * Dependencias de la tarjeta: con qué otras está vinculada y cómo. «Depende de» (la otra la
+ * bloquea), «Bloquea a» o simplemente relacionadas. Un bloqueo dura hasta que la otra se complete
+ * o llegue a una columna; mientras tanto, la tarjeta se ve con candado.
+ */
+function Dependencies({
+  card,
+  links,
+  cards,
+  columns,
+  isDoneId,
+  typed,
+}: {
+  card: BoardCard;
+  links: CardLinksApi;
+  cards: BoardCard[];
+  columns: Column[];
+  isDoneId: (id: string) => boolean;
+  /** Existe la migración de vínculos con tipo. */
+  typed: boolean;
+}) {
+  const { notify } = useApp();
+  const [picking, setPicking] = useState<'depends' | 'blocks' | 'rel' | null>(null);
+  const mine = links.links.filter((l) => l.a === card.id || l.b === card.id);
+  const byId = new Map(cards.map((c) => [c.id, c]));
+  const colName = (id: string) => columns.find((c) => c.id === id)?.name ?? 'otra columna';
+  const items = useMemo<PickItem[]>(
+    () =>
+      cards
+        .filter((c) => c.id !== card.id && !links.has(card.id, c.id))
+        .map((c) => ({
+          id: c.id,
+          title: c.title,
+          sub: colName(c.list_id) + (isDoneId(c.id) ? ' · completada' : ''),
+          icon: (
+            <span className="bdp-glyph">
+              <Columns3 size={15} />
+            </span>
+          ),
+        })),
+    [cards, card.id, links.links],
+  );
+  const kindOf = (l: (typeof mine)[number]) =>
+    l.kind !== 'blocks' ? 'rel' : l.blocker === card.id ? 'blocks' : 'depends';
+
+  return (
+    <div className="bdm-deps">
+      {mine.map((l) => {
+        const otherId = otherOf(l, card.id);
+        const other = byId.get(otherId);
+        const k = kindOf(l);
+        const blocker = l.blocker ? byId.get(l.blocker) : undefined;
+        const active =
+          l.kind === 'blocks' && stillBlocks(l, blocker, (id) => isDoneId(id));
+        return (
+          <div key={l.a + l.b} className={'bdm-dep' + (active ? ' active' : '')}>
+            <div className="bdm-dep-main">
+              {active ? <Lock size={13} /> : <Link2 size={13} />}
+              <span>
+                <b>{other?.title ?? 'Tarjeta archivada o de otro tablero'}</b>
+                {other && (
+                  <small>
+                    {colName(other.list_id)}
+                    {isDoneId(otherId) ? ' · completada' : ''}
+                  </small>
+                )}
+              </span>
+              <button
+                type="button"
+                className="bdm-icon"
+                aria-label="Quitar el vínculo"
+                onClick={() => {
+                  links.unlink(l.a, l.b);
+                  notify('Vínculo quitado.', {
+                    label: 'Deshacer',
+                    icon: 'undo',
+                    run: () => links.link(l.a, l.b, l),
+                  });
+                }}
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <div className="bdm-dep-opts">
+              <select
+                value={k}
+                aria-label="Tipo de vínculo"
+                disabled={!typed}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === 'rel') links.setType(l.a, l.b, { kind: 'rel' });
+                  else
+                    links.setType(l.a, l.b, {
+                      kind: 'blocks',
+                      blocker: v === 'blocks' ? card.id : otherId,
+                      cond: 'done',
+                    });
+                }}
+              >
+                <option value="rel">Relacionada</option>
+                <option value="depends">Depende de ella (la bloquea)</option>
+                <option value="blocks">Esta la bloquea</option>
+              </select>
+              {l.kind === 'blocks' && (
+                <select
+                  value={l.cond ?? 'done'}
+                  aria-label="Hasta cuándo bloquea"
+                  onChange={(e) =>
+                    links.setType(l.a, l.b, { kind: 'blocks', cond: e.target.value as LinkCond })
+                  }
+                >
+                  <option value="done">hasta que se complete</option>
+                  {columns.map((c) => (
+                    <option key={c.id} value={'list:' + c.id}>
+                      hasta que llegue a «{c.name.slice(0, 30)}»
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            {l.kind === 'blocks' && (
+              <input
+                className="bdm-dep-note"
+                defaultValue={l.note ?? ''}
+                maxLength={300}
+                placeholder="Qué falta (opcional)"
+                aria-label="Qué falta"
+                onBlur={(e) =>
+                  e.target.value !== (l.note ?? '') &&
+                  links.setType(l.a, l.b, { kind: 'blocks', note: e.target.value })
+                }
+              />
+            )}
+          </div>
+        );
+      })}
+      <div className="bdm-dep-add">
+        <button type="button" disabled={!typed} onClick={() => setPicking('depends')}>
+          <Lock size={13} /> Depende de…
+        </button>
+        <button type="button" disabled={!typed} onClick={() => setPicking('blocks')}>
+          <Lock size={13} /> Bloquea a…
+        </button>
+        <button type="button" onClick={() => setPicking('rel')}>
+          <Link2 size={13} /> Relacionar
+        </button>
+      </div>
+      {!typed && <small className="bdm-repeat-hint">{missingPhase2Text}</small>}
+      {picking && (
+        <LinkPicker
+          title={
+            picking === 'depends'
+              ? '¿De qué tarjeta depende?'
+              : picking === 'blocks'
+                ? '¿A qué tarjeta bloquea?'
+                : 'Relacionar con una tarjeta'
+          }
+          placeholder="Busca una tarjeta del tablero…"
+          hint="Tarjetas de este tablero"
+          items={items}
+          onPick={(id) => {
+            links.link(
+              card.id,
+              id,
+              picking === 'rel'
+                ? undefined
+                : { kind: 'blocks', blocker: picking === 'depends' ? id : card.id, cond: 'done' },
+            );
+            setPicking(null);
+          }}
+          onClose={() => setPicking(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** ¿Hay otra tarjeta que todavía bloquea a esta? Devuelve la primera que la bloquea. */
+export function blockerOf(
+  card: Pick<BoardCard, 'id'>,
+  links: CardLinksApi['links'],
+  byId: (id: string) => BoardCard | undefined,
+  isDoneId: (id: string) => boolean,
+) {
+  for (const l of links) {
+    if (!blocksCard(l, card.id)) continue;
+    const b = byId(l.blocker!);
+    if (stillBlocks(l, b, isDoneId)) return b;
+  }
+  return undefined;
+}
+
+/** Compromiso del pendiente de la tarjeta: lo prometí, lo espero, depende de alguien. */
+function Commitment({
+  task,
+  people,
+  title,
+}: {
+  task: Entry;
+  people: Person[];
+  title: string;
+}) {
+  const { patchEntry } = useApp();
+  const k = commitmentOf(task);
+  const whoId =
+    (k === 'prometi' ? task.details.beneficiary : k === 'quiero' ? undefined : task.details.owner) ??
+    people[0]?.id;
+  const who = people.find((p) => p.id === whoId) ?? people[0];
+  const waiting = k === 'espero' || k === 'depende';
+  const days = ageInDays(task);
+  const set = (next: CommitmentKind, personId = who?.id) => {
+    const d = { ...task.details };
+    delete d.owner;
+    delete d.beneficiary;
+    if (next === 'quiero') delete d.commitment;
+    else d.commitment = next;
+    if (personId && next === 'prometi') d.beneficiary = personId;
+    if (personId && (next === 'espero' || next === 'depende')) {
+      d.owner = personId;
+      // Al empezar a esperar se cuenta desde hoy.
+      if (!(k === 'espero' || k === 'depende')) d.waitingSince = todayInputValue();
+    } else delete d.waitingSince;
+    void patchEntry(task, { details: d });
+  };
+  const wa = who && waiting ? whatsappLink(who.profile.phone, nudgeText(who, title, days)) : null;
+  return (
+    <div className="bdm-commit">
+      <div className="bdm-commit-kinds" role="radiogroup" aria-label="Tipo de compromiso">
+        {commitmentKindList.map((x) => {
+          const m = commitmentKinds[x];
+          return (
+            <button
+              type="button"
+              key={x}
+              role="radio"
+              aria-checked={k === x}
+              className={k === x ? 'on' : ''}
+              style={{ '--cm': m.color, '--cs': m.soft } as CSSProperties}
+              title={m.label}
+              onClick={() => set(x)}
+            >
+              <m.icon size={13} /> {m.short}
+            </button>
+          );
+        })}
+      </div>
+      {k !== 'quiero' && people.length > 1 && (
+        <label className="bdm-commit-who">
+          <span>{commitmentKinds[k].who}</span>
+          <select value={who?.id ?? ''} onChange={(e) => set(k, e.target.value)}>
+            {people.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {waiting && who && (
+        <div className={'bdm-wait' + (days >= 7 ? ' long' : '')}>
+          <Hourglass size={13} />
+          <span>
+            En espera de <b>{who.name.split(' ')[0]}</b> ·{' '}
+            {days === 0 ? 'desde hoy' : days === 1 ? '1 día' : `${days} días`}
+          </span>
+          {wa ? (
+            <a className="bdm-wa" href={wa} target="_blank" rel="noreferrer" title="Preguntarle por WhatsApp">
+              <MessageCircle size={13} /> WhatsApp
+            </a>
+          ) : (
+            <small title="Añade su teléfono en su ficha para escribirle desde aquí">Sin teléfono</small>
+          )}
+          <button
+            type="button"
+            className="bdm-icon"
+            title="Volver a contar desde hoy (ya le preguntaste)"
+            aria-label="Volver a contar desde hoy"
+            onClick={() =>
+              void patchEntry(task, { details: { ...task.details, waitingSince: todayInputValue() } })
+            }
+          >
+            <RotateCcw size={12} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 type Picking = 'person' | 'task' | 'episode' | 'reading';
 
@@ -725,12 +1304,14 @@ function NexoLinks({
   done,
   onPatch,
   leave,
+  onPeopleAdded,
 }: {
   card: BoardCard;
   done: boolean;
   onPatch: (changes: CardChanges) => void;
   /** Cierra la ficha y navega. */
   leave: (to: () => void) => void;
+  onPeopleAdded?: (ids: string[]) => void;
 }) {
   const {
     workspace,
@@ -776,6 +1357,7 @@ function NexoLinks({
    */
   const savePeople = async (ids: string[]) => {
     setSavingPeople(true);
+    const added = ids.filter((id) => !peopleIds.includes(id));
     try {
       if (task) {
         if (!ids.length && isBoardEntry(task)) {
@@ -785,6 +1367,7 @@ function NexoLinks({
         }
         const ok = await patchEntry(task, { person_ids: ids });
         if (ok && card.person_id) onPatch({ person_id: null });
+        if (ok && added.length) onPeopleAdded?.(added);
         return;
       }
       if (!ids.length) {
@@ -792,7 +1375,10 @@ function NexoLinks({
         return;
       }
       const entry = await createEntry(boardEntryInput(card, ids, done), true);
-      if (entry) onPatch({ entry_id: entry.id, person_id: null });
+      if (entry) {
+        onPatch({ entry_id: entry.id, person_id: null });
+        if (added.length) onPeopleAdded?.(added);
+      }
     } finally {
       setSavingPeople(false);
     }
@@ -949,6 +1535,7 @@ function NexoLinks({
               </button>
             </p>
           )}
+          {task && <Commitment task={task} people={linkedPeople} title={card.title} />}
         </div>
       ) : (
         <button

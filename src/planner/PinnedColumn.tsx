@@ -34,7 +34,7 @@ const SHOWN = 5;
  * tarjetas; se completan aquí mismo y un toque abre la tarjeta (o el tablero) en Tableros.
  */
 export function PinnedColumnCard({ title }: { title?: string } = {}) {
-  const { workspace, toggleEntry, patchEntry, notify, go } = useApp();
+  const { workspace, resolveTask, patchEntry, notify, go } = useApp();
   const [col, setCol] = useState<Col | null>(null);
   const [cards, setCards] = useState<Row[]>([]);
   const [extras, setExtras] = useState(true);
@@ -136,7 +136,9 @@ export function PinnedColumnCard({ title }: { title?: string } = {}) {
       notify(`Hecho. Se repite: vuelve ${due ? friendlyDate(due).toLowerCase() : 'abierta'}.`);
       return;
     }
-    if (task && (task.status === 'completado') !== next) toggleEntry(task);
+    // El pendiente vinculado sigue a la tarjeta (aunque estuviera soltado: completarla lo deja hecho).
+    if (task && (task.status === 'completado') !== next)
+      void resolveTask(task, next ? 'hecho' : 'abierto');
     if (!extras) return;
     queueTrigger({ card: c.id, list: col.id, trigger: next ? 'done' : 'undone' });
     setCards((v) => v.map((x) => (x.id === c.id ? { ...x, done: next } : x)));

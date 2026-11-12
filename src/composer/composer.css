@@ -2601,6 +2601,16 @@
   color: #fff;
   transform: scale(1.06);
 }
+/* No realizado (soltado): un guion en tono cálido; tocarlo lo reabre. */
+.cp-check.missed {
+  border-color: #d6cdbe;
+  background: #efeae1;
+  color: #8a7c66;
+}
+.cp-check.missed:hover {
+  border-color: #bfb19b;
+  color: #6d6352;
+}
 .cp-task-input {
   flex: 1;
   min-width: 0;

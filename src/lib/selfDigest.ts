@@ -110,7 +110,7 @@ export function buildSelfDigest(
       (e) =>
         `${clip(e.title, 100)}${e.details.stage ? ` [${e.details.stage}]` : ""}`,
     );
-  const abiertos = of("Pendiente").filter((e) => e.status !== "completado");
+  const abiertos = of("Pendiente").filter((e) => e.status === "pendiente");
   const plata = recent.filter((e) => e.kind === "Movimiento");
   const plataTotals = totals(plata);
   const sum = (dir: string) =>

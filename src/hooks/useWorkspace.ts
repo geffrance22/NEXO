@@ -21,8 +21,10 @@ import {
   type StoredImage,
   type Workspace,
   type EntryPatch,
+  type Status,
 } from '../data';
 import type { ConfirmFn } from '../components/ConfirmDialog';
+import type { TaskOutcome } from '../lib/commitments';
 import { errorMessage, todayInputValue } from '../lib/format';
 import { prepareImage, uploadToImgbb } from '../lib/imgbb';
 import { moodValue } from '../composer/moods';
@@ -95,6 +97,10 @@ const UNTITLED_HINT =
 const isTitleRequired = (e: unknown) => /entries_title_check/.test(errorMessage(e));
 const saveError = (e: unknown) =>
   isMissingColumn(e) ? MIGRATION_HINT : isTitleRequired(e) ? UNTITLED_HINT : errorMessage(e);
+const OUTCOME_HINT =
+  'Para marcar pendientes como no realizados ejecuta la migración 202611120002_pending_outcome.sql en el SQL Editor de Supabase.';
+/** La base aún no conoce el estado «no realizado». */
+const isStatusLimited = (e: unknown) => /entries_status_check/.test(errorMessage(e));
 /** Una entrada del diario (Nota) puede quedar sin título; los demás tipos usan el suyo. */
 const titleOf = (input: EntryInput) =>
   input.title.trim().slice(0, 180) || (input.kind === 'Nota' ? '' : input.kind);
@@ -1254,17 +1260,62 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
     [notify, confirm],
   );
 
-  const toggleEntry = useCallback(
-    async (entry: Entry) => {
-      const status = entry.status === 'completado' ? 'pendiente' : 'completado';
-      const { error } = await supabase.from('entries').update({ status }).eq('id', entry.id);
-      if (error) return notify(error.message);
+  /**
+   * Cierra o reabre un pendiente: hecho, no realizado (con su razón, si la das) o abierto otra vez.
+   * Se ve al instante y se revierte si el servidor falla. Devuelve cómo quedó (null si no se
+   * guardó). La razón y el día se guardan en `details.missed`; al reabrir o marcarlo hecho se quitan.
+   */
+  const resolveTask = useCallback(
+    async (entry: Entry, outcome: TaskOutcome, why = '') => {
+      const { missed: _missed, ...rest } = entry.details;
+      const reason = why.trim().replace(/\s+/g, ' ').slice(0, 280);
+      const status: Status =
+        outcome === 'hecho' ? 'completado' : outcome === 'no' ? 'no_realizado' : 'pendiente';
+      // Los detalles solo viajan si cambian (marcar hecho uno abierto no los toca).
+      const changes: EntryPatch =
+        outcome === 'no'
+          ? {
+              status,
+              details: { ...rest, missed: { at: todayInputValue(), ...(reason && { why: reason }) } },
+            }
+          : entry.details.missed
+            ? { status, details: rest }
+            : { status };
+      const next: Entry = { ...entry, ...changes };
       setWorkspace((w) => ({
         ...w,
-        entries: w.entries.map((x) => (x.id === entry.id ? { ...x, status } : x)),
+        entries: w.entries.map((x) => (x.id === entry.id ? next : x)),
       }));
+      const { data, error } = await supabase
+        .from('entries')
+        .update(changes)
+        .eq('id', entry.id)
+        .select('id');
+      if (error || !data?.length) {
+        setWorkspace((w) => ({
+          ...w,
+          entries: w.entries.map((x) => (x.id === entry.id ? entry : x)),
+        }));
+        notify(
+          !error
+            ? 'No se encontró el pendiente. Recarga la página.'
+            : isStatusLimited(error)
+              ? OUTCOME_HINT
+              : saveError(error),
+        );
+        return null;
+      }
+      return next;
     },
     [notify],
+  );
+
+  /** Lo abierto queda hecho; lo cerrado (hecho o soltado), abierto otra vez. */
+  const toggleEntry = useCallback(
+    async (entry: Entry) => {
+      await resolveTask(entry, entry.status === 'pendiente' ? 'hecho' : 'abierto');
+    },
+    [resolveTask],
   );
 
   /** Elimina un recuerdo. Con `silent` no pregunta ni avisa (lo borra otra acción, p. ej. Tableros). */
@@ -1392,6 +1443,7 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
     removePerson,
     mergePeople,
     toggleEntry,
+    resolveTask,
     removeEntry,
     openAttachment,
     capsules,

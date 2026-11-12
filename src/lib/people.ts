@@ -135,7 +135,8 @@ export function statsFor(p: Person, all: Entry[], today = todayInputValue()): Pe
   const last = interactions[0] ? localDay(interactions[0].created_at) : null;
   const daysSince = last ? daysBetween(last, today) : null;
   const pending = entries
-    .filter((e) => e.kind === 'Pendiente' && e.status !== 'completado')
+    // Solo los abiertos: ni hechos ni soltados.
+    .filter((e) => e.kind === 'Pendiente' && e.status === 'pendiente')
     .sort((a, b) => (a.details.due ?? '9999').localeCompare(b.details.due ?? '9999'));
   const cadence = p.profile.cadence ?? 0;
   const yearAgo = addDays(today, -365);

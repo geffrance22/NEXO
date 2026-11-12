@@ -3,6 +3,7 @@ import { LoaderCircle, Lock } from "lucide-react";
 import {
   AppProvider,
   type AppContextValue,
+  type OutcomeMode,
   type QuickMode,
 } from "../AppContext";
 import { supabase } from "../backend";
@@ -70,6 +71,7 @@ import { ChatPanel } from "./ChatPanel";
 import { useConfirm } from "./ConfirmDialog";
 import { Lightbox } from "./Lightbox";
 import { EntryViewer } from "./EntryViewer";
+import { OutcomePopover } from "./TaskOutcome";
 import { Overview } from "./Overview";
 import { PersonPeek } from "../people/PersonPeek";
 import { WeeklyDigest } from "../weekly/WeeklyDigest";
@@ -171,6 +173,12 @@ export function AppShell({ user }: { user: AppUser }) {
   } | null>(null);
   // Ficha lateral de una persona abierta desde cualquier sección (sin navegar).
   const [peek, setPeek] = useState<string | null>(null);
+  // La elección «Hecho / No lo hice» de un pendiente, junto al botón que la abrió.
+  const [outcome, setOutcome] = useState<{
+    entryId: string;
+    anchor: HTMLElement;
+    mode: OutcomeMode;
+  } | null>(null);
   // El periódico va en su propia capa: lo que abras desde él (un recuerdo, una persona) queda encima.
   const [weekly, setWeekly] = useState(false);
   // Actualizar el progreso de un libro o una serie (puede abrirse encima de su ficha).
@@ -512,6 +520,21 @@ export function AppShell({ user }: { user: AppUser }) {
     saveMyReading: mine.saveMyReading,
     signOut: () => void supabase.auth.signOut(),
     toggleEntry: (entry) => void data.toggleEntry(entry),
+    resolveTask: data.resolveTask,
+    askOutcome: (entry, anchor, mode = "choose") => {
+      // Cerrado (hecho o soltado): el mismo botón lo reabre, sin preguntar.
+      if (entry.status !== "pendiente") {
+        setOutcome(null);
+        void data.resolveTask(entry, "abierto");
+        return;
+      }
+      // Tocar otra vez el mismo botón cierra la elección.
+      setOutcome((o) =>
+        o && o.entryId === entry.id && o.anchor === anchor
+          ? null
+          : { entryId: entry.id, anchor, mode },
+      );
+    },
     removeEntry: (entry, silent) => void data.removeEntry(entry, silent),
     removePerson: async (person) => {
       if ((await data.removePerson(person)) && selected?.id === person.id)
@@ -552,6 +575,9 @@ export function AppShell({ user }: { user: AppUser }) {
     : undefined;
   const progressTarget = progress
     ? workspace.entries.find((e) => e.id === progress)
+    : undefined;
+  const outcomeTarget = outcome
+    ? workspace.entries.find((e) => e.id === outcome.entryId)
     : undefined;
   const ritualTarget = ritual
     ? workspace.entries.find((e) => e.id === ritual)
@@ -661,6 +687,15 @@ export function AppShell({ user }: { user: AppUser }) {
           </main>
         </div>
         <Toasts items={toasts} onClose={dismiss} />
+        {outcome && outcomeTarget && (
+          <OutcomePopover
+            key={outcome.entryId + outcome.mode}
+            entry={outcomeTarget}
+            anchor={outcome.anchor}
+            mode={outcome.mode}
+            onClose={() => setOutcome(null)}
+          />
+        )}
         <NoteReminders />
         <BoardInbox />
         <ColumnDock />

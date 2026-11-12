@@ -38,6 +38,7 @@ import { useApp } from '../AppContext';
 import type { Group, Person, Relation } from '../data';
 import { PageHeading } from '../components/PageHeading';
 import { groupKinds, groupsOf } from '../lib/relations';
+import { outcomeHint } from '../lib/commitments';
 import { normalizeText } from '../lib/format';
 import {
   interestsOf,
@@ -323,7 +324,7 @@ function PersonRow({ row, active, onOpen }: ItemProps) {
 }
 
 export function PeoplePage() {
-  const { workspace, selected, openPerson, toggleEntry, patchPerson } = useApp();
+  const { workspace, selected, openPerson, askOutcome, patchPerson } = useApp();
   // Filtro por grupo: puedes elegir varios (sale quien esté en cualquiera de ellos).
   const [groupIds, setGroupIds] = useState<string[]>([]);
   const [groupPick, setGroupPick] = useState(false);
@@ -752,8 +753,10 @@ export function PeoplePage() {
                     <button
                       type="button"
                       className="pp-check"
-                      aria-label="Completar"
-                      onClick={() => toggleEntry(r.entry!)}
+                      aria-label={outcomeHint(r.entry)}
+                      title={outcomeHint(r.entry)}
+                      aria-haspopup="menu"
+                      onClick={(ev) => askOutcome(r.entry!, ev.currentTarget)}
                     >
                       <CircleCheck size={14} />
                     </button>

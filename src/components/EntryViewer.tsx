@@ -27,6 +27,7 @@ import { useApp } from "../AppContext";
 import { supabase } from "../backend";
 import type { Entry } from "../data";
 import { incomeColors, kindMeta, seriesColors } from "../composer/kinds";
+import { MISSED_ONE, outcomeHint } from "../lib/commitments";
 import {
   entryFacts,
   isSeries,
@@ -89,8 +90,13 @@ export function EntryViewer({
     ? workspace.episodes.find((ep) => ep.id === entry.episode_id)
     : undefined;
   const place = d.place ? placeOf(entry, workspace.places) : null;
+  // Lo que ya se cuenta aparte (el lugar, la actividad, por qué no se hizo) no se repite arriba.
+  const missedFact = entry.status === "no_realizado" ? d.missed?.why : undefined;
   const facts = entryFacts(entry, workspace).filter(
-    (f) => f.text !== (place?.name ?? d.place) && f.text !== d.activity,
+    (f) =>
+      f.text !== (place?.name ?? d.place) &&
+      f.text !== d.activity &&
+      f.text !== missedFact,
   );
 
   // La portada (o el póster) va aparte; las fotos de un libro se suman después y también se
@@ -265,6 +271,15 @@ export function EntryViewer({
             <div className="ev-body">
               <RichText text={entry.body} names={names} />
             </div>
+          )}
+          {entry.kind === "Pendiente" && entry.status === "no_realizado" && (
+            <p className="ev-note">
+              <b>
+                {MISSED_ONE}
+                {d.missed?.at && ` ${friendlyDate(d.missed.at).toLowerCase()}`}
+              </b>{" "}
+              {d.missed?.why || "Sin razón anotada."}
+            </p>
           )}
           {entry.kind === "Trabajo" && d.nextStep && (
             <p className="ev-note">
@@ -508,16 +523,27 @@ export function EntryViewer({
               <Sparkles size={15} /> Ritual de cierre
             </button>
           )}
-          {entry.kind === "Pendiente" && (
-            <button
-              type="button"
-              className="ev-btn"
-              onClick={() => app.toggleEntry(entry)}
-            >
-              {done ? <RotateCcw size={15} /> : <Check size={15} />}
-              {done ? "Reabrir" : "Marcar como hecho"}
-            </button>
-          )}
+          {entry.kind === "Pendiente" &&
+            (entry.status === "pendiente" ? (
+              // Un solo botón: ofrece «Hecho» o «No lo hice» (y luego la razón).
+              <button
+                type="button"
+                className="ev-btn"
+                aria-haspopup="menu"
+                title={outcomeHint(entry)}
+                onClick={(e) => app.askOutcome(entry, e.currentTarget)}
+              >
+                <Check size={15} /> Marcar como…
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="ev-btn"
+                onClick={() => app.toggleEntry(entry)}
+              >
+                <RotateCcw size={15} /> Reabrir
+              </button>
+            ))}
           <AddToNotebook entry={entry} />
           <button
             type="button"

@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from 'react';
-import { Check, Plus } from 'lucide-react';
-import { commitmentKindList, commitmentKinds } from '../../lib/commitments';
+import { Check, Minus, Plus } from 'lucide-react';
+import { commitmentKindList, commitmentKinds, MISSED_ONE } from '../../lib/commitments';
 import { AutoTextarea, Label, PriorityPicker } from '../controls';
 import { DateChips } from '../DateChips';
 import { PeoplePicker } from '../PeoplePicker';
@@ -10,6 +10,8 @@ import type { ViewProps } from './shared';
 export function TaskView({ c }: ViewProps) {
   const [more, setMore] = useState(c.body.trim().length > 0);
   const done = c.status === 'completado';
+  // No realizado: se conserva al editar (y la casilla lo reabre, como con uno hecho).
+  const missed = c.status === 'no_realizado';
   const kind = c.details.commitment ?? 'quiero';
 
   return (
@@ -17,12 +19,23 @@ export function TaskView({ c }: ViewProps) {
       <div className="cp-task-head" data-enter-saves>
         <button
           type="button"
-          className={'cp-check' + (done ? ' done' : '')}
+          className={'cp-check' + (done ? ' done' : '') + (missed ? ' missed' : '')}
           aria-pressed={done}
-          aria-label={done ? 'Marcar como pendiente' : 'Marcar como completado'}
-          onClick={() => c.setStatus(done ? 'pendiente' : 'completado')}
+          aria-label={done || missed ? 'Marcar como pendiente' : 'Marcar como completado'}
+          title={
+            missed
+              ? `${MISSED_ONE}${c.details.missed?.why ? ` · ${c.details.missed.why}` : ''}. Tócalo para reabrirlo.`
+              : undefined
+          }
+          onClick={() => {
+            if (missed) {
+              // Reabrirlo quita también la razón de por qué no se hizo.
+              c.setDetail('missed', undefined);
+              c.setStatus('pendiente');
+            } else c.setStatus(done ? 'pendiente' : 'completado');
+          }}
         >
-          <Check size={20} strokeWidth={3} />
+          {missed ? <Minus size={20} strokeWidth={3} /> : <Check size={20} strokeWidth={3} />}
         </button>
         <input
           className={'cp-task-input' + (done ? ' done' : '')}

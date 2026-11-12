@@ -44,7 +44,40 @@ export const commitmentKinds: Record<
 export const commitmentKindList = Object.keys(commitmentKinds) as CommitmentKind[];
 
 export const commitmentOf = (e: Entry): CommitmentKind => e.details.commitment ?? 'quiero';
-export const isOpenTask = (e: Entry) => e.kind === 'Pendiente' && e.status !== 'completado';
+/** Sigue abierto: ni hecho ni soltado. */
+export const isOpenTask = (e: Entry) => e.kind === 'Pendiente' && e.status === 'pendiente';
+/** Hecho. */
+export const isDoneTask = (e: Entry) => e.kind === 'Pendiente' && e.status === 'completado';
+/** No realizado: ya pasó y no se hizo (lo soltaste). Cerrado, pero no cuenta como hecho. */
+export const isMissedTask = (e: Entry) => e.kind === 'Pendiente' && e.status === 'no_realizado';
+
+/** Cómo cierras (o reabres) un pendiente. */
+export type TaskOutcome = 'hecho' | 'no' | 'abierto';
+/** Nombre del estante de los no realizados (y del estado, en singular). */
+export const MISSED_SHELF = 'Soltados';
+export const MISSED_ONE = 'Soltado';
+/** Razones frecuentes, para no tener que escribir. */
+export const MISSED_REASONS = [
+  'No alcancé',
+  'Ya no hacía falta',
+  'Cambió el plan',
+  'Lo resolvió alguien más',
+];
+/** Lo que se dice al cerrarlo: lo que esperas de alguien «llega»; lo tuyo «se hace». */
+export function outcomeLabels(e: Entry) {
+  const waiting = ['espero', 'depende'].includes(commitmentOf(e));
+  return waiting
+    ? { done: 'Ya llegó', missed: 'No llegó' }
+    : { done: 'Hecho', missed: 'No lo hice' };
+}
+/** Para el botón único que ofrece las dos: «Hecho o no lo hice». */
+export function outcomeHint(e: Entry) {
+  const l = outcomeLabels(e);
+  return `${l.done} o ${l.missed.toLowerCase()}`;
+}
+/** «Soltado · Cambió el plan» (o solo «Soltado»). */
+export const missedText = (e: Entry) =>
+  e.details.missed?.why ? `${MISSED_ONE} · ${e.details.missed.why}` : MISSED_ONE;
 
 /** La persona clave del compromiso: a quién se lo prometiste o de quién depende. */
 export function counterpartOf(e: Entry, people: Person[]): Person | null {

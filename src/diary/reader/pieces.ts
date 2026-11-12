@@ -135,7 +135,7 @@ export function readingInput(
       .slice(0, 200)
       .map((p) => ({ id: p.id, name: p.name })),
     tasks: entries
-      .filter((e) => e.kind === "Pendiente" && e.status !== "completado")
+      .filter((e) => e.kind === "Pendiente" && e.status === "pendiente")
       .slice(0, 150)
       .map((e) => ({
         id: e.id,
@@ -222,7 +222,7 @@ export function piecesFromAi(
     switch (r.kind) {
       case "cumplido": {
         const task = byId.get(s(r.id, 64));
-        if (!task || task.kind !== "Pendiente" || task.status === "completado") break;
+        if (!task || task.kind !== "Pendiente" || task.status !== "pendiente") break;
         push("cumplido|" + task.id, { ...base, kind: "cumplido", taskId: task.id, title: task.title });
         break;
       }

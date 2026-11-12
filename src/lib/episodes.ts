@@ -43,7 +43,7 @@ import type {
   Place,
   StoredImage,
 } from '../data';
-import { isOpenTask } from './commitments';
+import { isDoneTask, isMissedTask, isOpenTask } from './commitments';
 import { normalizeText, todayInputValue } from './format';
 import { daysBetween } from './people';
 import { totals } from '../finance/money';
@@ -386,7 +386,8 @@ export function episodeSummary(ep: Episode, entries: Entry[], people: Person[], 
     earned,
     net: earned - spent,
     open: tasks.filter(isOpenTask),
-    done: tasks.filter((e) => !isOpenTask(e)),
+    done: tasks.filter(isDoneTask),
+    missed: tasks.filter(isMissedTask),
     learnings: items.filter((e) => e.kind === 'Aprendizaje'),
     people: people.filter((p) => ids.has(p.id)),
     places: places.filter((p) => placeIds.has(p.id)),

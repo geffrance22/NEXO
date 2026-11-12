@@ -30,7 +30,11 @@ export type MoneyFlow =
   | "transferencia"
   | "prestamo"
   | "reembolso";
-export type Status = "pendiente" | "completado";
+/**
+ * Estado de un pendiente: abierto, hecho o no realizado (lo soltaste: ya pasó y no se hizo; queda
+ * en «Soltados» con su razón, en `details.missed`). Los demás tipos usan solo «pendiente».
+ */
+export type Status = "pendiente" | "completado" | "no_realizado";
 export type Page =
   | "Mi espacio"
   | "Episodios"
@@ -462,6 +466,11 @@ export type EntryDetails = {
   waitingSince?: string;
   /** AAAA-MM-DD: pospuesto hasta esa fecha en tu agenda. */
   snoozed?: string;
+  /**
+   * Pendiente no realizado (estado «no_realizado»): el día en que lo marcaste (AAAA-MM-DD) y, si
+   * quisiste, por qué no se hizo.
+   */
+  missed?: { at: string; why?: string };
   /**
    * Recuerdo del que salió: el encuentro donde prometiste algo (pendientes) o el libro o la
    * película de la que nació un aprendizaje.

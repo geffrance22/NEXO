@@ -1,4 +1,4 @@
-import { memo, useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useContext, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   ArrowUpDown,
   BookOpen,
@@ -6,6 +6,7 @@ import {
   Images,
   LayoutDashboard,
   List,
+  Minus,
   Star,
   TrendingUp,
   Tv,
@@ -16,6 +17,8 @@ import { isActive, progressOf } from './progress';
 import { useApp } from '../AppContext';
 import type { Entry, Person } from '../data';
 import { Masonry } from '../components/Masonry';
+import { MissButton, PairedTasks } from '../components/TaskOutcome';
+import { outcomeHint, outcomeLabels } from '../lib/commitments';
 import { kindMeta } from '../composer/kinds';
 import {
   bookPace,
@@ -314,7 +317,8 @@ export function CoverGrid({ children }: { children: ReactNode }) {
 
 /** Fila de la vista de lista: miniatura, título, datos y fecha. */
 function EntryRowBase({ entry, today }: { entry: Entry; today: string }) {
-  const { workspace, viewEntry, toggleEntry } = useApp();
+  const { workspace, viewEntry, toggleEntry, askOutcome } = useApp();
+  const paired = useContext(PairedTasks);
   const tone = toneOf(entry);
   const img = entryImages(entry)[0];
   const media = entry.kind === 'Película' || entry.kind === 'Libro';
@@ -330,17 +334,31 @@ function EntryRowBase({ entry, today }: { entry: Entry; today: string }) {
   )
     .filter(Boolean)
     .join(' · ');
-  const done = entry.kind === 'Pendiente' && entry.status === 'completado';
+  const task = entry.kind === 'Pendiente';
+  const done = task && entry.status === 'completado';
+  const missed = task && entry.status === 'no_realizado';
+  const open = task && entry.status === 'pendiente';
   return (
-    <li className={'lt-row' + (done ? ' done' : '')} style={toneVars(tone)}>
-      {entry.kind === 'Pendiente' && (
+    <li
+      className={'lt-row' + (done ? ' done' : '') + (missed ? ' missed' : '')}
+      style={toneVars(tone)}
+    >
+      {task && (
         <button
           type="button"
-          className={'lt-check' + (done ? ' on' : '')}
-          aria-label={done ? 'Reabrir pendiente' : 'Marcar como hecho'}
-          onClick={() => toggleEntry(entry)}
+          className={'lt-check' + (done ? ' on' : '') + (missed ? ' miss' : '')}
+          aria-label={
+            open ? (paired ? outcomeLabels(entry).done : outcomeHint(entry)) : 'Reabrir pendiente'
+          }
+          title={open ? (paired ? outcomeLabels(entry).done : outcomeHint(entry)) : 'Reabrir'}
+          aria-haspopup={open && !paired ? 'menu' : undefined}
+          // En Agenda → Pendientes, directo a «Hecho» (el «No lo hice» va aparte); en otro lado,
+          // el botón único ofrece las dos opciones.
+          onClick={(e) =>
+            open && !paired ? askOutcome(entry, e.currentTarget) : toggleEntry(entry)
+          }
         >
-          <Check size={12} />
+          {missed ? <Minus size={12} strokeWidth={2.6} /> : <Check size={12} />}
         </button>
       )}
       <button type="button" className="lt-row-open" onClick={() => viewEntry(entry)}>
@@ -377,6 +395,7 @@ function EntryRowBase({ entry, today }: { entry: Entry; today: string }) {
           </time>
         </span>
       </button>
+      {open && paired && <MissButton entry={entry} />}
     </li>
   );
 }

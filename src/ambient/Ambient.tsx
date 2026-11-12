@@ -43,8 +43,9 @@ const copy: Record<Variant, { label: string; help: string }> = {
     help: 'Flechas laterales para elegir un ambiente y flechas arriba y abajo para cambiar su intensidad. El sonido solo se activa con el botón de sonido.',
   },
   peces: {
-    label: 'Banco de peces: su nado expresa tu ritmo y los asuntos abiertos en Nexo',
-    help: 'Flechas para recorrer los cardúmenes y Enter para saber qué representa cada uno. El puntero genera una corriente.',
+    label:
+      'Acuario: las personas con las que tuviste un buen momento y tus encuentros próximos nadan entre los bancos de tus asuntos abiertos',
+    help: 'Flechas para recorrer los peces y Enter para saber quién es cada uno. Toca el agua para echar comida: van a por ella, comen y crecen un poco. El puntero genera una corriente.',
   },
   glifo: {
     label: 'Lenguaje circular de Nexo: un símbolo propio que escribe un mensaje sobre tu contexto',

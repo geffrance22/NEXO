@@ -1,8 +1,10 @@
-import type { CSSProperties } from 'react';
-import { Check, Layers, Paperclip, Pencil, Tv } from 'lucide-react';
+import { useContext, type CSSProperties } from 'react';
+import { Check, Layers, Minus, Paperclip, Pencil, Tv } from 'lucide-react';
 import { useApp } from '../AppContext';
 import type { Entry } from '../data';
 import { incomeColors, kindMeta, seriesColors } from '../composer/kinds';
+import { outcomeHint, outcomeLabels } from '../lib/commitments';
+import { MissButton, PairedTasks } from './TaskOutcome';
 import { entryFacts, entrySummary, isSeries, signedAmount } from '../lib/entries';
 import { entryImages } from '../lib/moviePosters';
 import { friendlyDate, todayInputValue } from '../lib/format';
@@ -15,7 +17,7 @@ const MAX_FACES = 3;
  * se abre la ficha completa del recuerdo.
  */
 export function NoteTile({ entry }: { entry: Entry }) {
-  const { workspace, viewEntry, editEntry, toggleEntry } = useApp();
+  const { workspace, viewEntry, editEntry, toggleEntry, askOutcome } = useApp();
   const meta = kindMeta[entry.kind];
   const series = isSeries(entry);
   const colors =
@@ -27,7 +29,14 @@ export function NoteTile({ entry }: { entry: Entry }) {
   const Icon = series ? Tv : meta.icon;
   const people = workspace.people.filter((p) => entry.person_ids.includes(p.id));
   const summary = entrySummary(entry);
-  const facts = entryFacts(entry, workspace).slice(0, 3);
+  // No realizado: la razón va en su propia línea (no como una etiqueta más).
+  const why =
+    entry.kind === 'Pendiente' && entry.status === 'no_realizado'
+      ? entry.details.missed?.why
+      : undefined;
+  const facts = entryFacts(entry, workspace)
+    .filter((f) => f.text !== why)
+    .slice(0, 3);
   // Películas y libros: póster pequeño al lado (el de TMDB o la portada de la edición). El resto:
   // la primera foto arriba.
   const images = entryImages(entry);
@@ -38,7 +47,12 @@ export function NoteTile({ entry }: { entry: Entry }) {
     entry.kind === 'Libro' && read === 'leyendo' && pagesTotal > 0
       ? Math.min(100, Math.round((pagesRead / pagesTotal) * 100))
       : null;
-  const done = entry.kind === 'Pendiente' && entry.status === 'completado';
+  const task = entry.kind === 'Pendiente';
+  const done = task && entry.status === 'completado';
+  const missed = task && entry.status === 'no_realizado';
+  const open = task && entry.status === 'pendiente';
+  // En Agenda → Pendientes, «Hecho» directo y «No lo hice» aparte; en otro lado, un solo botón.
+  const paired = useContext(PairedTasks);
   const inEpisode = Boolean(
     entry.episode_id && workspace.episodes.some((ep) => ep.id === entry.episode_id),
   );
@@ -46,7 +60,9 @@ export function NoteTile({ entry }: { entry: Entry }) {
 
   return (
     <article
-      className={'nt' + (done ? ' done' : '') + (photo ? ' has-photo' : '')}
+      className={
+        'nt' + (done ? ' done' : '') + (missed ? ' missed' : '') + (photo ? ' has-photo' : '')
+      }
       style={{ '--c': colors.accent, '--s': colors.soft, '--k': colors.ink } as CSSProperties}
     >
       {photo && (
@@ -105,6 +121,12 @@ export function NoteTile({ entry }: { entry: Entry }) {
         </div>
       )}
 
+      {why && (
+        <p className="nt-why" title={why}>
+          {why}
+        </p>
+      )}
+
       {facts.length > 0 && (
         <div className="nt-facts">
           {facts.map((f) => (
@@ -138,15 +160,21 @@ export function NoteTile({ entry }: { entry: Entry }) {
               </span>
             )}
           </span>
-          {entry.kind === 'Pendiente' && (
+          {open && paired && <MissButton entry={entry} compact />}
+          {task && (
             <button
               type="button"
-              className={'nt-check' + (done ? ' on' : '')}
-              aria-label={done ? 'Reabrir pendiente' : 'Marcar como hecho'}
-              title={done ? 'Reabrir' : 'Marcar como hecho'}
-              onClick={() => toggleEntry(entry)}
+              className={'nt-check' + (done ? ' on' : '') + (missed ? ' miss' : '')}
+              aria-label={
+                open ? (paired ? outcomeLabels(entry).done : outcomeHint(entry)) : 'Reabrir pendiente'
+              }
+              title={open ? (paired ? outcomeLabels(entry).done : outcomeHint(entry)) : 'Reabrir'}
+              aria-haspopup={open && !paired ? 'menu' : undefined}
+              onClick={(e) =>
+                open && !paired ? askOutcome(entry, e.currentTarget) : toggleEntry(entry)
+              }
             >
-              <Check size={13} />
+              {missed ? <Minus size={13} strokeWidth={2.6} /> : <Check size={13} />}
             </button>
           )}
         </footer>

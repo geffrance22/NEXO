@@ -24,6 +24,7 @@ import type {
   Workspace,
 } from './data';
 import type { PersonSection } from './lib/people';
+import type { TaskOutcome } from './lib/commitments';
 import type { TieInput } from './hooks/useWorkspace';
 import type { Notify } from './hooks/useToast';
 import type { DiaryDraft } from './diary/drafts';
@@ -33,6 +34,8 @@ import type { ComposerPrefill } from './composer/useComposer';
 
 /** Accesos rápidos para alimentar la ficha de una persona sin abrir el formulario completo. */
 export type QuickMode = 'nota' | 'novedad' | 'dar' | 'recibir' | 'dato';
+/** Qué muestra el selector de cierre de un pendiente: la elección o directo la razón. */
+export type OutcomeMode = 'choose' | 'reason';
 
 export type AppContextValue = {
   user: AppUser;
@@ -166,7 +169,19 @@ export type AppContextValue = {
   /** Guarda la lectura que hizo la IA (la descripción general de tu ficha). */
   saveMyReading: (reading: string, highlights: string[]) => Promise<boolean>;
   signOut: () => void;
+  /** Lo abierto queda hecho; lo cerrado (hecho o no realizado), abierto otra vez. */
   toggleEntry: (entry: Entry) => void;
+  /**
+   * Cierra o reabre un pendiente: hecho, no realizado (con su razón, opcional) o abierto otra vez.
+   * Devuelve cómo quedó (null si no se pudo guardar).
+   */
+  resolveTask: (entry: Entry, outcome: TaskOutcome, why?: string) => Promise<Entry | null>;
+  /**
+   * El botón único para cerrar un pendiente (fuera de Agenda → Pendientes): abre, junto a `anchor`,
+   * la elección «Hecho / No lo hice» (y luego la razón). Con `mode: 'reason'` va directo a la
+   * razón. Si el pendiente ya está cerrado, lo reabre.
+   */
+  askOutcome: (entry: Entry, anchor: HTMLElement, mode?: OutcomeMode) => void;
   /** Con `silent`, sin preguntar ni avisar (lo elimina otra acción, como borrar una tarjeta). */
   removeEntry: (entry: Entry, silent?: boolean) => void;
   removePerson: (person: Person) => void;

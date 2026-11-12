@@ -2704,6 +2704,12 @@ button.bd-ic:hover .bd-ic-box {
   background: #e0f3e8;
   color: #237a48;
 }
+/* Pendiente soltado (no realizado): tono cálido y neutro; tocarlo lo reabre. */
+.bdm-taskdone.miss,
+.bdm-taskdone.miss:hover {
+  background: #efeae1;
+  color: #7a6c56;
+}
 .bdm-note {
   display: inline-flex;
   align-items: center;

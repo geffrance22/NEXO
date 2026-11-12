@@ -302,7 +302,8 @@ create or replace function public.entry_sync_board_cards() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
   board boolean := 'tablero' = any(new.tags);
-  due date;
+  -- Ojo: no puede llamarse «due» (choca con board_cards.due: «column reference "due" is ambiguous»).
+  new_due date;
 begin
   if pg_trigger_depth() > 1 or new.kind <> 'Pendiente' then
     return new;
@@ -313,9 +314,9 @@ begin
     return new;
   end if;
   begin
-    due := nullif(new.details ->> 'due', '')::date;
+    new_due := nullif(new.details ->> 'due', '')::date;
   exception when others then
-    due := null;
+    new_due := null;
   end;
   update board_cards c set
     done = case when new.status is distinct from old.status then new.status = 'completado' else c.done end,
@@ -327,7 +328,7 @@ begin
                  then new.title else c.title end,
     body = case when board and new.body is distinct from old.body then new.body else c.body end,
     due = case when board and (new.details ->> 'due') is distinct from (old.details ->> 'due')
-               then due else c.due end
+               then new_due else c.due end
   where c.entry_id = new.id and c.owner_id = new.owner_id;
   return new;
 end $$;

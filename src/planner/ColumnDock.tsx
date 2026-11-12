@@ -41,7 +41,7 @@ export function ColumnDock() {
 }
 
 function DockWindow({ dock }: { dock: DockedColumn }) {
-  const { workspace, toggleEntry, patchEntry, notify, go } = useApp();
+  const { workspace, resolveTask, patchEntry, notify, go } = useApp();
   const [cards, setCards] = useState<Row[] | null>(null);
   const [boardName, setBoardName] = useState("");
   const [extras, setExtras] = useState(true);
@@ -179,7 +179,9 @@ function DockWindow({ dock }: { dock: DockedColumn }) {
       notify(`Hecho. Se repite: vuelve ${due ? friendlyDate(due).toLowerCase() : "abierta"}.`);
       return;
     }
-    if (task && (task.status === "completado") !== next) toggleEntry(task);
+    // El pendiente vinculado sigue a la tarjeta (aunque estuviera soltado: completarla lo deja hecho).
+    if (task && (task.status === "completado") !== next)
+      void resolveTask(task, next ? "hecho" : "abierto");
     if (!extras) return;
     queueTrigger({ card: c.id, list: dock.list, trigger: next ? "done" : "undone" });
     setCards((v) => v?.map((x) => (x.id === c.id ? { ...x, done: next } : x)) ?? v);

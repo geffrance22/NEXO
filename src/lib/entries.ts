@@ -125,12 +125,18 @@ export function entryFacts(
     out.push({
       text: `${f.mood!.emoji} ${f.mood!.label}${f.why ? ` · ${f.why}` : ""}`,
     });
+  // No realizado: solo la razón (el estado ya se ve en la casilla y en el estante).
+  if (e.kind === "Pendiente" && e.status === "no_realizado" && d.missed?.why)
+    out.push({ text: d.missed.why });
   if ((e.kind === "Pendiente" || e.kind === "Trabajo") && d.due) {
-    const open = e.status !== "completado";
+    const open = e.kind === "Pendiente" ? e.status === "pendiente" : e.status !== "completado";
     const late = open && d.due < today;
+    // Un pendiente ya cerrado (hecho o soltado) no «es para» nada: se dice para cuándo era.
+    const closed = e.kind === "Pendiente" && !open;
     out.push({
       text:
-        (late ? "Venció " : "Para ") + friendlyDate(d.due, today).toLowerCase(),
+        (late ? "Venció " : closed ? "Era para " : "Para ") +
+        friendlyDate(d.due, today).toLowerCase(),
       tone: late ? "bad" : open && d.due === today ? "warn" : undefined,
     });
   }

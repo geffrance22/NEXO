@@ -17,6 +17,7 @@ import {
   Gift,
   Mail,
   MessageCircle,
+  Minus,
   Phone,
   Plus,
   Scale,
@@ -27,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import type { Person, PersonUpdate } from '../data';
+import { missedText, outcomeHint } from '../lib/commitments';
 import { updateKinds, updatesOf } from '../lib/updates';
 import { addDays, friendlyDate, normalizeText, shortDate, todayInputValue } from '../lib/format';
 import {
@@ -340,8 +342,13 @@ function QuickNote({ person }: { person: Person }) {
 }
 
 function Pendings({ stats, person }: { stats: PersonStats; person: Person }) {
-  const { toggleEntry, openEntry, viewEntry } = useApp();
-  const done = stats.entries.filter((e) => e.kind === 'Pendiente' && e.status === 'completado');
+  const { toggleEntry, askOutcome, openEntry, viewEntry } = useApp();
+  // Cerrados: lo hecho y lo soltado (lo que ya pasó y no se hizo), juntos y desplegables.
+  const closed = stats.entries.filter(
+    (e) => e.kind === 'Pendiente' && (e.status === 'completado' || e.status === 'no_realizado'),
+  );
+  const doneCount = closed.filter((e) => e.status === 'completado').length;
+  const missedCount = closed.length - doneCount;
   const today = todayInputValue();
   return (
     <div className="pp-pendings">
@@ -350,8 +357,10 @@ function Pendings({ stats, person }: { stats: PersonStats; person: Person }) {
           <button
             type="button"
             className="pp-check"
-            aria-label="Completar"
-            onClick={() => toggleEntry(e)}
+            aria-label={outcomeHint(e)}
+            title={outcomeHint(e)}
+            aria-haspopup="menu"
+            onClick={(ev) => askOutcome(e, ev.currentTarget)}
           >
             <Check size={13} />
           </button>
@@ -373,24 +382,36 @@ function Pendings({ stats, person }: { stats: PersonStats; person: Person }) {
       >
         <BellPlus size={14} /> Nuevo recordatorio
       </button>
-      {done.length > 0 && (
+      {closed.length > 0 && (
         <details className="pp-done">
-          <summary>{done.length} completados</summary>
-          {done.map((e) => (
-            <div className="pp-task done" key={e.id}>
-              <button
-                type="button"
-                className="pp-check on"
-                aria-label="Reabrir"
-                onClick={() => toggleEntry(e)}
-              >
-                <Check size={13} />
-              </button>
-              <span className="pp-task-main">
-                <strong>{e.title}</strong>
-              </span>
-            </div>
-          ))}
+          <summary>
+            {[
+              doneCount > 0 && `${doneCount} ${doneCount === 1 ? 'completado' : 'completados'}`,
+              missedCount > 0 && `${missedCount} ${missedCount === 1 ? 'soltado' : 'soltados'}`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </summary>
+          {closed.map((e) => {
+            const missed = e.status === 'no_realizado';
+            return (
+              <div className={'pp-task ' + (missed ? 'missed' : 'done')} key={e.id}>
+                <button
+                  type="button"
+                  className={'pp-check ' + (missed ? 'miss' : 'on')}
+                  aria-label="Reabrir"
+                  title="Reabrir"
+                  onClick={() => toggleEntry(e)}
+                >
+                  {missed ? <Minus size={13} strokeWidth={2.6} /> : <Check size={13} />}
+                </button>
+                <span className="pp-task-main">
+                  <strong>{e.title}</strong>
+                  {missed && <small>{missedText(e)}</small>}
+                </span>
+              </div>
+            );
+          })}
         </details>
       )}
     </div>
@@ -503,7 +524,7 @@ function Chips({ items, tone = '' }: { items: string[]; tone?: string }) {
 }
 
 function Resumen({ person, stats, full }: { person: Person; stats: PersonStats; full: boolean }) {
-  const { toggleEntry } = useApp();
+  const { askOutcome } = useApp();
   const next = stats.nextPending;
   return (
     <div className="pp-tab">
@@ -524,8 +545,10 @@ function Resumen({ person, stats, full }: { person: Person; stats: PersonStats; 
           <button
             type="button"
             className="pp-check"
-            aria-label="Completar"
-            onClick={() => toggleEntry(next)}
+            aria-label={outcomeHint(next)}
+            title={outcomeHint(next)}
+            aria-haspopup="menu"
+            onClick={(ev) => askOutcome(next, ev.currentTarget)}
           >
             <Check size={13} />
           </button>

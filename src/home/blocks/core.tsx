@@ -20,7 +20,13 @@ import { Masonry } from '../../components/Masonry';
 import { kindMeta } from '../../composer/kinds';
 import type { Entry, Kind } from '../../data';
 import { totals } from '../../finance/money';
-import { commitmentKinds, commitmentOf, counterpartOf, isOpenTask } from '../../lib/commitments';
+import {
+  commitmentKinds,
+  commitmentOf,
+  counterpartOf,
+  isOpenTask,
+  outcomeHint,
+} from '../../lib/commitments';
 import { friendlyDate, money, todayInputValue } from '../../lib/format';
 import { entryImages } from '../../lib/moviePosters';
 import {
@@ -205,7 +211,7 @@ export function CaptureBlock({ opts }: BlockProps) {
 
 /** Compromisos abiertos: primero lo que vence antes; sin fecha, al final. */
 export function RadarBlock({ opts }: BlockProps) {
-  const { workspace, toggleEntry, viewEntry, openEntry, go } = useApp();
+  const { workspace, askOutcome, viewEntry, openEntry, go } = useApp();
   const today = todayInputValue();
   const max = num(opts, 'count', 4);
   const filter = str(opts, 'filter', 'todos');
@@ -249,7 +255,13 @@ export function RadarBlock({ opts }: BlockProps) {
       {open.length ? (
         <ul className="hr-list">
           {open.slice(0, max).map((e) => (
-            <RadarRow key={e.id} entry={e} today={today} onToggle={() => toggleEntry(e)} onOpen={() => viewEntry(e)} />
+            <RadarRow
+              key={e.id}
+              entry={e}
+              today={today}
+              onToggle={(el) => askOutcome(e, el)}
+              onOpen={() => viewEntry(e)}
+            />
           ))}
         </ul>
       ) : (
@@ -272,7 +284,8 @@ function RadarRow({
 }: {
   entry: Entry;
   today: string;
-  onToggle: () => void;
+  /** Abre «Hecho / No lo hice» junto al botón. */
+  onToggle: (anchor: HTMLElement) => void;
   onOpen: () => void;
 }) {
   const { workspace } = useApp();
@@ -287,7 +300,14 @@ function RadarRow({
   ].filter(Boolean);
   return (
     <li className="hr-row">
-      <button type="button" className="hr-check" aria-label="Marcar como hecho" onClick={onToggle}>
+      <button
+        type="button"
+        className="hr-check"
+        aria-label={outcomeHint(entry)}
+        title={outcomeHint(entry)}
+        aria-haspopup="menu"
+        onClick={(e) => onToggle(e.currentTarget)}
+      >
         <Check size={12} />
       </button>
       <button type="button" className="hr-main" onClick={onOpen}>

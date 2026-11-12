@@ -278,7 +278,7 @@ const plural = (n: number, one: string, many: string) =>
 export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   const {
     workspace,
-    toggleEntry,
+    resolveTask,
     patchEntry,
     removeEntry,
     createEntry,
@@ -582,11 +582,14 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     if (next && c.repeat) return recur(c, patch, opts.quiet);
     const before = { done: c.done, done_at: c.done_at };
     patch({ done: next, done_at: next ? new Date().toISOString() : null });
-    if (task && (task.status === "completado") !== next) toggleEntry(task);
+    // El pendiente vinculado sigue a la tarjeta (aunque estuviera soltado: completarla lo deja hecho).
+    if (task && (task.status === "completado") !== next)
+      void resolveTask(task, next ? "hecho" : "abierto");
     const undo = () => {
       patch(before);
       const t = tasksNow.current.get(c.entry_id ?? "");
-      if (t && (t.status === "completado") === next) toggleEntry(t);
+      if (t && (t.status === "completado") === next)
+        void resolveTask(t, next ? "abierto" : "hecho");
     };
     if (opts.rules !== false) {
       const events: Fired[] = [
@@ -912,7 +915,8 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           (fields as Record<string, unknown>)[k] = b[k];
       if (Object.keys(fields).length) api.patchCard(id, fields);
       const t = tasksNow.current.get(b.entry_id ?? "");
-      if (t && (t.status === "completado") !== e.wasDone) toggleEntry(t);
+      if (t && (t.status === "completado") !== e.wasDone)
+        void resolveTask(t, e.wasDone ? "hecho" : "abierto");
     }
   }
   /** Avisa qué reglas actuaron. «Deshacer» revierte las reglas y, con `undo`, también lo tuyo. */

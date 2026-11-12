@@ -35,7 +35,7 @@ import { PhotoThumbs } from '../components/PhotoThumbs';
 import { EmbedBar } from '../components/EmbedBar';
 import { kindMeta } from '../composer/kinds';
 import type { Entry, Episode, EpisodeKind, Person } from '../data';
-import { commitmentKinds, commitmentOf } from '../lib/commitments';
+import { commitmentKinds, commitmentOf, outcomeHint } from '../lib/commitments';
 import {
   candidateEntries,
   episodeKindOf,
@@ -592,7 +592,7 @@ export function EpisodeDetail({
     openEpisode,
     updateEpisode,
     viewEntry,
-    toggleEntry,
+    askOutcome,
     linkEntries,
     openEntry,
     peekPerson,
@@ -783,9 +783,20 @@ export function EpisodeDetail({
             <section className="ep-panel">
               <h3>Compromisos</h3>
               {s.open.map((e) => (
-                <TaskRow key={e.id} entry={e} onToggle={() => toggleEntry(e)} />
+                <TaskRow key={e.id} entry={e} onToggle={(el) => askOutcome(e, el)} />
               ))}
-              {s.done.length > 0 && <small className="ep-muted">{s.done.length} completados</small>}
+              {(s.done.length > 0 || s.missed.length > 0) && (
+                <small className="ep-muted">
+                  {[
+                    s.done.length > 0 &&
+                      `${s.done.length} ${s.done.length === 1 ? 'completado' : 'completados'}`,
+                    s.missed.length > 0 &&
+                      `${s.missed.length} ${s.missed.length === 1 ? 'soltado' : 'soltados'}`,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </small>
+              )}
             </section>
           )}
 
@@ -920,7 +931,7 @@ function TimelineRow({
           {e.kind === 'Movimiento' &&
             ` · ${e.direction === 'ingreso' ? '+' : '−'}${money(e.amount)}`}
           {e.kind === 'Pendiente' &&
-            ` · ${commitmentKinds[commitmentOf(e)].short}${e.status === 'completado' ? ' · hecho' : ''}`}
+            ` · ${commitmentKinds[commitmentOf(e)].short}${e.status === 'completado' ? ' · hecho' : e.status === 'no_realizado' ? ' · soltado' : ''}`}
           {e.details.place && ` · ${e.details.place}`}
         </small>
         {e.body && e.kind !== 'Encuentro' && <p>{e.body.slice(0, 180)}</p>}
@@ -939,7 +950,14 @@ function TimelineRow({
   );
 }
 
-function TaskRow({ entry: e, onToggle }: { entry: Entry; onToggle: () => void }) {
+function TaskRow({
+  entry: e,
+  onToggle,
+}: {
+  entry: Entry;
+  /** Abre «Hecho / No lo hice» junto al botón. */
+  onToggle: (anchor: HTMLElement) => void;
+}) {
   const { workspace } = useApp();
   const k = commitmentOf(e);
   const cm = commitmentKinds[k];
@@ -948,7 +966,14 @@ function TaskRow({ entry: e, onToggle }: { entry: Entry; onToggle: () => void })
   );
   return (
     <div className="ep-task" style={{ '--c': cm.color, '--s': cm.soft } as CSSProperties}>
-      <button type="button" className="pp-check" aria-label="Completar" onClick={onToggle}>
+      <button
+        type="button"
+        className="pp-check"
+        aria-label={outcomeHint(e)}
+        title={outcomeHint(e)}
+        aria-haspopup="menu"
+        onClick={(ev) => onToggle(ev.currentTarget)}
+      >
         <Check size={13} />
       </button>
       <div>

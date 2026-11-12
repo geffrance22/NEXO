@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Library, Plus, Quote, Search, X } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { LoadMore, useInfinite } from '../components/LoadMore';
+import { PairedTasks } from '../components/TaskOutcome';
 import type { Entry } from '../data';
 import { isOpenTask } from '../lib/commitments';
 import { normalizeText, todayInputValue } from '../lib/format';
@@ -544,7 +545,10 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
         aria-label={label}
         aria-busy={skeleton || undefined}
       >
-        {content}
+        {/* En Agenda → Pendientes cada pendiente muestra «Hecho» y, discreto, «No lo hice». */}
+        <PairedTasks.Provider value={section === 'Agenda' && tab === 'pendientes'}>
+          {content}
+        </PairedTasks.Provider>
       </div>
       {quoteSheet && <QuoteSheet onClose={() => setQuoteSheet(false)} />}
     </div>

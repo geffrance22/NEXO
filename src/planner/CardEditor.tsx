@@ -24,6 +24,7 @@ import {
   LoaderCircle,
   Lock,
   MessageCircle,
+  Minus,
   Palette,
   Plus,
   Repeat as RepeatIcon,
@@ -42,7 +43,10 @@ import {
   commitmentKindList,
   commitmentKinds,
   commitmentOf,
+  MISSED_ONE,
+  missedText,
   nudgeText,
+  outcomeHint,
   whatsappLink,
 } from '../lib/commitments';
 import { episodeKindOf } from '../lib/episodes';
@@ -1315,7 +1319,7 @@ function NexoLinks({
 }) {
   const {
     workspace,
-    toggleEntry,
+    askOutcome,
     viewEntry,
     go,
     createPerson,
@@ -1344,6 +1348,7 @@ function NexoLinks({
   const task = workspace.entries.find((e) => e.id === card.entry_id);
   const episode = workspace.episodes.find((e) => e.id === card.episode_id);
   const taskDone = task?.status === 'completado';
+  const taskMissed = task?.status === 'no_realizado';
   const fromBoard = isBoardEntry(task);
   const peopleIds = cardPeople(card, task);
   const linkedPeople = peopleIds
@@ -1422,7 +1427,7 @@ function NexoLinks({
         .filter((e) => e.kind === 'Pendiente')
         .sort(
           (a, b) =>
-            Number(a.status === 'completado') - Number(b.status === 'completado') ||
+            Number(a.status !== 'pendiente') - Number(b.status !== 'pendiente') ||
             (a.details.due ?? '9999').localeCompare(b.details.due ?? '9999'),
         )
         .map((e) => ({
@@ -1431,7 +1436,9 @@ function NexoLinks({
           sub:
             e.status === 'completado'
               ? 'Hecho'
-              : e.details.due
+              : e.status === 'no_realizado'
+                ? MISSED_ONE
+                : e.details.due
                 ? 'Para ' + friendlyDate(e.details.due).toLowerCase()
                 : 'Sin fecha',
           icon: (
@@ -1565,7 +1572,9 @@ function NexoLinks({
                 main: task.title,
                 sub: taskDone
                   ? 'Hecho'
-                  : task.details.due
+                  : taskMissed
+                    ? missedText(task)
+                    : task.details.due
                     ? 'Para ' + friendlyDate(task.details.due).toLowerCase()
                     : 'Sin fecha',
               }
@@ -1574,11 +1583,22 @@ function NexoLinks({
               task && (
                 <button
                   type="button"
-                  className={'bdm-taskdone' + (taskDone ? ' on' : '')}
-                  title={taskDone ? 'Reabrir el pendiente' : 'Completar el pendiente'}
-                  onClick={() => toggleEntry(task)}
+                  className={'bdm-taskdone' + (taskDone ? ' on' : '') + (taskMissed ? ' miss' : '')}
+                  title={
+                    task.status === 'pendiente'
+                      ? outcomeHint(task)
+                      : 'Reabrir el pendiente'
+                  }
+                  aria-haspopup={task.status === 'pendiente' ? 'menu' : undefined}
+                  // Abierto: «Hecho» o «No lo hice»; cerrado (hecho o soltado): lo reabre.
+                  onClick={(e) => askOutcome(task, e.currentTarget)}
                 >
-                  <Check size={13} strokeWidth={3} /> {taskDone ? 'Hecho' : 'Completar'}
+                  {taskMissed ? (
+                    <Minus size={13} strokeWidth={3} />
+                  ) : (
+                    <Check size={13} strokeWidth={3} />
+                  )}{' '}
+                  {taskDone ? 'Hecho' : taskMissed ? MISSED_ONE : 'Completar'}
                 </button>
               )
             }

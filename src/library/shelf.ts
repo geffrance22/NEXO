@@ -17,7 +17,7 @@ import {
 import { plainText } from "../components/RichText";
 import type { Entry, EntryDetails, Kind, Person } from "../data";
 import { kindMeta, seriesColors } from "../composer/kinds";
-import { isOpenTask } from "../lib/commitments";
+import { isDoneTask, isMissedTask, isOpenTask, MISSED_SHELF } from "../lib/commitments";
 import { bookPace, hoursLabel, isSeries, screenMinutes } from "../lib/entries";
 import { normalizeText, todayInputValue } from "../lib/format";
 import { finishedOn } from "./goals";
@@ -270,7 +270,9 @@ export const entryTabs: EntryTab[] = [
     views: PLAIN,
     shelves: [
       { id: "abiertos", label: "Abiertos", test: isOpenTask },
-      { id: "hechos", label: "Hechos", test: (e) => e.status === "completado" },
+      { id: "hechos", label: "Hechos", test: isDoneTask },
+      // Lo que ya pasó y no se hizo: se conserva, con su razón.
+      { id: "soltados", label: MISSED_SHELF, test: isMissedTask },
     ],
     shelf: "abiertos",
     sorts: ["vence", "reciente", "titulo", "antiguo"],
@@ -438,10 +440,11 @@ export function sortEntries(list: Entry[], sort: SortId, taste?: Taste) {
           newest(a, b),
       );
     case "vence":
+      // Lo abierto primero; lo cerrado (hecho o soltado), al final.
       return out.sort(
         (a, b) =>
-          Number(a.status === "completado") -
-            Number(b.status === "completado") ||
+          Number(a.status !== "pendiente") -
+            Number(b.status !== "pendiente") ||
           (a.details.due ?? "9999").localeCompare(b.details.due ?? "9999") ||
           newest(a, b),
       );
@@ -560,8 +563,10 @@ export function tabSummary(
       ).length;
       bits.push(plural(open.length, "abierto", "abiertos"));
       if (late) bits.push(plural(late, "vencido", "vencidos"));
-      const done = list.length - open.length;
+      const done = list.filter(isDoneTask).length;
       if (done) bits.push(plural(done, "hecho", "hechos"));
+      const missed = list.filter(isMissedTask).length;
+      if (missed) bits.push(plural(missed, "soltado", "soltados"));
       break;
     }
     case "trabajo": {

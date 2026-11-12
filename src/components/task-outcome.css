@@ -1,0 +1,320 @@
+/* ── Cierre de un pendiente: «Hecho» o «No lo hice» (y por qué) ── */
+
+/* La ventanita junto al botón: encima de las fichas y paneles, debajo de las confirmaciones. */
+.to-pop {
+  position: fixed;
+  z-index: 88;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid #e6eadf;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow:
+    0 18px 42px -18px rgba(39, 48, 31, 0.36),
+    0 2px 6px rgba(39, 48, 31, 0.06);
+  font-size: 13px;
+  color: #2f3a28;
+  animation: to-in 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.to-pop.up {
+  animation-name: to-in-up;
+}
+.to-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-weight: 650;
+  text-align: left;
+  color: #2f3a28;
+  transition: background 0.12s;
+}
+.to-item:hover,
+.to-item:focus-visible {
+  outline: none;
+  background: #f3f6ee;
+}
+.to-ic {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  line-height: 0;
+}
+.to-item.done .to-ic {
+  background: #8fa877;
+  color: #fff;
+}
+.to-item.miss {
+  font-weight: 560;
+  color: #6f7966;
+}
+.to-item.miss .to-ic,
+.to-head .to-ic {
+  border: 1.5px dashed #c7cdbd;
+  color: #9aa391;
+}
+.to-go {
+  margin-left: auto;
+  color: #b2b9a8;
+}
+
+/* La razón */
+.to-pop.reason {
+  gap: 0;
+  padding: 14px 14px 12px;
+}
+.to-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.to-head .to-ic {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+}
+.to-head div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.to-head strong {
+  font:
+    700 13.5px/1.35 'Manrope',
+    sans-serif;
+  color: #27301f;
+}
+.to-head small {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #8a9381;
+}
+.to-x {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: -2px -4px 0 0;
+  border-radius: 50%;
+  color: #8a9381;
+}
+.to-x:hover {
+  background: #f3f5ef;
+  color: #3f4a36;
+}
+.to-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 9px;
+}
+.to-chips button {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #e3e8da;
+  border-radius: 999px;
+  background: #fafbf7;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #5d6754;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+}
+.to-chips button:hover {
+  border-color: #cfd8c3;
+}
+.to-chips button.on {
+  border-color: #b9c7a6;
+  background: #eef2e7;
+  color: #2f4a28;
+}
+.to-why {
+  width: 100%;
+  min-height: 58px;
+  padding: 9px 11px;
+  resize: none;
+  border: 1px solid #e3e8da;
+  border-radius: 10px;
+  background: #fbfcf9;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #2f3a28;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    background 0.15s;
+}
+.to-why::placeholder {
+  color: #a3ab99;
+}
+.to-why:focus {
+  outline: none;
+  border-color: #a9b996;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(143, 168, 119, 0.18);
+}
+.to-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.to-foot small {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: #9aa391;
+}
+.to-btn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: #5d6754;
+  transition: background 0.12s;
+}
+.to-btn:hover {
+  background: #f3f5ef;
+}
+.to-btn.main {
+  background: #5f8247;
+  color: #fff;
+}
+.to-btn.main:hover {
+  background: #557640;
+}
+.to-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.to-btn:focus-visible,
+.to-x:focus-visible,
+.to-chips button:focus-visible {
+  outline: 2px solid #6d8650;
+  outline-offset: 2px;
+}
+
+/* ── «No lo hice» en Agenda → Pendientes: a la vista, pero sin protagonismo ── */
+.to-miss {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #a3ab99;
+  transition:
+    color 0.15s,
+    background 0.15s,
+    border-color 0.15s;
+}
+.to-miss:hover,
+.to-miss:focus-visible {
+  outline: none;
+  border-color: #e7e0d4;
+  background: #f6f3ed;
+  color: #6d6352;
+}
+.to-miss.compact {
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1.5px dashed #d8ded0;
+  border-radius: 7px;
+  color: #b0b8a5;
+}
+.to-miss.compact:hover,
+.to-miss.compact:focus-visible {
+  border-color: #c9bda9;
+  background: #f7f4ee;
+  color: #7c705c;
+}
+/* En las tarjetas, toda la tarjeta abre la ficha (una capa encima, z-index 1): el botón va por
+   encima de esa capa, como la casilla de «Hecho», para que el toque llegue a él. */
+.nt .to-miss {
+  position: relative;
+  z-index: 2;
+}
+/* En la lista, al final de la fila; más tenue hasta que pasas por ella. */
+.lt-row .to-miss {
+  margin-right: 6px;
+  opacity: 0.8;
+}
+.lt-row:hover .to-miss,
+.lt-row .to-miss:focus-visible {
+  opacity: 1;
+}
+
+/* No realizado: un guion en una casilla de tono cálido (se reabre al tocarla). */
+:is(.lt-check, .nt-check, .pp-check).miss {
+  border-color: #d6cdbe;
+  background: #efeae1;
+  color: #8a7c66;
+}
+:is(.lt-check, .nt-check, .pp-check).miss:hover {
+  border-color: #bfb19b;
+  background: #e6dfd2;
+  color: #6d6352;
+}
+.lt-row.missed .lt-row-main strong,
+.nt.missed h3,
+.pp-task.missed strong {
+  color: #9aa391;
+}
+.pp-task.missed small {
+  color: #a39a8a;
+}
+/* La razón de un no realizado en su tarjeta: una sola línea, sin prefijo (completa al pasar). */
+.nt-why {
+  margin: 8px 0 0;
+  padding-left: 8px;
+  overflow: hidden;
+  border-left: 2px solid #ddd3c3;
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #85796a;
+}
+
+@keyframes to-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@keyframes to-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .to-pop {
+    animation: none;
+  }
+}

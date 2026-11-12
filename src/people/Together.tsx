@@ -16,7 +16,12 @@ import {
 import { useApp } from '../AppContext';
 import type { Entry, Kind, Person } from '../data';
 import { incomeColors, kindMeta } from '../composer/kinds';
-import { commitmentKinds, commitmentOf, commitmentsWith } from '../lib/commitments';
+import {
+  commitmentKinds,
+  commitmentOf,
+  commitmentsWith,
+  outcomeHint,
+} from '../lib/commitments';
 import { episodeKindOf } from '../lib/episodes';
 import { friendlyDate, money, normalizeText, shortDate } from '../lib/format';
 import { exchangeKinds, type PersonStats } from '../lib/people';
@@ -143,7 +148,7 @@ export function Together({
   /** Abre la pestaña «Dar y recibir» (solo en la ficha completa). */
   onReciprocity?: () => void;
 }) {
-  const { workspace, go, openEntry, viewEntry, toggleEntry } = useApp();
+  const { workspace, go, openEntry, viewEntry, askOutcome } = useApp();
   const [filter, setFilter] = useState<Kind | 'todo'>('todo');
   const id = person.id;
 
@@ -379,8 +384,10 @@ export function Together({
                   <button
                     type="button"
                     className="pp-check"
-                    aria-label="Completar"
-                    onClick={() => toggleEntry(e)}
+                    aria-label={outcomeHint(e)}
+                    title={outcomeHint(e)}
+                    aria-haspopup="menu"
+                    onClick={(ev) => askOutcome(e, ev.currentTarget)}
                   >
                     <Check size={13} />
                   </button>

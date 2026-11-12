@@ -79,6 +79,7 @@ export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
     "waitingSince",
     "snoozed",
     "sourceId",
+    "missed",
   ],
 };
 

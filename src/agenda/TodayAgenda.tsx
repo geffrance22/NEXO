@@ -3,6 +3,7 @@ import {
   ArrowRight,
   Cake,
   Check,
+  ChevronDown,
   ClipboardCheck,
   Clock,
   Coffee,
@@ -30,6 +31,7 @@ import {
   type AgendaKind,
   type AgendaPrefs,
 } from '../lib/agenda';
+import { outcomeHint } from '../lib/commitments';
 import { addDays, friendlyDate, nextMonday, todayInputValue } from '../lib/format';
 import { completeFeedCard, useBoardFeed } from '../planner/boardFeed';
 import { aimBoard } from '../planner/boardView';
@@ -212,8 +214,17 @@ function AgendaCard({
   onDiscard: () => void;
   today: string;
 }) {
-  const { toggleEntry, patchPerson, openBrief, go, editEntry, peekPerson, notify, openMe } =
-    useApp();
+  const {
+    toggleEntry,
+    askOutcome,
+    patchPerson,
+    openBrief,
+    go,
+    editEntry,
+    peekPerson,
+    notify,
+    openMe,
+  } = useApp();
   const [menu, setMenu] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -226,7 +237,12 @@ function AgendaCard({
   const wa =
     item.person && !item.person.profile.status ? whatsapp(item.person.profile.phone) : null;
 
-  const primary = (): { label: string; run: () => void } | null => {
+  const primary = (): {
+    label: string;
+    run: (el?: HTMLElement) => void;
+    /** Abre una elección (el botón lleva una flecha hacia abajo). */
+    menu?: boolean;
+  } | null => {
     if (item.card) {
       const card = item.card;
       return {
@@ -245,10 +261,13 @@ function AgendaCard({
     }
     switch (item.action) {
       case 'completar':
+        // Un solo botón: ofrece «Hecho» o «No lo hice» (y luego la razón).
         return item.entry
           ? {
               label: item.kind === 'espera' ? 'Ya llegó' : 'Hecho',
-              run: () => toggleEntry(item.entry!),
+              run: (el?: HTMLElement) =>
+                el ? askOutcome(item.entry!, el) : toggleEntry(item.entry!),
+              menu: true,
             }
           : null;
       case 'preguntado':
@@ -323,8 +342,14 @@ function AgendaCard({
       </div>
       <div className="ag-actions">
         {act && (
-          <button type="button" className="ag-primary" onClick={act.run}>
-            {act.label} <ArrowRight size={13} />
+          <button
+            type="button"
+            className="ag-primary"
+            aria-haspopup={act.menu ? 'menu' : undefined}
+            title={act.menu && item.entry ? outcomeHint(item.entry) : undefined}
+            onClick={(e) => act.run(e.currentTarget)}
+          >
+            {act.label} {act.menu ? <ChevronDown size={13} /> : <ArrowRight size={13} />}
           </button>
         )}
         <div className="ag-minor">

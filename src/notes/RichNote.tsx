@@ -17,6 +17,7 @@ import {
   List,
   ListOrdered,
   RemoveFormatting,
+  Sparkles,
   Strikethrough,
   Type,
   Underline,
@@ -161,6 +162,60 @@ function caretAfterChange(el: HTMLElement, before: string) {
     block: 'nearest',
   });
 }
+
+/** Marca temporal (en una copia del editor) para saber en qué línea termina la selección. */
+const PIN = '\uE010';
+
+/**
+ * Línea del texto guardado donde termina `range`, y cuántas líneas tiene el texto. Se mide en una
+ * copia del editor: el de verdad no se toca.
+ */
+function lineOfRange(root: HTMLElement, range: Range): { line: number; lines: number } | null {
+  // El último trozo de texto que de verdad quedó seleccionado (con un triple clic la selección
+  // termina al principio de la línea siguiente).
+  const scope = range.commonAncestorContainer;
+  const texts: Text[] = [];
+  if (scope instanceof Text) texts.push(scope);
+  else {
+    const walk = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) texts.push(n as Text);
+  }
+  let last: Text | null = null;
+  let offset = 0;
+  for (const t of texts) {
+    if (!t.data.trim() || !range.intersectsNode(t)) continue;
+    const from = t === range.startContainer ? range.startOffset : 0;
+    const to = t === range.endContainer ? range.endOffset : t.length;
+    if (to <= from) continue;
+    last = t;
+    offset = to;
+  }
+  if (!last) return null;
+  const path: number[] = [];
+  let n: Node = last;
+  while (n !== root) {
+    const parent = n.parentNode;
+    if (!parent) return null;
+    path.unshift(Array.prototype.indexOf.call(parent.childNodes, n));
+    n = parent;
+  }
+  const copy = root.cloneNode(true) as HTMLElement;
+  let target: Node | undefined = copy;
+  for (const i of path) target = target?.childNodes[i];
+  if (!(target instanceof Text)) return null;
+  target.data = target.data.slice(0, offset) + PIN + target.data.slice(offset);
+  const md = editorToMd(copy);
+  const at = md.indexOf(PIN);
+  if (at < 0) return null;
+  return { line: md.slice(0, at).split('\n').length - 1, lines: md.split('\n').length };
+}
+
+/** Lo seleccionado al tocar la IA: el texto, dónde está en pantalla y en qué línea termina. */
+export type AskTarget = {
+  quote: string;
+  point: { x: number; y: number };
+  found: { line: number; lines: number } | null;
+};
 
 export type RichEditor = ReturnType<typeof useRichEditor>;
 
@@ -311,7 +366,25 @@ export function useRichEditor() {
     history[kind]();
   };
 
-  return { ref, state, bubble, run, refresh, dragging, setBubble, follow, step };
+  /** Lo seleccionado ahora (o lo último, si el foco se fue a un botón), para preguntar a la IA. */
+  const target = (): AskTarget | null => {
+    const el = ref.current;
+    const sel = document.getSelection();
+    if (!el) return null;
+    const live = !!sel?.rangeCount && !sel.isCollapsed && inside(sel.anchorNode);
+    const range = live ? sel!.getRangeAt(0) : saved.current;
+    if (!range || range.collapsed || !inside(range.commonAncestorContainer)) return null;
+    const quote = (live ? sel!.toString() : range.toString()).trim();
+    if (!quote) return null;
+    const rect = range.getBoundingClientRect();
+    const point =
+      rect.width || rect.height
+        ? { x: rect.left + rect.width / 2, y: rect.bottom - 10 }
+        : { x: bubble?.x ?? window.innerWidth / 2, y: bubble?.y ?? window.innerHeight / 3 };
+    return { quote, point, found: lineOfRange(el, range) };
+  };
+
+  return { ref, state, bubble, run, refresh, dragging, setBubble, follow, step, target };
 }
 
 /** El cuerpo de la nota: escribe con formato; Ctrl + B, I, U y atajos como «# » o «- ». */
@@ -324,6 +397,7 @@ export function RichNote({
   label,
   autoFocus,
   history,
+  onAsk,
 }: {
   editor: RichEditor;
   value: string;
@@ -334,6 +408,8 @@ export function RichNote({
   autoFocus?: boolean;
   /** Historial compartido con las flechas de la barra. */
   history?: TextHistory;
+  /** Con esto, la burbuja de la selección termina con el botón de la IA. */
+  onAsk?: (target: AskTarget) => void;
 }) {
   const { ref, run, bubble, refresh, dragging, follow, step } = editor;
   const last = useRef<string | null>(null);
@@ -537,6 +613,25 @@ export function RichNote({
             onMouseDown={(e) => e.preventDefault()}
           >
             <FormatButtons editor={editor} groups={BUBBLE} />
+            {onAsk && (
+              <div className="kp-fmt-group">
+                <button
+                  type="button"
+                  className="kp-fmt-btn kp-fmt-ai"
+                  aria-label="Preguntar a la IA"
+                  title="Preguntar a la IA sobre lo seleccionado"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    const t = editor.target();
+                    if (!t) return;
+                    editor.setBubble(null);
+                    onAsk(t);
+                  }}
+                >
+                  <Sparkles size={16} />
+                </button>
+              </div>
+            )}
           </div>,
           document.body,
         )}

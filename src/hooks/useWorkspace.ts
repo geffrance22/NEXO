@@ -794,6 +794,94 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
     [user.id, notify, peopleCount, profileOutdated],
   );
 
+  /**
+   * Crea muchas personas de una vez (un lote importado), en tandas de 100 y sin avisos. Devuelve
+   * las guardadas y, si una tanda falló, el error (las de las tandas anteriores ya quedaron).
+   */
+  const savePeople = useCallback(
+    async (inputs: PersonInput[]) => {
+      const saved: Person[] = [];
+      try {
+        for (let i = 0; i < inputs.length; i += 100) {
+          const now = new Date().toISOString();
+          const rows: Person[] = inputs.slice(i, i + 100).map((input, k) => {
+            const relation = input.profile.relation;
+            return {
+              id: crypto.randomUUID(),
+              name: input.name.trim().slice(0, 120),
+              role: input.role.trim().slice(0, 120),
+              interests: input.interests.trim(),
+              bio: input.bio.trim().slice(0, 8000),
+              color: relation
+                ? relationMeta[relation].soft
+                : PERSON_COLORS[(peopleCount + i + k) % PERSON_COLORS.length],
+              created_at: now,
+              profile: input.profile,
+            };
+          });
+          const { error } = await supabase
+            .from('people')
+            .insert(rows.map((r) => ({ ...personRow(r), owner_id: user.id })));
+          if (error) throw error;
+          saved.push(...rows);
+          setWorkspace((w) => ({ ...w, people: [...w.people, ...rows] }));
+        }
+        return { people: saved, error: null as string | null };
+      } catch (e) {
+        return { people: saved, error: isMissingColumn(e) ? PROFILE_HINT : errorMessage(e) };
+      }
+    },
+    [user.id, peopleCount, profileOutdated],
+  );
+
+  /**
+   * Borra sin preguntar personas recién creadas y, si se indican, grupos (para deshacer un lote).
+   * Sus vínculos y su lugar en los grupos los quita la base.
+   */
+  const discardPeople = useCallback(
+    async (ids: string[], groupIds: string[] = []) => {
+      const gone: string[] = [];
+      let ok = true;
+      for (let i = 0; i < ids.length; i += 100) {
+        const part = ids.slice(i, i + 100);
+        const { error } = await supabase.from('people').delete().in('id', part);
+        if (error) {
+          notify(errorMessage(error));
+          ok = false;
+          break;
+        }
+        gone.push(...part);
+      }
+      let groupsGone: string[] = [];
+      if (ok && groupIds.length) {
+        const { error } = await supabase.from('person_groups').delete().in('id', groupIds);
+        if (error) notify(errorMessage(error));
+        else groupsGone = groupIds;
+      }
+      const drop = new Set(gone);
+      const dropGroups = new Set(groupsGone);
+      setWorkspace((w) => ({
+        ...w,
+        people: w.people.filter((p) => !drop.has(p.id)),
+        ties: w.ties.filter((t) => !(t.a && drop.has(t.a)) && !drop.has(t.b)),
+        groups: w.groups
+          .filter((g) => !dropGroups.has(g.id))
+          .map((g) =>
+            g.member_ids.some((m) => drop.has(m))
+              ? { ...g, member_ids: g.member_ids.filter((m) => !drop.has(m)) }
+              : g,
+          ),
+        entries: w.entries.map((e) =>
+          e.person_ids.some((id) => drop.has(id))
+            ? { ...e, person_ids: e.person_ids.filter((id) => !drop.has(id)) }
+            : e,
+        ),
+      }));
+      return ok;
+    },
+    [notify],
+  );
+
   /** Cambia campos de una persona. Con `silent` no muestra aviso (accesos rápidos). */
   const patchPerson = useCallback(
     async (person: Person, changes: Partial<Omit<Person, 'id' | 'created_at'>>, silent = false) => {
@@ -1439,6 +1527,8 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
     saveEntry,
     updateEntry,
     savePerson,
+    savePeople,
+    discardPeople,
     updatePerson,
     removePerson,
     mergePeople,

@@ -6,10 +6,13 @@ import { Popover } from './Popover';
 export type QuickItem = {
   id: string;
   name: string;
-  sub?: string;
+  /** Una función se llama solo al pintar la fila (útil con miles de recuerdos). */
+  sub?: string | (() => string);
   lead: ReactNode;
   /** Texto normalizado donde se busca. */
   search: string;
+  /** Solo aparece al buscar (o si ya está elegido): nunca entre los sugeridos. */
+  searchOnly?: boolean;
 };
 
 /** Con búsqueda: cuántos resultados se pintan (luego se afina escribiendo). */
@@ -32,6 +35,9 @@ export function QuickPick({
   createPlaceholder = 'Nuevo',
   createIcon = <Plus size={15} />,
   noun,
+  topLabel = 'Frecuentes',
+  emptyTop,
+  hint,
   onClose,
 }: {
   anchor: HTMLElement;
@@ -47,6 +53,12 @@ export function QuickPick({
   createIcon?: ReactNode;
   /** «lugares», «personas»: para los textos de ayuda. */
   noun: string;
+  /** Título de lo sugerido (sin buscar). */
+  topLabel?: string;
+  /** Qué decir cuando, sin buscar, no hay nada que sugerir. */
+  emptyTop?: string;
+  /** Qué decir, sin buscar, de lo que solo sale al escribir (por defecto, cuántos hay; "" no dice nada). */
+  hint?: string;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState('');
@@ -66,8 +78,10 @@ export function QuickPick({
     if (!needle) {
       const sel = new Set(selected);
       const picked = items.filter((i) => sel.has(i.id));
-      const rest = items.filter((i) => !sel.has(i.id));
-      return [...picked, ...rest].slice(0, Math.max(top, picked.length));
+      const rest = items.filter((i) => !sel.has(i.id) && !i.searchOnly);
+      // Lo elegido que solo sale buscando se suma a los sugeridos, no les quita sitio.
+      const extra = picked.filter((i) => i.searchOnly).length;
+      return [...picked, ...rest].slice(0, Math.max(top, picked.length) + extra);
     }
     const starts: QuickItem[] = [];
     const inside: QuickItem[] = [];
@@ -80,8 +94,10 @@ export function QuickPick({
     // `selected` solo importa sin búsqueda.
   }, [items, needle, top, selected]);
 
-  const exact = items.some((it) => normalizeText(it.name) === needle);
-  const canAdd = Boolean(onCreate && needle && !exact);
+  // Solo si se puede crear se mira si ya existe (con miles de recuerdos, no se hace de balde).
+  const canAdd = Boolean(
+    onCreate && needle && !items.some((it) => normalizeText(it.name) === needle),
+  );
   const total = rows.length + (canAdd ? 1 : 0);
   useEffect(() => setCursor(0), [needle]);
   useEffect(() => {
@@ -143,7 +159,7 @@ export function QuickPick({
       </label>
 
       <div className="qp-list" ref={list} role="listbox" aria-label={label}>
-        {!needle && rows.length > 0 && <span className="qp-group">Frecuentes</span>}
+        {!needle && rows.length > 0 && <span className="qp-group">{topLabel}</span>}
         {rows.map((it, i) => {
           const on = chosen.has(it.id);
           return (
@@ -160,7 +176,7 @@ export function QuickPick({
               {it.lead}
               <span className="qp-text">
                 <strong>{it.name}</strong>
-                {it.sub && <small>{it.sub}</small>}
+                {it.sub && <small>{typeof it.sub === 'function' ? it.sub() : it.sub}</small>}
               </span>
               {on && <Check size={15} className="qp-check" />}
             </button>
@@ -185,9 +201,12 @@ export function QuickPick({
         )}
         {needle && !rows.length && !canAdd && <p className="qp-note">Sin resultados.</p>}
         {!needle && !items.length && <p className="qp-note">Aún no tienes {noun}.</p>}
-        {hidden > 0 && (
+        {!needle && !rows.length && items.length > 0 && emptyTop && (
+          <p className="qp-note">{emptyTop}</p>
+        )}
+        {hidden > 0 && hint !== '' && (
           <p className="qp-note">
-            Escribe para buscar entre {items.length.toLocaleString('es-CO')} {noun}.
+            {hint ?? `Escribe para buscar entre ${items.length.toLocaleString('es-CO')} ${noun}.`}
           </p>
         )}
       </div>

@@ -1,0 +1,628 @@
+/* ════════════════ Termómetro de la relación ════════════════ */
+
+/* ── Bajo la cercanía: barra con el color de su temperatura ── */
+.pp-thermo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 2px -4px;
+  padding: 3px 6px 3px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.pp-thermo:hover {
+  background: rgba(40, 55, 30, 0.05);
+}
+.pp-thermo:focus-visible {
+  outline: 2px solid var(--tc);
+  outline-offset: 1px;
+}
+.pp-thermo-track {
+  position: relative;
+  width: 96px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #e6eaf0;
+}
+.pp-thermo-track i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--tv);
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--t0), var(--tc));
+  transition: width 0.5s ease;
+}
+.pp-thermo-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #6b7466;
+}
+.pp-thermo-label b {
+  font-weight: 750;
+  color: var(--tc);
+}
+.pp-thermo-trend {
+  display: inline-grid;
+  place-items: center;
+  color: #9aa391;
+}
+.pp-thermo-trend.up {
+  color: #d4682a;
+}
+.pp-thermo-trend.down {
+  color: #3e7fd6;
+}
+
+/* ── En el anillo de vínculo: un segundo borde por dentro, de azul a su temperatura ── */
+.pp-ring.dual b {
+  position: relative;
+  z-index: 1;
+  font-size: 1em;
+}
+/* «55/73»: el vínculo grande y oscuro; la barra y el termómetro, más pequeños y con su color. */
+.pp-ring.pair b.pp-ring-pair {
+  display: inline-flex;
+  align-items: baseline;
+  font:
+    800 1em/1 'Manrope',
+    sans-serif;
+  letter-spacing: -0.04em;
+  color: #27301f;
+  white-space: nowrap;
+}
+.pp-ring-pair small {
+  margin-left: 0.5px;
+  font-size: 0.72em;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--tc);
+  /* El color frío (gris azulado) se lee mejor un poco más oscuro. */
+  filter: brightness(0.86) saturate(1.15);
+}
+.pp-ring-thermo {
+  position: absolute;
+  inset: var(--ti);
+  border-radius: 50%;
+  background: conic-gradient(var(--t0) 0%, var(--tc) var(--tv), #e6eaf0 var(--tv) 100%);
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--tw)),
+    #000 calc(100% - var(--tw) + 0.6px)
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--tw)),
+    #000 calc(100% - var(--tw) + 0.6px)
+  );
+}
+.pp-ring-btn {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.pp-ring-btn:hover {
+  transform: scale(1.04);
+}
+.pp-ring-btn:focus-visible {
+  outline: 2px solid var(--accent, #5f8247);
+  outline-offset: 2px;
+}
+
+/* ════════ La ventana: historia del último año, minimalista y translúcida ════════ */
+.sheet-backdrop:has(> .sheet.th-sheet) {
+  /* En `document.body`, encima del encabezado de la app, de la ficha lateral y de la ficha de un
+     recuerdo; debajo de las confirmaciones. */
+  z-index: 68;
+  background: rgba(24, 30, 44, 0.24);
+  backdrop-filter: blur(14px) saturate(1.1);
+}
+.sheet-backdrop > .sheet.th-sheet {
+  max-width: 680px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(26px) saturate(1.4);
+}
+.th {
+  --th-ink: #22262f;
+  --th-muted: #7d8494;
+  --th-line: rgba(30, 40, 60, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  max-height: inherit;
+  padding: 20px 24px 22px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  color: var(--th-ink);
+}
+.th button {
+  font: inherit;
+  cursor: pointer;
+}
+.th-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.th-head small {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--th-muted);
+}
+.th-head h2 {
+  margin: 2px 0 0;
+  font:
+    750 19px 'Manrope',
+    sans-serif;
+  letter-spacing: -0.2px;
+}
+.th-x {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(30, 40, 60, 0.05);
+  color: var(--th-muted);
+}
+.th-x:hover {
+  background: rgba(30, 40, 60, 0.1);
+  color: var(--th-ink);
+}
+
+.th-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 16px;
+}
+.th-value {
+  display: inline-flex;
+  align-items: flex-start;
+  font:
+    800 50px/1 'Manrope',
+    sans-serif;
+  letter-spacing: -1.5px;
+  color: var(--tc);
+}
+.th-value small {
+  margin: 5px 0 0 3px;
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+.th-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.th-hero-text strong {
+  font-size: 16px;
+  font-weight: 750;
+}
+.th-hero-text small {
+  font-size: 12.5px;
+  color: var(--th-muted);
+}
+.th-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  margin-left: auto;
+  font-size: 13.5px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+.th-stats > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.th-stats small {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--th-muted);
+}
+.th-stats .up {
+  color: #d4682a;
+}
+.th-stats .down {
+  color: #3a78d0;
+}
+
+/* Gráfico */
+.th-chart {
+  position: relative;
+}
+.th-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  touch-action: pan-y;
+}
+.th-grid line {
+  stroke: rgba(30, 40, 60, 0.08);
+  stroke-dasharray: 3 5;
+}
+.th-grid text,
+.th-tick {
+  font:
+    600 10.5px 'DM Sans',
+    sans-serif;
+  fill: #9aa3b2;
+}
+.th-grid text {
+  text-anchor: end;
+}
+.th-tick {
+  text-anchor: middle;
+}
+.th-line {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.th-auto {
+  fill: none;
+  stroke: #b9c1cd;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+.th-mark line {
+  stroke: rgba(91, 82, 168, 0.35);
+  stroke-dasharray: 2 3;
+}
+.th-mark circle {
+  fill: #fff;
+  stroke: #5b52a8;
+  stroke-width: 2;
+}
+.th-hover line {
+  stroke: rgba(30, 40, 60, 0.2);
+}
+.th-hover circle,
+.th-now {
+  stroke: #fff;
+  stroke-width: 2.5;
+}
+.th-now {
+  filter: drop-shadow(0 2px 6px rgba(30, 40, 60, 0.25));
+}
+/* Globo de un punto: encima del punto (debajo si está arriba) y, cerca de un borde, hacia adentro. */
+.th-tip {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow:
+    0 0 0 1px rgba(30, 40, 60, 0.06),
+    0 8px 22px -10px rgba(20, 25, 40, 0.35);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transform: translate(-50%, calc(-100% - 12px));
+  pointer-events: none;
+}
+.th-tip.below {
+  transform: translate(-50%, 12px);
+}
+.th-tip.start {
+  transform: translate(-14px, calc(-100% - 12px));
+}
+.th-tip.start.below {
+  transform: translate(-14px, 12px);
+}
+.th-tip.end {
+  transform: translate(calc(-100% + 14px), calc(-100% - 12px));
+}
+.th-tip.end.below {
+  transform: translate(calc(-100% + 14px), 12px);
+}
+.th-tip b {
+  font-weight: 800;
+}
+.th-tip small {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--th-muted);
+}
+
+/* Lo que la calienta y lo que la enfría */
+.th-reasons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding-top: 4px;
+}
+.th-reasons h3 {
+  margin: 0 0 6px;
+  font:
+    700 11px 'DM Sans',
+    sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--th-muted);
+}
+.th-reasons ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.th-reasons li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 0;
+}
+.th-reasons em {
+  flex: none;
+  min-width: 54px;
+  white-space: nowrap;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.th-reasons em.warm {
+  color: #d9662a;
+}
+.th-reasons em.cold {
+  color: #3a78d0;
+}
+.th-reasons span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.th-reasons b {
+  font-size: 13px;
+  font-weight: 700;
+}
+.th-reasons small {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--th-muted);
+}
+.th-empty {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--th-muted);
+}
+
+/* Ajuste a mano */
+.th-adjust {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--th-line);
+}
+.th-adjust > .th-btn {
+  align-self: flex-start;
+}
+.th-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #22252e;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: #fff;
+  transition: background 0.15s;
+}
+.th-btn:hover:not(:disabled) {
+  background: #000;
+}
+.th-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.th-btn.ghost {
+  background: rgba(30, 40, 60, 0.06);
+  color: #2d3340;
+}
+.th-btn.ghost:hover {
+  background: rgba(30, 40, 60, 0.11);
+}
+.th-adjust-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: cp-fade 0.18s ease-out;
+}
+.th-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.th-slider-row input[type='range'] {
+  flex: 1;
+  height: 8px;
+  margin: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgb(96, 58, 148),
+    rgb(47, 99, 214) 8%,
+    rgb(62, 150, 226) 25%,
+    rgb(138, 165, 186) 45%,
+    rgb(238, 178, 60) 60%,
+    rgb(242, 128, 36) 80%,
+    rgb(222, 70, 42)
+  );
+  outline: 0;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.th-slider-row input[type='range']::-webkit-slider-thumb {
+  width: 20px;
+  height: 20px;
+  border: 4px solid var(--sc);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(20, 25, 40, 0.3);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.th-slider-row input[type='range']::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 4px solid var(--sc);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(20, 25, 40, 0.3);
+}
+.th-slider-row b {
+  min-width: 150px;
+  white-space: nowrap;
+  font:
+    800 18px 'Manrope',
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.th-slider-row b small {
+  font:
+    650 12px 'DM Sans',
+    sans-serif;
+}
+.th-why {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(30, 40, 60, 0.12);
+  border-radius: 10px;
+  outline: 0;
+  background: rgba(255, 255, 255, 0.7);
+  font: inherit;
+  font-size: 13.5px;
+}
+.th-why:focus {
+  border-color: var(--tc);
+}
+.th-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--th-muted);
+}
+.th-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.th-adjusts {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.th-adjusts li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px dashed var(--th-line);
+}
+.th-adjusts li > i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.th-adjusts li > span {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.th-adjusts b {
+  font-size: 13px;
+  font-weight: 750;
+}
+.th-adjusts b small,
+.th-adjusts li > span > small {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--th-muted);
+}
+.th-adjusts time {
+  flex: none;
+  font-size: 12px;
+  color: var(--th-muted);
+}
+.th-adjusts button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--th-muted);
+}
+.th-adjusts button:hover {
+  background: rgba(200, 70, 50, 0.08);
+  color: #b4473a;
+}
+.th button:focus-visible {
+  outline: 2px solid var(--tc);
+  outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+  .th {
+    padding: 18px 16px 18px;
+  }
+  .th-reasons {
+    grid-template-columns: 1fr;
+  }
+  .th-value {
+    font-size: 42px;
+  }
+  .th-stats {
+    margin-left: 0;
+    align-items: flex-start;
+  }
+}

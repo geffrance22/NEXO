@@ -144,13 +144,13 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
   // Películas y series guardadas sin póster (p. ej. al capturarlas): se buscan en TMDB.
   useMediaBackfill(section === 'Libroteca' ? watchables : []);
 
-  // Mientras llegan tus datos (y, en Inicio, tus lecturas y notas) se ven esqueletos.
+  // Mientras llegan tus datos (y, en Inicio, tus lecturas, notas y capturas) se ven esqueletos.
   const booting =
     !dataSettled ||
     (section === 'Libroteca' &&
       tab === 'inicio' &&
       !searching &&
-      (readings === null || notes.notes === null));
+      (readings === null || notes.notes === null || capturas.shots === null));
   const countsReady = dataSettled && (section !== 'Libroteca' || notes.notes !== null);
   const viewOf = (id: TabId, allowed: ViewMode[]) => {
     const v = views[id];
@@ -316,11 +316,15 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
     );
   } else if (tab === 'inicio') {
     content =
-      library.length || readings?.length || liveNotes.length ? (
+      library.length ||
+      readings?.length ||
+      liveNotes.length ||
+      capturas.shots?.some((s) => !s.archived_at) ? (
         <Inicio
           lists={lists}
           readings={readings}
           notes={liveNotes}
+          shots={capturas.shots}
           onTab={setTab}
           onOpenNote={(id) => {
             setOpenNote(id);
@@ -449,93 +453,111 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
               ? 'Buscar en tu diario'
               : `Buscar en ${label}`;
 
+  const actions = (
+    <div className="lt-actions">
+      <label className="lt-search">
+        <Search size={15} />
+        <input
+          type="search"
+          placeholder={placeholder}
+          aria-label={`Buscar en ${section}`}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && query) {
+              e.stopPropagation();
+              setQuery('');
+            }
+          }}
+        />
+        {query && (
+          <button type="button" aria-label="Borrar búsqueda" onClick={() => setQuery('')}>
+            <X size={14} />
+          </button>
+        )}
+      </label>
+      <button type="button" className="lt-add" onClick={add.run}>
+        <Plus size={16} /> {add.label}
+      </button>
+    </div>
+  );
+
+  const tabsNav = (
+    <nav className="lt-tabs" role="tablist" aria-label={`Secciones de ${section}`}>
+      {tabs.map((t) => {
+        const n = countOf(t.id);
+        const known =
+          dataSettled &&
+          (t.id === 'lienzo'
+            ? notes.notes !== null
+            : t.id === 'cuadernos'
+              ? notebooks.list != null
+              : t.id === 'capturas'
+                ? capturas.shots != null
+                : true);
+        return (
+          <span key={t.id} className="lt-tab-wrap">
+            {t.divider && <span className="lt-tabs-div" aria-hidden="true" />}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              aria-label={t.iconOnly ? t.label : undefined}
+              title={t.iconOnly ? t.label : undefined}
+              className={
+                (tab === t.id ? 'on' : '') +
+                (known && n === 0 ? ' lt-zero' : '') +
+                (t.iconOnly ? ' icon' : '')
+              }
+              onClick={() => setTab(t.id)}
+            >
+              <t.icon size={t.iconOnly ? 16 : 14} />
+              {!t.iconOnly && (
+                <>
+                  {t.label}
+                  {known ? (
+                    <i>{n.toLocaleString('es-CO')}</i>
+                  ) : (
+                    <i className="lt-sk-count" aria-hidden="true" />
+                  )}
+                </>
+              )}
+            </button>
+          </span>
+        );
+      })}
+    </nav>
+  );
+
   return (
     <div className={'lt' + (section === 'Agenda' ? ' lt-agenda' : '')}>
-      <header className="lt-head">
-        <div className="lt-title">
-          <h1>{section}</h1>
-          {countsReady ? (
-            <p className="lt-reveal">
-              {stats.map((s) => (
-                <span key={s}>{s}</span>
-              ))}
-            </p>
-          ) : (
-            <StatsSkeleton />
-          )}
+      {section === 'Libroteca' ? (
+        // Sin título ni cifras (ya sabes dónde estás): pestañas, búsqueda y «Añadir» en una línea.
+        // No es `lt-bar`: esa clase es la barrita de progreso de las tarjetas.
+        <div className="lt-headbar">
+          {tabsNav}
+          {actions}
         </div>
-        <div className="lt-actions">
-          <label className="lt-search">
-            <Search size={15} />
-            <input
-              type="search"
-              placeholder={placeholder}
-              aria-label={`Buscar en ${section}`}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape' && query) {
-                  e.stopPropagation();
-                  setQuery('');
-                }
-              }}
-            />
-            {query && (
-              <button type="button" aria-label="Borrar búsqueda" onClick={() => setQuery('')}>
-                <X size={14} />
-              </button>
-            )}
-          </label>
-          <button type="button" className="lt-add" onClick={add.run}>
-            <Plus size={16} /> {add.label}
-          </button>
-        </div>
-      </header>
-
-      <nav className="lt-tabs" role="tablist" aria-label={`Secciones de ${section}`}>
-        {tabs.map((t) => {
-          const n = countOf(t.id);
-          const known =
-            dataSettled &&
-            (t.id === 'lienzo'
-              ? notes.notes !== null
-              : t.id === 'cuadernos'
-                ? notebooks.list != null
-                : t.id === 'capturas'
-                  ? capturas.shots != null
-                  : true);
-          return (
-            <span key={t.id} className="lt-tab-wrap">
-              {t.divider && <span className="lt-tabs-div" aria-hidden="true" />}
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === t.id}
-                aria-label={t.iconOnly ? t.label : undefined}
-                title={t.iconOnly ? t.label : undefined}
-                className={
-                  (tab === t.id ? 'on' : '') +
-                  (known && n === 0 ? ' lt-zero' : '') +
-                  (t.iconOnly ? ' icon' : '')
-                }
-                onClick={() => setTab(t.id)}
-              >
-                <t.icon size={t.iconOnly ? 16 : 14} />
-                {!t.iconOnly && (
-                  <>
-                    {t.label}
-                    {known ? (
-                      <i>{n.toLocaleString('es-CO')}</i>
-                    ) : (
-                      <i className="lt-sk-count" aria-hidden="true" />
-                    )}
-                  </>
-                )}
-              </button>
-            </span>
-          );
-        })}
-      </nav>
+      ) : (
+        <>
+          <header className="lt-head">
+            <div className="lt-title">
+              <h1>{section}</h1>
+              {countsReady ? (
+                <p className="lt-reveal">
+                  {stats.map((s) => (
+                    <span key={s}>{s}</span>
+                  ))}
+                </p>
+              ) : (
+                <StatsSkeleton />
+              )}
+            </div>
+            {actions}
+          </header>
+          {tabsNav}
+        </>
+      )}
 
       {/* Un fundido corto al llegar los datos o al cambiar de pestaña; nada se desplaza. */}
       <div

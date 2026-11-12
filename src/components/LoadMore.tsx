@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 
 /**
  * Muestra una lista por tandas: `visible` empieza con `page` elementos y crece con `loadMore`.
@@ -30,6 +30,7 @@ export function LoadMore({
   onMore,
   shown,
   auto = true,
+  placeholder,
 }: {
   /** Cuántos faltan por mostrar (0: no se pinta nada). */
   rest: number;
@@ -38,8 +39,14 @@ export function LoadMore({
   shown: number;
   /** Cargar sola al acercarse (false: solo con el botón, p. ej. si hay algo debajo de la lista). */
   auto?: boolean;
+  /**
+   * Lo que se ve al final mientras llega la siguiente tanda (p. ej. esqueletos) en lugar del botón.
+   * Al acercarse carga sola; el botón sigue ahí, oculto a la vista, para el teclado y los lectores
+   * de pantalla. Si el navegador no avisa del desplazamiento, se usa el botón de siempre.
+   */
+  placeholder?: ReactNode;
 }) {
-  const ref = useRef<HTMLButtonElement>(null);
+  const ref = useRef<HTMLElement>(null);
   const more = useRef(onMore);
   more.current = onMore;
   useEffect(() => {
@@ -56,10 +63,19 @@ export function LoadMore({
     return () => io.disconnect();
   }, [shown, rest > 0, auto]);
   if (rest <= 0) return null;
+  if (placeholder && auto && typeof IntersectionObserver !== 'undefined')
+    return (
+      <div ref={ref as RefObject<HTMLDivElement>} className="lt-more-ph">
+        {placeholder}
+        <button type="button" className="cp-sr" onClick={onMore}>
+          Ver más ({rest.toLocaleString('es-CO')})
+        </button>
+      </div>
+    );
   return (
     <button
       type="button"
-      ref={ref}
+      ref={ref as RefObject<HTMLButtonElement>}
       className={'lt-more' + (auto ? ' lt-more-auto' : '')}
       onClick={onMore}
     >

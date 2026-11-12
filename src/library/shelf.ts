@@ -77,6 +77,7 @@ export const tones = {
   lecturas: { accent: "#b0703a", soft: "#fbf1e6", ink: "#7a4a22" },
   citas: { accent: "#8c6d4f", soft: "#f4ece3", ink: "#5b4330" },
   inicio: { accent: "#5f8247", soft: "#eaf1e0", ink: "#3a5229" },
+  capturas: { accent: "#4f7186", soft: "#e8eff3", ink: "#2f4a5a" },
 } satisfies Record<string, Tone>;
 
 export type EntryTab = {

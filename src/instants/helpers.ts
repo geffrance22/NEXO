@@ -1,4 +1,4 @@
-import type { Workspace } from '../data';
+import type { MyProfile, Workspace } from '../data';
 import { normalizeText } from '../lib/format';
 import { recognize } from '../lib/recognize';
 
@@ -18,6 +18,17 @@ export function setScan(on: boolean) {
   } catch {
     /* Sin almacenamiento: vale para esta vez. */
   }
+}
+
+/**
+ * Cómo te nombran tus instantes: tu seudónimo o, si no tienes, tus dos primeros nombres (sin
+ * los apellidos) y, si tampoco hay nombre, lo que va antes de la arroba de tu correo.
+ */
+export function shownName(profile: MyProfile, email?: string | null) {
+  const alias = profile.alias?.trim();
+  if (alias) return alias;
+  const words = profile.name?.trim().split(/\s+/).filter(Boolean) ?? [];
+  return words.slice(0, 2).join(' ') || email?.split('@')[0] || 'Tú';
 }
 
 /** ¿El texto ya nombra esto? (sin tildes ni mayúsculas, palabra completa). */

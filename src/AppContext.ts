@@ -18,6 +18,7 @@ import type {
   MyRecord,
   Page,
   Person,
+  PersonInput,
   Place,
   PlaceInput,
   StoredImage,
@@ -76,6 +77,12 @@ export type AppContextValue = {
   quickPerson: (person: Person, mode: QuickMode) => void;
   /** Crea una persona solo con su nombre (desde el buscador de personas). */
   createPerson: (name: string) => Promise<Person | null>;
+  /** Crea muchas personas de una vez (un lote): las guardadas y, si algo falló, el error. */
+  savePeople: (inputs: PersonInput[]) => Promise<{ people: Person[]; error: string | null }>;
+  /** Borra sin preguntar personas recién creadas y grupos (para deshacer un lote). */
+  discardPeople: (ids: string[], groupIds?: string[]) => Promise<boolean>;
+  /** Añadir varias personas: escribir o pegar una lista, o importar contactos (TXT, CSV, vCard). */
+  openPeopleBatch: () => void;
   /** Formulario de lugar: nuevo, o edita el indicado. */
   openPlace: (place?: Place) => void;
   savePlace: (input: PlaceInput) => Promise<Place | null>;

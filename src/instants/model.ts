@@ -19,18 +19,27 @@ export type Instant = {
   person_ids: string[];
   entry_ids: string[];
   episode_ids: string[];
+  /** Cuadernos de Agenda a los que lo vinculaste (columna de la migración 202611120004). */
+  notebook_ids: string[];
   place_ids: string[];
   edited_at: string | null;
   created_at: string;
   updated_at: string;
 };
 
-export type LinkKey = 'entry_ids' | 'episode_ids' | 'person_ids' | 'place_ids';
-export const LINK_KEYS: LinkKey[] = ['entry_ids', 'episode_ids', 'person_ids', 'place_ids'];
+export type LinkKey = 'entry_ids' | 'episode_ids' | 'notebook_ids' | 'person_ids' | 'place_ids';
+export const LINK_KEYS: LinkKey[] = [
+  'entry_ids',
+  'episode_ids',
+  'notebook_ids',
+  'person_ids',
+  'place_ids',
+];
 export type InstantLinks = Record<LinkKey, string[]>;
 export const noLinks = (): InstantLinks => ({
   entry_ids: [],
   episode_ids: [],
+  notebook_ids: [],
   person_ids: [],
   place_ids: [],
 });
@@ -61,7 +70,11 @@ export function threadsOf(list: readonly Instant[]): Thread[] {
 }
 
 export const linkCount = (i: Instant) =>
-  i.entry_ids.length + i.episode_ids.length + i.person_ids.length + i.place_ids.length;
+  i.entry_ids.length +
+  i.episode_ids.length +
+  i.notebook_ids.length +
+  i.person_ids.length +
+  i.place_ids.length;
 
 /** El día en que pasó (o en que lo escribiste). */
 export const dayOfInstant = (i: Instant) => {

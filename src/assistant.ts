@@ -135,6 +135,16 @@ export async function captureWithAssistant(
 const OUTDATED =
   'Esta función necesita la versión nueva de la IA. Despliega la función assistant: npx supabase functions deploy assistant --remote=imdvmlzdbmbvwkfoisgs --use-api --yes';
 
+/**
+ * Lee una lista de personas escrita a mano (una parte de hasta 4000 caracteres). Devuelve lo que
+ * propuso la IA tal cual; `fromAi` lo valida contra el texto antes de usarlo.
+ */
+export async function readPeopleWithAssistant(text: string): Promise<unknown[]> {
+  const data = await callMode({ mode: 'people-batch', text: text.slice(0, 4000), today: localToday() });
+  if (data?.mode !== 'people-batch') throw new Error(OUTDATED);
+  return Array.isArray(data.people) ? (data.people as unknown[]) : [];
+}
+
 /** Lo que la IA necesita para leer una entrada del diario y conectarla con lo que ya tienes. */
 export type DiaryReadInput = {
   text: string;
@@ -258,6 +268,31 @@ export async function askEntry(input: {
   const answer = typeof data?.answer === 'string' ? data.answer.trim() : '';
   if (!answer) throw new Error(OUTDATED);
   return { answer, rewrite: data?.rewrite === true };
+}
+
+/**
+ * Pregunta o pide algo a la IA sobre lo seleccionado en una nota (Libroteca → Notas). Si la
+ * indicación pide dejar el resultado en la nota, `place` dice dónde: debajo de la selección o al
+ * final. La nota nunca se reescribe: solo se le añade.
+ */
+export async function askNote(input: {
+  selection: string;
+  prompt: string;
+  text: string;
+  title?: string;
+}): Promise<{ answer: string; rewrite: boolean; place?: 'below' | 'end' }> {
+  const data = await callMode({
+    mode: 'note-ask',
+    selection: input.selection.slice(0, 4000),
+    prompt: input.prompt.slice(0, 1500),
+    text: input.text.slice(0, 40000),
+    title: input.title?.slice(0, 200),
+  });
+  if (data?.mode !== 'note-ask') throw new Error(OUTDATED);
+  const answer = typeof data.answer === 'string' ? data.answer.trim() : '';
+  if (!answer) throw new Error('La IA no devolvió una respuesta. Inténtalo de nuevo.');
+  const place = data.place === 'below' || data.place === 'end' ? data.place : undefined;
+  return { answer, rewrite: false, place };
 }
 
 /**

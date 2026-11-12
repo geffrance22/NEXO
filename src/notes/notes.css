@@ -447,11 +447,22 @@
 .kp-close:hover {
   background: var(--kp-hover);
 }
+/* «Creada …» y, debajo, «Modificada …»: letra pequeña y renglones juntos, para que las dos
+   líneas quepan en la barra sin hacerla más alta. */
 .kp-stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   margin-right: 6px;
-  font-size: 11.5px;
+  font-size: 10.5px;
+  line-height: 1.25;
   color: var(--kp-muted);
   white-space: nowrap;
+}
+.kp-stamp-lines {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
 /* Menús flotantes */
@@ -881,29 +892,26 @@
   font-style: normal;
   font-size: 10.5px;
 }
+/* Una sola fila: RecentNotes pinta solo los papelitos que caben (cuenta las columnas). */
 .kp-strip {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
   gap: 10px;
   margin: 0 -4px;
   padding: 4px 4px 10px;
-  overflow-x: auto;
-  scroll-snap-type: x proximity;
-  scrollbar-width: thin;
 }
 .kp-mini {
   position: relative;
   display: flex;
-  flex: none;
   flex-direction: column;
   gap: 4px;
-  width: 172px;
+  min-width: 0;
   height: 104px;
   padding: 11px 13px 9px;
   border: 1px solid color-mix(in srgb, var(--kp-ink) 22%, transparent);
   border-radius: 12px 12px 12px 4px;
   background: var(--kp-bg);
   text-align: left;
-  scroll-snap-align: start;
   overflow: hidden;
   transition:
     transform 0.18s,
@@ -1935,4 +1943,12 @@ body.kp-dragging * {
 .kp-bubble .kp-fmt-btn.on {
   background: rgba(190, 214, 160, 0.24);
   color: #fff;
+}
+/* Preguntar a la IA: el último de la burbuja. */
+.kp-bubble .kp-fmt-btn.kp-fmt-ai {
+  color: #f0cf87;
+}
+.kp-bubble .kp-fmt-btn.kp-fmt-ai:hover {
+  background: rgba(240, 207, 135, 0.16);
+  color: #ffe2a3;
 }

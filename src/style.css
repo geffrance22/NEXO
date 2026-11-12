@@ -437,6 +437,35 @@ main:has(.lt-agenda, .ep-page, .ep-detail, .fz, .cx, .pl-page, .pl-detail) {
 .primary:hover {
   background: #49613d;
 }
+/* Acciones del encabezado de una sección: un botón solo ícono junto al principal. */
+.heading-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+.heading-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid #dde5d1;
+  border-radius: 7px;
+  background: #fff;
+  color: #344730;
+  box-shadow: 0 3px 6px #3447300b;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.heading-icon:hover {
+  background: #f1f5ea;
+  border-color: #c9d6b8;
+}
+.heading-icon:focus-visible {
+  outline: 2px solid #6f8a56;
+  outline-offset: 2px;
+}
 .access-banner {
   display: flex;
   justify-content: space-between;

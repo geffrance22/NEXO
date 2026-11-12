@@ -11,10 +11,12 @@ import {
 import {
   CalendarDays,
   ChevronRight,
+  Globe,
   ImagePlus,
   LoaderCircle,
   MapPin,
   MapPinPlus,
+  Plus,
   RotateCw,
   Smile,
   Sparkles,
@@ -23,22 +25,23 @@ import {
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { Sheet } from '../components/Sheet';
-import { PickDialog, personCounts, type PickItem } from '../capture/Pickers';
+import { personCounts } from '../capture/Pickers';
 import { MoodIcon, moodOf, moods } from '../composer/controls';
 import { pastedImages } from '../composer/PhotoBlocks';
 import { useImageUploads } from '../composer/useImageUploads';
+import { useCuadernos } from '../cuadernos/useCuadernos';
 import type { Place, StoredImage } from '../data';
 import { guessPlaceKind } from '../lib/capture';
-import { episodeKindOf } from '../lib/episodes';
 import { addDays, friendlyDate, normalizeText, todayInputValue } from '../lib/format';
 import { relationMeta, relationOf, searchText } from '../lib/people';
 import { placeKinds, placeSearchText } from '../lib/places';
 import { Avatar } from '../people/Avatar';
 import { MyFace } from '../people/MyFace';
 import { enqueuePieces } from './analysis';
-import { names, peopleIn, placesIn, scanOn, setScan as saveScan } from './helpers';
+import { names, peopleIn, placesIn, scanOn, setScan as saveScan, shownName } from './helpers';
 import { INSTANT_MAX, INSTANT_PHOTOS } from './model';
 import { QuickPick, type QuickItem } from './QuickPick';
+import { openRemote, shareInstants, useFediverse } from './share';
 import {
   createInstants,
   instantsHint,
@@ -47,6 +50,7 @@ import {
   useInstants,
   type InstantDraft,
 } from './store';
+import { TopicPick, topicChip, topicKey, topicOf, type Topic, type TopicChip } from './topics';
 import './instants.css';
 
 /** Sin buscar: cuántas personas y cuántos lugares se ofrecen. */
@@ -66,7 +70,7 @@ type Draft = {
   newPlaces: string[];
 };
 type Shot = { images: StoredImage[]; busy: boolean; error: boolean; count: number };
-type Pick = { kind: 'person' | 'place' | 'episode'; index: number; anchor?: HTMLElement };
+type Pick = { kind: 'person' | 'place' | 'topic'; index: number; anchor?: HTMLElement };
 
 const newDraft = (text = '', people: string[] = []): Draft => ({
   key: crypto.randomUUID(),
@@ -95,18 +99,35 @@ export function InstantComposer({
 }) {
   const app = useApp();
   const { workspace, me, user, confirm, notify } = app;
-  const { list: instants } = useInstants();
+  const { list: instants, noNotebooks } = useInstants();
+  const { list: notebooks } = useCuadernos();
   const [drafts, setDrafts] = useState<Draft[]>(() => [newDraft(initialText, preset)]);
   const [active, setActive] = useState(0);
-  const [episodeId, setEpisodeId] = useState<string | null>(null);
+  /** «Episodio o tema»: un episodio, cuadernos y recuerdos (encuentros, diario, películas…). */
+  const [topics, setTopics] = useState<Topic[]>([]);
   const [scan, setScan] = useState(scanOn);
+  const fediverse = useFediverse();
+  /** Publicarlo también en tu cuenta del Fediverso. Siempre empieza apagado: lo privado es lo normal. */
+  const [share, setShare] = useState(false);
   const [shots, setShots] = useState<Record<string, Shot>>({});
   const [busy, setBusy] = useState(false);
   const [pick, setPick] = useState<Pick | null>(null);
   const areas = useRef(new Map<string, HTMLTextAreaElement>());
 
-  const myName = me.profile.name?.trim() || user.email?.split('@')[0] || 'Tú';
-  const episode = episodeId ? workspace.episodes.find((e) => e.id === episodeId) : undefined;
+  const myName = shownName(me.profile, user.email);
+  // Lo elegido que ya no existe (se borró) ni se muestra ni se guarda.
+  const chosen = useMemo(
+    () =>
+      topics.flatMap((t) => {
+        const chip = topicChip(t, workspace, notebooks ?? []);
+        return chip ? [{ topic: t, chip }] : [];
+      }),
+    [topics, workspace, notebooks],
+  );
+  const topicIds = (kind: Topic['kind']) =>
+    chosen.filter((c) => c.topic.kind === kind).map((c) => c.topic.id);
+  /** Las piezas que Nexo encuentre se suman a este episodio (si elegiste uno). */
+  const episodeId = topicIds('episode')[0] ?? null;
   const uploading = Object.values(shots).some((s) => s.busy);
   const filled = drafts.filter((d) => d.text.trim() || shots[d.key]?.images.length);
   const tooLong = drafts.some((d) => d.text.length > INSTANT_MAX);
@@ -221,41 +242,23 @@ export function InstantComposer({
         .sort((a, b) => b.n - a.n || b.at.localeCompare(a.at)),
     [workspace.places, usage],
   );
-  const episodeList = useMemo<PickItem[]>(
-    () =>
-      [...workspace.episodes]
-        .sort(
-          (a, b) =>
-            Number(b.status === 'activo') - Number(a.status === 'activo') ||
-            (b.starts_on ?? b.created_at).localeCompare(a.starts_on ?? a.created_at),
-        )
-        .map((e) => {
-          const m = episodeKindOf(e.kind);
-          return {
-            id: e.id,
-            name: e.title,
-            sub: [m.label, e.status === 'activo' ? 'Activo' : 'Cerrado'].join(' · '),
-            lead: (
-              <span className="pk-tile" style={{ '--c': m.color, '--s': m.soft } as CSSProperties}>
-                <m.icon size={16} />
-              </span>
-            ),
-          };
-        }),
-    [workspace.episodes],
-  );
-  const activeEpisodes = useMemo(
-    () => workspace.episodes.filter((e) => e.status === 'activo').slice(0, 6).map((e) => e.id),
-    [workspace.episodes],
-  );
-
   /** Abre (o cierra, si ya estaba abierto) el buscador de ese botón. */
   const togglePick = (next: Pick) =>
-    setPick((cur) =>
-      cur && cur.kind === next.kind && cur.index === next.index && next.kind !== 'episode'
-        ? null
-        : next,
+    setPick((cur) => (cur && cur.kind === next.kind && cur.index === next.index ? null : next));
+
+  /** Elegir (o quitar) un episodio, un cuaderno o un recuerdo como tema. */
+  const toggleTopic = (key: string) => {
+    const t = topicOf(key);
+    setPick(null);
+    if (!t) return;
+    setTopics((cur) =>
+      cur.some((x) => topicKey(x) === key)
+        ? cur.filter((x) => topicKey(x) !== key)
+        : // Un solo episodio a la vez: es al que Nexo suma las piezas que encuentre.
+          [...(t.kind === 'episode' ? cur.filter((x) => x.kind !== 'episode') : cur), t],
     );
+    focusDraft(drafts[Math.min(active, drafts.length - 1)].key);
+  };
 
   /** Nombrar a alguien: se escribe su nombre donde estás. Si ya estaba, se quita. */
   const pickPerson = (i: number, id: string) => {
@@ -322,7 +325,9 @@ export function InstantComposer({
       happened_on: d.date,
       person_ids: peopleIn(d.text, d.people, workspace),
       place_ids: placesIn(d.text, d.places, workspace),
-      episode_ids: episodeId ? [episodeId] : [],
+      episode_ids: topicIds('episode'),
+      entry_ids: topicIds('entry'),
+      notebook_ids: topicIds('notebook'),
     }));
     const picked = [...new Set(filled.flatMap((d) => d.people))];
     const made = await createInstants(rows);
@@ -382,11 +387,29 @@ export function InstantComposer({
         episodeId,
         keepText: false,
       });
-    notify(made.length > 1 ? `Hilo publicado (${made.length}).` : 'Instante publicado.', {
-      label: 'Ver',
-      icon: 'open',
-      run: () => app.openInstant(made[0].id),
-    });
+    const sharing = share && fediverse.ready;
+    notify(
+      (made.length > 1 ? `Hilo publicado (${made.length}).` : 'Instante publicado.') +
+        (sharing ? ' Compartiéndolo…' : ''),
+      {
+        label: 'Ver',
+        icon: 'open',
+        run: () => app.openInstant(made[0].id),
+      },
+    );
+    // Se comparte detrás: la ventana se cierra sin esperar, y el resultado se avisa al terminar.
+    if (sharing)
+      void shareInstants(made.map((m) => m.id)).then((r) => {
+        if (r.error)
+          notify(
+            `No se pudo compartir${r.ok ? ` (salieron ${r.ok} de ${made.length})` : ''}: ${r.error} Reinténtalo desde el menú del instante.`,
+          );
+        else
+          notify(
+            'Compartido' + (r.note ? `. ${r.note}` : '.'),
+            r.url ? { label: 'Ver', icon: 'open', run: () => openRemote(r.url) } : undefined,
+          );
+      });
     onClose();
   };
 
@@ -447,13 +470,12 @@ export function InstantComposer({
               active={i === active}
               myName={myName}
               open={pick && pick.index === i ? pick.kind : null}
-              episode={
+              topic={
                 i === 0
                   ? {
-                      label: episode?.title ?? '',
-                      color: episode ? episodeKindOf(episode.kind).color : '',
-                      onPick: () => setPick({ kind: 'episode', index: 0 }),
-                      onClear: () => setEpisodeId(null),
+                      chips: chosen.map((c) => c.chip),
+                      onPick: (anchor) => togglePick({ kind: 'topic', index: 0, anchor }),
+                      onRemove: (key) => setTopics((cur) => cur.filter((x) => topicKey(x) !== key)),
                     }
                   : undefined
               }
@@ -510,6 +532,24 @@ export function InstantComposer({
             <Sparkles size={14} />
             {scan ? 'Buscar piezas' : 'Sin buscar piezas'}
           </button>
+          {fediverse.ready && (
+            <button
+              type="button"
+              className={'inc-scan inc-share' + (share ? ' on' : '')}
+              role="switch"
+              aria-checked={share}
+              onClick={() => setShare((v) => !v)}
+              title={
+                share
+                  ? `Se publica en ${fediverse.account?.handle || 'tu cuenta'}, en público: el texto y hasta 4 fotos. No salen el ánimo, las personas ni los lugares.`
+                  : `No se comparte. Actívalo para publicarlo también en ${fediverse.account?.handle || 'tu cuenta del Fediverso'}.`
+              }
+            >
+              <i aria-hidden="true" />
+              <Globe size={14} />
+              {share ? 'Público' : 'No compartir'}
+            </button>
+          )}
           <span className="inc-keys" aria-hidden="true">
             <kbd>Ctrl</kbd>
             <kbd>Enter</kbd>
@@ -556,16 +596,12 @@ export function InstantComposer({
           onClose={() => setPick(null)}
         />
       )}
-      {pick?.kind === 'episode' && (
-        <PickDialog
-          title="Episodio o tema"
-          placeholder="Busca un viaje, un proyecto, una celebración…"
-          items={episodeList}
-          selected={episodeId ? [episodeId] : []}
-          pinned={activeEpisodes}
-          pinnedLabel="Activos"
-          onToggle={(id) => setEpisodeId((cur) => (cur === id ? null : id))}
-          onClear={episodeId ? () => setEpisodeId(null) : undefined}
+      {pick?.kind === 'topic' && pick.anchor && (
+        <TopicPick
+          anchor={pick.anchor}
+          selected={chosen.map((c) => c.chip.key)}
+          withNotebooks={!noNotebooks}
+          onToggle={toggleTopic}
           onClose={() => setPick(null)}
         />
       )}
@@ -580,7 +616,7 @@ function ThreadDraft({
   active,
   myName,
   open,
-  episode,
+  topic,
   register,
   onFocus,
   onChange,
@@ -595,7 +631,12 @@ function ThreadDraft({
   myName: string;
   /** El buscador abierto desde esta publicación (para marcar su botón). */
   open: Pick['kind'] | null;
-  episode?: { label: string; color: string; onPick: () => void; onClear: () => void };
+  /** «Episodio o tema» (solo en la primera publicación del hilo). */
+  topic?: {
+    chips: TopicChip[];
+    onPick: (anchor: HTMLElement) => void;
+    onRemove: (key: string) => void;
+  };
   register: (el: HTMLTextAreaElement | null) => void;
   onFocus: () => void;
   onChange: (patch: Partial<Draft>) => void;
@@ -687,28 +728,49 @@ function ThreadDraft({
       <div className="inc-main">
         <div className="inc-who">
           <strong>{myName}</strong>
-          {episode && (
-            <span className={'inc-topic' + (episode.label ? ' set' : '')}>
-              <button
-                type="button"
-                onClick={episode.onPick}
-                style={episode.color ? ({ '--c': episode.color } as CSSProperties) : undefined}
-              >
-                <ChevronRight size={14} />
-                {episode.label || 'Episodio o tema'}
-              </button>
-              {episode.label && (
-                <button
-                  type="button"
-                  className="inc-topic-x"
-                  aria-label="Quitar episodio"
-                  onClick={episode.onClear}
-                >
-                  <X size={12} />
+          {topic &&
+            (topic.chips.length === 0 ? (
+              <span className="inc-topic">
+                <button type="button" onClick={(e) => topic.onPick(e.currentTarget)}>
+                  <ChevronRight size={14} />
+                  Episodio o tema
                 </button>
-              )}
-            </span>
-          )}
+              </span>
+            ) : (
+              <>
+                {topic.chips.map((c) => (
+                  <span key={c.key} className="inc-topic set">
+                    <button
+                      type="button"
+                      title={c.title}
+                      onClick={(e) => topic.onPick(e.currentTarget)}
+                      style={{ '--c': c.color } as CSSProperties}
+                    >
+                      <ChevronRight size={14} />
+                      {c.label}
+                    </button>
+                    <button
+                      type="button"
+                      className="inc-topic-x"
+                      aria-label={`Quitar ${c.label}`}
+                      onClick={() => topic.onRemove(c.key)}
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+                <span className="inc-topic">
+                  <button
+                    type="button"
+                    aria-label="Añadir otro tema"
+                    title="Añadir otro tema"
+                    onClick={(e) => topic.onPick(e.currentTarget)}
+                  >
+                    <Plus size={14} />
+                  </button>
+                </span>
+              </>
+            ))}
           {onRemove && (
             <button
               type="button"

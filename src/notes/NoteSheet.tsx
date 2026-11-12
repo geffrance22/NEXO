@@ -58,6 +58,7 @@ export function NoteSheet({
 }) {
   const { notify } = useApp();
   const original = useRef(note ? draftOf(note) : blankDraft());
+  const modified = note?.updated_at ? todayInputValue(new Date(note.updated_at)) : null;
   const [draft, setDraft] = useState<Draft>(original.current);
   const latest = useRef(draft);
   latest.current = draft;
@@ -185,7 +186,14 @@ export function NoteSheet({
             <>
               <small className="kp-stamp">
                 {vault && <Lock size={11} />}
-                {created ? `Creada ${friendlyDate(created).toLowerCase()}` : 'Nota nueva'}
+                {created ? (
+                  <span className="kp-stamp-lines">
+                    <span>Creada {friendlyDate(created).toLowerCase()}</span>
+                    {modified && <span>Modificada {friendlyDate(modified).toLowerCase()}</span>}
+                  </span>
+                ) : (
+                  'Nota nueva'
+                )}
               </small>
               <button type="button" className="kp-close" onClick={() => void close()}>
                 Listo

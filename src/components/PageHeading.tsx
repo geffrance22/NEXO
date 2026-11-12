@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { Plus, UsersRound } from 'lucide-react';
 import { useApp } from '../AppContext';
 import type { Page } from '../data';
 import { GreetingHeading } from '../greeting/GreetingHeading';
@@ -33,7 +33,7 @@ const headings: Record<Exclude<Page, 'Mi espacio'>, { title: string; text: strin
 };
 
 export function PageHeading() {
-  const { page, selected, openPerson, openPlace } = useApp();
+  const { page, selected, openPerson, openPlace, openPeopleBatch } = useApp();
   if (page === 'Mi espacio') return <GreetingHeading />;
   if (
     page === 'Lecturas' ||
@@ -62,10 +62,23 @@ export function PageHeading() {
         <p>{selected ? selected.role : headings[page].text}</p>
       </div>
       {action && (
-        <button className="primary" onClick={action.run}>
-          <Plus size={18} />
-          {action.label}
-        </button>
+        <div className="heading-actions">
+          {page === 'Personas' && (
+            <button
+              type="button"
+              className="heading-icon"
+              onClick={openPeopleBatch}
+              title="Añadir varias personas (lista, TXT, CSV o contactos)"
+              aria-label="Añadir varias personas"
+            >
+              <UsersRound size={18} />
+            </button>
+          )}
+          <button className="primary" onClick={action.run}>
+            <Plus size={18} />
+            {action.label}
+          </button>
+        </div>
       )}
     </div>
   );

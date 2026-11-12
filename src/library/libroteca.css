@@ -12,9 +12,9 @@
 }
 
 /* ───────── Encabezado ───────── */
-/* Libroteca no lleva el encabezado de la app: menos aire entre la barra superior y el título. */
+/* Libroteca no lleva título: sus pestañas arrancan casi pegadas a la barra superior. */
 main:has(.lt:not(.lt-agenda)) {
-  --main-pt: 18px;
+  --main-pt: 8px;
 }
 .lt-head {
   display: flex;
@@ -214,6 +214,56 @@ main:has(.lt:not(.lt-agenda)) {
   height: 18px;
   margin: 0 8px;
   background: #dfe4d6;
+}
+
+/* Libroteca: pestañas, búsqueda y «Añadir» en una sola barra, pegada bajo la barra superior de la
+   app. Mide lo mismo que las pestañas solas (49px): CAPTURAS y el diario se pegan debajo con ese
+   alto. Si no cabe todo en una línea, la barra desaparece (`contents`): la búsqueda va arriba, a
+   la derecha, y las pestañas, pegadas, debajo, como en Agenda. */
+.lt-headbar {
+  display: contents;
+}
+.lt-headbar .lt-actions {
+  order: -1;
+  align-self: flex-end;
+  margin-bottom: 12px;
+}
+@media (min-width: 1101px) {
+  .lt-headbar {
+    position: sticky;
+    top: var(--topbar-h);
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 0 -6px 18px;
+    padding: 5px 6px 5px 0;
+    border-bottom: 1px solid var(--lt-line);
+    background: rgba(248, 249, 246, 0.9);
+    backdrop-filter: blur(10px);
+  }
+  .lt-headbar .lt-tabs {
+    position: static;
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    padding: 3px 6px;
+    border: 0;
+    background: none;
+    backdrop-filter: none;
+  }
+  /* Al estrecharse, cede primero el buscador; las pestañas, solo al final. */
+  .lt-headbar .lt-actions {
+    flex: 0 3 auto;
+    order: 0;
+    min-width: 0;
+    margin: 0;
+  }
+  .lt-headbar .lt-search {
+    flex: 0 1 auto;
+    width: 240px;
+    min-width: 140px;
+  }
 }
 
 /* ───────── Barra de herramientas de cada pestaña ───────── */
@@ -933,8 +983,23 @@ i.lt-sk-h2 {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
   gap: 10px;
 }
+/* «Ver más / Ver menos» de En curso: solo el texto, sin recuadro. */
 .lt-more.lt-now-more {
-  margin-top: 12px;
+  width: fit-content;
+  margin: 8px auto 0;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+}
+.lt-more.lt-now-more:hover {
+  background: none;
+  color: var(--lt-ink);
+}
+.lt-more.lt-now-more span {
+  padding: 0;
+  background: none;
+  font-size: inherit;
 }
 .lt-h2 i {
   margin-left: 4px;
@@ -1890,8 +1955,13 @@ html[data-theme='dark'] :is(.lt-art, .lt-now-art) {
 html[data-theme='dark'] :is(.lt-art, .lt-now-art) img {
   filter: none;
 }
-html[data-theme='dark'] .lt-tabs {
+html[data-theme='dark'] :is(.lt-tabs, .lt-headbar) {
   background: rgba(248, 249, 246, 0.94);
+}
+@media (min-width: 1101px) {
+  html[data-theme='dark'] .lt-headbar .lt-tabs {
+    background: none;
+  }
 }
 
 /* ───────── Pantallas pequeñas ───────── */

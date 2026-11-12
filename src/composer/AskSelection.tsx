@@ -7,6 +7,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  ArrowDownToLine,
   ArrowUp,
   Copy,
   CornerDownLeft,
@@ -17,10 +18,15 @@ import {
 } from "lucide-react";
 import { AiText } from "../readings/AiText";
 
-export type AskResult = { answer: string; rewrite: boolean };
+/**
+ * `place`: la indicación pedía dejar la respuesta en el texto (debajo de la selección o al final),
+ * así que se pone ahí sin más clics.
+ */
+export type AskResult = { answer: string; rewrite: boolean; place?: "below" | "end" };
+export type AskQuick = { label: string; prompt: string };
 
 /** Atajos pensados para escribir un diario (vacío: profundizar). */
-const QUICK = [
+const QUICK: AskQuick[] = [
   { label: "Profundiza", prompt: "" },
   {
     label: "Mejora la redacción",
@@ -50,7 +56,7 @@ const clampPos = (left: number, top: number, w: number, h: number) => ({
 /**
  * Panel para preguntarle o pedirle algo a la IA sobre lo que seleccionaste en la entrada.
  * Si la respuesta es el fragmento reescrito, se puede poner en su lugar; si es una reflexión,
- * se puede añadir debajo o copiar.
+ * se puede añadir debajo (o al final, con `onAppend`) o copiar.
  */
 export function AskSelection({
   quote,
@@ -58,15 +64,25 @@ export function AskSelection({
   onAsk,
   onReplace,
   onInsert,
+  onAppend,
   onClose,
+  quick = QUICK,
+  placeholder = "Pregunta o pide algo sobre esto…",
 }: {
   quote: string;
   /** Dónde quedó la selección (coordenadas de la ventana). */
   point: { x: number; y: number };
   onAsk: (prompt: string) => Promise<AskResult>;
-  onReplace: (text: string) => void;
+  /** Sin esto no se ofrece «Reemplazar» (p. ej. en las notas, que solo se amplían). */
+  onReplace?: (text: string) => void;
+  /** Debajo de la selección. */
   onInsert: (text: string) => void;
+  /** Al final del texto. */
+  onAppend?: (text: string) => void;
   onClose: () => void;
+  /** Atajos (el de `prompt` vacío es la pregunta por defecto). */
+  quick?: AskQuick[];
+  placeholder?: string;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -142,9 +158,14 @@ export function AskSelection({
     head.addEventListener("pointercancel", onUp);
   };
 
+  // Listo para escribir apenas aparece. No antes: mientras se mide va oculto
+  // (`visibility: hidden`) y un elemento oculto no recibe el foco.
+  const focused = useRef(false);
   useEffect(() => {
+    if (!pos || focused.current) return;
+    focused.current = true;
     input.current?.focus({ preventScroll: true });
-  }, []);
+  }, [pos]);
 
   const send = async (p: string) => {
     if (loading) return;
@@ -153,7 +174,11 @@ export function AskSelection({
     setResult(null);
     setAsked(p);
     try {
-      setResult(await onAsk(p));
+      const r = await onAsk(p);
+      // Pediste dejarlo en el texto: se pone ahí (y quien abrió el panel lo cierra).
+      if (r.place === "end" && onAppend) return onAppend(r.answer);
+      if (r.place === "below") return onInsert(r.answer);
+      setResult(r);
       setPrompt("");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -167,9 +192,8 @@ export function AskSelection({
     if (!p && result) return void send(asked);
     void send(p);
   };
-  const askedLabel = asked
-    ? (QUICK.find((q) => q.prompt === asked)?.label ?? asked)
-    : "Profundiza";
+  const askedLabel =
+    quick.find((q) => q.prompt === asked)?.label ?? (asked || "Profundiza");
 
   return createPortal(
     <div
@@ -241,7 +265,7 @@ export function AskSelection({
 
       {result && !loading && (
         <div className="rt-ai-actions">
-          {result.rewrite && (
+          {result.rewrite && onReplace && (
             <button type="button" className="primary" onClick={() => onReplace(result.answer)}>
               <Replace size={13} /> Reemplazar
             </button>
@@ -249,6 +273,11 @@ export function AskSelection({
           <button type="button" onClick={() => onInsert(result.answer)}>
             <CornerDownLeft size={13} /> Añadir debajo
           </button>
+          {onAppend && (
+            <button type="button" onClick={() => onAppend(result.answer)}>
+              <ArrowDownToLine size={13} /> Al final de la nota
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -264,7 +293,7 @@ export function AskSelection({
 
       {!result && !loading && (
         <div className="rt-ai-chips">
-          {QUICK.map((q) => (
+          {quick.map((q) => (
             <button type="button" key={q.label} onClick={() => void send(q.prompt)}>
               {q.label}
             </button>
@@ -285,7 +314,7 @@ export function AskSelection({
           rows={1}
           maxLength={1500}
           aria-label="Pregunta o indicación para la IA"
-          placeholder={result ? "Pide otra cosa…" : "Pregunta o pide algo sobre esto…"}
+          placeholder={result ? "Pide otra cosa…" : placeholder}
           value={prompt}
           disabled={loading}
           onChange={(e) => setPrompt(e.target.value)}

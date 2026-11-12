@@ -1,4 +1,5 @@
 import {
+  memo,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -9,8 +10,13 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  BookMarked,
   CalendarDays,
   Copy,
+  ExternalLink,
+  EyeOff,
+  Globe,
+  ImageOff,
   ImagePlus,
   Link2,
   LoaderCircle,
@@ -29,7 +35,9 @@ import { kindMeta } from '../composer/kinds';
 import { MoodIcon, moodOf } from '../composer/controls';
 import { pastedImages } from '../composer/PhotoBlocks';
 import { useImageUploads } from '../composer/useImageUploads';
-import type { Entry, Episode, Person, Place } from '../data';
+import { notebookColors, type Notebook } from '../cuadernos/model';
+import { useCuadernos } from '../cuadernos/useCuadernos';
+import type { Entry, Episode, Person, Place, StoredImage } from '../data';
 import { episodeKindOf } from '../lib/episodes';
 import { friendlyDate, todayInputValue } from '../lib/format';
 import { placeKinds, placeSearchText } from '../lib/places';
@@ -37,7 +45,7 @@ import { relationMeta, relationOf, searchText } from '../lib/people';
 import { Avatar } from '../people/Avatar';
 import { MyFace } from '../people/MyFace';
 import { enqueuePieces } from './analysis';
-import { peopleIn, placesIn, scanOn } from './helpers';
+import { peopleIn, placesIn, scanOn, shownName } from './helpers';
 import {
   INSTANT_MAX,
   INSTANT_PHOTOS,
@@ -50,7 +58,23 @@ import {
   type Thread,
 } from './model';
 import { Popover } from './Popover';
-import { createInstants, linkInstant, removeInstants, restoreInstants, updateInstant } from './store';
+import {
+  openRemote,
+  resyncInstant,
+  shareInstants,
+  sharesState,
+  unshareInstants,
+  useCanShare,
+  useShare,
+} from './share';
+import {
+  createInstants,
+  linkInstant,
+  removeInstants,
+  restoreInstants,
+  updateInstant,
+  useInstants,
+} from './store';
 import './instants.css';
 
 /** Mapas por id, uno por lista (se rehacen solo cuando cambia la lista). */
@@ -73,22 +97,39 @@ export type FeedNav = {
 };
 
 const MAX_CHIPS = 8;
+/** Mientras los cuadernos cargan (siempre la misma lista vacía, para no rehacer el mapa por id). */
+const NO_NOTEBOOKS: Notebook[] = [];
 /** El día (AAAA-MM-DD) en que pasó un recuerdo. */
 const entryDay = (e: Entry) => todayInputValue(new Date(e.created_at));
 
-/** Un hilo completo: cada publicación, sus vínculos y la caja para seguirlo. */
-export function ThreadCard({
-  thread,
-  highlight = false,
-  nav = {},
-  compact = false,
-}: {
+type ThreadCardProps = {
   thread: Thread;
   highlight?: boolean;
   nav?: FeedNav;
   /** En la ventana de un instante: sin borde de tarjeta. */
   compact?: boolean;
-}) {
+};
+
+/** El mismo hilo con los mismos instantes (los que no cambiaron son el mismo objeto). */
+const sameThread = (a: ThreadCardProps, b: ThreadCardProps) =>
+  a.highlight === b.highlight &&
+  a.compact === b.compact &&
+  a.nav === b.nav &&
+  a.thread.id === b.thread.id &&
+  a.thread.items.length === b.thread.items.length &&
+  a.thread.items.every((it, k) => it === b.thread.items[k]);
+
+/**
+ * Un hilo completo: cada publicación, sus vínculos y la caja para seguirlo. No se vuelve a pintar
+ * si su hilo no cambió: con cientos en el feed, traer la siguiente tanda o cambiar otro instante
+ * no repinta los demás.
+ */
+export const ThreadCard = memo(function ThreadCard({
+  thread,
+  highlight = false,
+  nav = {},
+  compact = false,
+}: ThreadCardProps) {
   const [replying, setReplying] = useState(false);
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -116,6 +157,51 @@ export function ThreadCard({
       {replying && <ReplyBox thread={thread} onDone={() => setReplying(false)} />}
     </article>
   );
+}, sameThread);
+
+/**
+ * Una foto del instante. Mientras llega se ve un esqueleto del tamaño que tendrá (así el feed no
+ * salta al cargar), aparece con un fundido y, si la versión media falla, prueba la original; si
+ * tampoco, deja un marcador en vez de una imagen rota.
+ */
+function PostPhoto({
+  image,
+  index,
+  onOpen,
+}: {
+  image: StoredImage;
+  index: number;
+  onOpen: () => void;
+}) {
+  const [src, setSrc] = useState(image.medium ?? image.url);
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const img = useRef<HTMLImageElement>(null);
+  // Una foto que ya estaba en la caché del navegador puede haber cargado antes de escuchar el aviso.
+  useLayoutEffect(() => {
+    if (img.current?.complete && img.current.naturalWidth > 0) setState('ready');
+  }, []);
+  return (
+    <button
+      type="button"
+      className={'ip-photo ' + state}
+      onClick={onOpen}
+      aria-label={`Ver foto ${index + 1}`}
+    >
+      {state === 'error' ? (
+        <ImageOff size={20} aria-hidden="true" />
+      ) : (
+        <img
+          ref={img}
+          src={src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setState('ready')}
+          onError={() => (src !== image.url ? setSrc(image.url) : setState('error'))}
+        />
+      )}
+    </button>
+  );
 }
 
 /** Una publicación: quién, cuándo, el texto tal cual, sus fotos, sus vínculos y su menú. */
@@ -141,7 +227,10 @@ function InstantPost({
   const [menuAt, setMenuAt] = useState<HTMLElement | null>(null);
   const [linking, setLinking] = useState(false);
   const [allChips, setAllChips] = useState(false);
-  const myName = me.profile.name?.trim() || user.email?.split('@')[0] || 'Tú';
+  const [sharing, setSharing] = useState(false);
+  const canShare = useCanShare();
+  const share = useShare(i.id);
+  const myName = shownName(me.profile, user.email);
   const mood = moodOf(i.mood);
   const day = dayOfInstant(i);
   const writtenDay = dayOfInstant({ ...i, happened_on: null });
@@ -180,19 +269,70 @@ function InstantPost({
       notify('No se pudo copiar.');
     }
   };
+  /** Publicarlo en tu cuenta del Fediverso (o, si falló antes, ponerlo al día). */
+  const doShare = async () => {
+    setSharing(true);
+    if (share?.remote_ids.length) {
+      const why = await resyncInstant(i.id);
+      setSharing(false);
+      return notify(why ? `No se pudo actualizar la publicación: ${why}` : 'Publicación al día.');
+    }
+    const r = await shareInstants([i.id]);
+    setSharing(false);
+    if (r.error) return notify(`No se pudo compartir: ${r.error}`);
+    notify(
+      'Compartido' + (r.note ? `. ${r.note}` : '.'),
+      r.url ? { label: 'Ver', icon: 'open', run: () => openRemote(r.url) } : undefined,
+    );
+  };
+  const stopSharing = async () => {
+    const ok = await confirm({
+      title: '¿Dejar de compartir?',
+      message:
+        'Se borra la publicación de tu cuenta del Fediverso, con sus respuestas.' +
+        (share?.origin === 'mastodon' ? ' Nació allí: el instante se queda en Nexo.' : '') +
+        ' Las copias que otros servidores ya guardaron pueden tardar en desaparecer.',
+      confirmLabel: 'Dejar de compartir',
+      danger: true,
+      icon: 'warning',
+    });
+    if (!ok) return;
+    setSharing(true);
+    const why = await unshareInstants([i.id]);
+    setSharing(false);
+    notify(why ? `No se pudo quitar la publicación: ${why}` : 'Ya no está compartido.');
+  };
   const remove = async () => {
     const whole = isRoot && thread.items.length > 1;
+    const ids = whole ? thread.items.map((x) => x.id) : [i.id];
+    // Lo que Nexo publicó se borra también del Fediverso; lo que nació allí se queda allí.
+    const shared = ids.filter((id) => sharesState().shares.get(id)?.origin === 'nexo');
     const ok = await confirm({
       title: whole ? `¿Borrar el hilo (${thread.items.length})?` : '¿Borrar este instante?',
       message:
         (whole ? 'Es el primero del hilo: se borra con todo lo que lo sigue. ' : '') +
-        'Las piezas que nacieron de él (encuentros, gastos, pendientes…) se conservan.',
+        'Las piezas que nacieron de él (encuentros, gastos, pendientes…) se conservan.' +
+        (shared.length ? ' También se borra lo compartido en tu cuenta del Fediverso.' : ''),
       confirmLabel: 'Borrar',
       danger: true,
       icon: 'trash',
     });
     if (!ok) return;
-    const gone = await removeInstants(whole ? thread.items.map((x) => x.id) : [i.id]);
+    if (shared.length) {
+      // Primero lo público: si no se puede quitar de allí, se avisa antes de perder el rastro.
+      const why = await unshareInstants(shared);
+      if (why) {
+        const anyway = await confirm({
+          title: 'No se pudo quitar de tu cuenta',
+          message: `${why} Si lo borras de Nexo, la publicación seguirá pública allí. ¿Borrar de todos modos?`,
+          confirmLabel: 'Borrar de todos modos',
+          danger: true,
+          icon: 'warning',
+        });
+        if (!anyway) return;
+      }
+    }
+    const gone = await removeInstants(ids);
     if (typeof gone === 'string') return notify(gone);
     notify(whole ? 'Hilo borrado.' : 'Instante borrado.', {
       label: 'Deshacer',
@@ -236,6 +376,27 @@ function InstantPost({
           </button>
         </header>
 
+        {share && (
+          <button
+            type="button"
+            className={'ip-share' + (share.status === 'error' ? ' error' : '')}
+            disabled={sharing}
+            title={
+              share.status === 'error'
+                ? `${share.note || 'No se pudo compartir.'} Toca para reintentar.`
+                : share.origin === 'mastodon'
+                  ? 'Nació en tu cuenta del Fediverso. Toca para abrirlo.'
+                  : share.note
+                    ? `Público en tu cuenta del Fediverso. ${share.note}`
+                    : 'Público en tu cuenta del Fediverso. Toca para abrirlo.'
+            }
+            onClick={() => (share.status === 'error' ? void doShare() : openRemote(share.remote_url))}
+          >
+            {sharing ? <LoaderCircle className="spin" size={10} /> : <Globe size={10} />}
+            {share.status === 'error' ? 'No se compartió · reintentar' : 'Público'}
+          </button>
+        )}
+
         {editing ? (
           <EditBox instant={i} onDone={() => setEditing(false)} />
         ) : (
@@ -244,14 +405,7 @@ function InstantPost({
             {i.images.length > 0 && (
               <div className={'ip-photos n' + Math.min(i.images.length, 3)}>
                 {i.images.map((img, k) => (
-                  <button
-                    type="button"
-                    key={img.url + k}
-                    onClick={() => app.openImages(i.images, k)}
-                    aria-label={`Ver foto ${k + 1}`}
-                  >
-                    <img src={img.medium ?? img.url} alt="" loading="lazy" />
-                  </button>
+                  <PostPhoto key={img.url + k} image={img} index={k} onOpen={() => app.openImages(i.images, k)} />
                 ))}
               </div>
             )}
@@ -323,6 +477,21 @@ function InstantPost({
           <button role="menuitem" onClick={run(() => void copy())}>
             <Copy size={15} /> Copiar texto
           </button>
+          {canShare &&
+            (share?.status === 'posted' ? (
+              <>
+                <button role="menuitem" onClick={run(() => openRemote(share.remote_url))}>
+                  <ExternalLink size={15} /> Ver publicación
+                </button>
+                <button role="menuitem" onClick={run(() => void stopSharing())}>
+                  <EyeOff size={15} /> Dejar de compartir
+                </button>
+              </>
+            ) : (
+              <button role="menuitem" disabled={sharing} onClick={run(() => void doShare())}>
+                <Globe size={15} /> {share ? 'Reintentar compartir' : 'Compartir en público'}
+              </button>
+            ))}
           <i className="ip-pop-sep" aria-hidden="true" />
           <button role="menuitem" className="danger" onClick={run(() => void remove())}>
             <Trash2 size={15} /> {isRoot && thread.items.length > 1 ? 'Borrar el hilo' : 'Borrar'}
@@ -338,8 +507,10 @@ function InstantPost({
 function useLinkChips(i: Instant, nav: FeedNav): ReactNode[] {
   const app = useApp();
   const { workspace } = app;
+  const { list: notebookList } = useCuadernos();
   const entries = byId(workspace.entries);
   const episodes = byId(workspace.episodes);
+  const notebooks = byId(notebookList ?? NO_NOTEBOOKS);
   const people = byId(workspace.people);
   const places = byId(workspace.places);
   const unlink = (key: LinkKey, id: string) => void linkInstant(i.id, {}, { [key]: [id] });
@@ -361,6 +532,24 @@ function useLinkChips(i: Instant, nav: FeedNav): ReactNode[] {
           app.go('Episodios', e);
         }}
         onRemove={() => unlink('episode_ids', id)}
+      />,
+    );
+  }
+  for (const id of i.notebook_ids) {
+    const nb = notebooks.get(id);
+    if (!nb) continue;
+    out.push(
+      <Chip
+        key={'n' + id}
+        tone={notebookColors[nb.color].accent}
+        icon={<BookMarked size={13} />}
+        label={nb.name}
+        title="Cuaderno"
+        onOpen={() => {
+          nav.onLeave?.();
+          app.go('Agenda', nb);
+        }}
+        onRemove={() => unlink('notebook_ids', id)}
       />,
     );
   }
@@ -480,6 +669,15 @@ function EditBox({ instant: i, onDone }: { instant: Instant; onDone: () => void 
     const ok = await updateInstant(i.id, { body: text.trim(), images: uploads.images }, true);
     setBusy(false);
     if (ok !== true) return notify(ok);
+    // Si está compartido, la publicación se pone al día con lo que acabas de cambiar.
+    if (sharesState().shares.get(i.id)?.remote_ids.length)
+      void resyncInstant(i.id).then((why) =>
+        notify(
+          why
+            ? `Se guardó en Nexo, pero no se pudo actualizar la publicación: ${why}`
+            : 'Publicación actualizada.',
+        ),
+      );
     onDone();
   };
   return (
@@ -722,6 +920,8 @@ function useAutoGrow(text: string, max = 320) {
  */
 function LinkDialog({ instant, onClose }: { instant: Instant; onClose: () => void }) {
   const { workspace } = useApp();
+  const { list: notebookList } = useCuadernos();
+  const { noNotebooks } = useInstants();
   const counts = useMemo(() => personCounts(workspace.entries), [workspace.entries]);
   const items = useMemo<PickItem[]>(() => {
     const people = [...workspace.people]
@@ -752,6 +952,24 @@ function LinkDialog({ instant, onClose }: { instant: Instant; onClose: () => voi
           ),
         };
       });
+    // Sin la columna de cuadernos (migración nueva sin ejecutar) no se ofrecen.
+    const notebooks = noNotebooks
+      ? []
+      : [...(notebookList ?? [])]
+          .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+          .map((nb: Notebook) => {
+            const c = notebookColors[nb.color];
+            return {
+              id: 'notebook_ids:' + nb.id,
+              name: nb.name,
+              sub: `Cuaderno · ${nb.items.length} ${nb.items.length === 1 ? 'elemento' : 'elementos'}`,
+              lead: (
+                <span className="pk-tile" style={{ '--c': c.accent, '--s': c.soft } as CSSProperties}>
+                  <BookMarked size={16} />
+                </span>
+              ),
+            };
+          });
     const places = workspace.places.map((p: Place) => {
       const m = placeKinds[p.kind] ?? placeKinds.otro;
       return {
@@ -781,18 +999,19 @@ function LinkDialog({ instant, onClose }: { instant: Instant; onClose: () => voi
           ),
         };
       });
-    return [...episodes, ...people, ...places, ...entries];
-  }, [workspace, counts]);
+    return [...episodes, ...notebooks, ...people, ...places, ...entries];
+  }, [workspace, counts, notebookList, noNotebooks]);
   const selected = [
     ...instant.entry_ids.map((id) => 'entry_ids:' + id),
     ...instant.episode_ids.map((id) => 'episode_ids:' + id),
+    ...instant.notebook_ids.map((id) => 'notebook_ids:' + id),
     ...instant.person_ids.map((id) => 'person_ids:' + id),
     ...instant.place_ids.map((id) => 'place_ids:' + id),
   ];
   return (
     <PickDialog
       title="Vincular a este instante"
-      placeholder="Busca una persona, un lugar, un episodio o un recuerdo…"
+      placeholder="Busca una persona, un lugar, un episodio, un cuaderno o un recuerdo…"
       items={items}
       selected={selected}
       multi

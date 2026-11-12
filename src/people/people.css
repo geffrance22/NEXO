@@ -1055,7 +1055,7 @@ main:has(.pp-page:not(.full)) {
 }
 .pr {
   display: grid;
-  grid-template-columns: 40px minmax(160px, 1.6fr) 100px 120px minmax(120px, 1.4fr) 34px 34px;
+  grid-template-columns: 40px minmax(160px, 1.6fr) 100px 120px minmax(120px, 1.4fr) 44px 34px;
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
@@ -3568,7 +3568,7 @@ main:has(.pp-page:not(.full)) {
     animation: cp-sheet-up 0.3s cubic-bezier(0.2, 0.9, 0.25, 1);
   }
   .pr {
-    grid-template-columns: 40px 1fr 90px 34px;
+    grid-template-columns: 40px 1fr 90px 44px 34px;
   }
   .pr-rel,
   .pr-pend {

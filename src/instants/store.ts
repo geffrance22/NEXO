@@ -5,14 +5,18 @@ import { errorMessage } from '../lib/format';
 import { LINK_KEYS, type Instant, type InstantLinks, type LinkKey } from './model';
 
 const TABLE = 'instants';
-const COLUMNS =
+const BASE_COLUMNS =
   'id,thread_id,pos,body,images,mood,happened_on,person_ids,entry_ids,episode_ids,place_ids,edited_at,created_at,updated_at';
+const COLUMNS = BASE_COLUMNS + ',notebook_ids';
 export const INSTANTS_MIGRATION = 'supabase/migrations/202611120003_instants.sql';
 export const instantsHint = `Para guardar tus instantes ejecuta ${INSTANTS_MIGRATION} en el SQL Editor de Supabase.`;
+export const NOTEBOOKS_MIGRATION = 'supabase/migrations/202611120004_instant_notebooks.sql';
+export const notebooksHint = `Para vincular instantes a cuadernos ejecuta ${NOTEBOOKS_MIGRATION} en el SQL Editor de Supabase.`;
 /** Lo que la base acepta en cada lista de vínculos. */
 const CAPS: Record<LinkKey, number> = {
   entry_ids: 300,
   episode_ids: 40,
+  notebook_ids: 40,
   person_ids: 80,
   place_ids: 40,
 };
@@ -25,6 +29,8 @@ type State = {
   /** Ya cargó todo (no solo la primera tanda). */
   complete: boolean;
   missing: boolean;
+  /** Falta la columna de cuadernos (migración 202611120004): lo demás funciona igual. */
+  noNotebooks: boolean;
   error: string;
 };
 
@@ -32,7 +38,7 @@ type State = {
  * Tus instantes: una sola copia en memoria para el panel, el bloque de Mi espacio, las fichas que
  * nacieron de ellos, la búsqueda y el saludo.
  */
-let state: State = { list: null, complete: false, missing: false, error: '' };
+let state: State = { list: null, complete: false, missing: false, noNotebooks: false, error: '' };
 const subs = new Set<() => void>();
 let loading: Promise<void> | null = null;
 /** Creados o borrados en esta sesión: una carga que ya iba en camino no los pierde ni los revive. */
@@ -56,14 +62,25 @@ supabase.auth.onAuthStateChange((event, session) => {
     loading = null;
     made.clear();
     gone.clear();
-    set({ list: null, complete: false, missing: false, error: '' });
+    set({ list: null, complete: false, missing: false, noNotebooks: false, error: '' });
     if (next && subs.size) void loadInstants();
   }
   owner = next;
 });
 
+/** La tabla existe, pero aún sin la columna de cuadernos. */
+function isMissingNotebooks(e: unknown) {
+  const { code = '', message = '' } = (e ?? {}) as { code?: string; message?: string };
+  return (
+    message.includes('notebook_ids') &&
+    (code === '42703' || code === 'PGRST204' || /column|schema cache/i.test(message))
+  );
+}
+
 function isMissingTable(e: unknown) {
   const { code = '', message = '' } = (e ?? {}) as { code?: string; message?: string };
+  // «column instants.notebook_ids does not exist» menciona la tabla, pero la tabla sí existe.
+  if (isMissingNotebooks(e)) return false;
   return (
     code === '42P01' ||
     code === 'PGRST205' ||
@@ -94,6 +111,7 @@ function toInstant(r: Record<string, unknown>): Instant {
     person_ids: ids(r.person_ids),
     entry_ids: ids(r.entry_ids),
     episode_ids: ids(r.episode_ids),
+    notebook_ids: ids(r.notebook_ids),
     place_ids: ids(r.place_ids),
     edited_at: typeof r.edited_at === 'string' ? r.edited_at : null,
     created_at: created,
@@ -115,18 +133,26 @@ export function loadInstants(force = false) {
   if (loading && !force) return loading;
   loading = (async () => {
     const all: Instant[] = [];
-    for (let from = 0; from < MAX_LOADED; from += PAGE) {
-      const { data, error } = await supabase
+    const page = (from: number, columns: string) =>
+      supabase
         .from(TABLE)
-        .select(COLUMNS)
+        .select(columns)
         .order('created_at', { ascending: false })
         .range(from, from + PAGE - 1);
+    for (let from = 0; from < MAX_LOADED; from += PAGE) {
+      let { data, error } = await page(from, state.noNotebooks ? BASE_COLUMNS : COLUMNS);
+      // Sin la columna de cuadernos (migración nueva sin ejecutar), todo lo demás sigue igual.
+      if (error && !state.noNotebooks && isMissingNotebooks(error)) {
+        set({ noNotebooks: true });
+        ({ data, error } = await page(from, BASE_COLUMNS));
+      }
       if (error) {
         if (isMissingTable(error)) set({ list: [], complete: true, missing: true, error: '' });
         else set({ list: state.list ?? merged(all), complete: true, error: errorMessage(error) });
         return;
       }
-      const rows = (data ?? []).map((r) => toInstant(r as Record<string, unknown>));
+      // Con las columnas en una variable, el cliente no puede deducir la forma de las filas.
+      const rows = ((data ?? []) as unknown as Record<string, unknown>[]).map(toInstant);
       all.push(...rows);
       const done = rows.length < PAGE;
       set({ list: merged(all), complete: done, missing: false, error: '' });
@@ -144,7 +170,14 @@ export type InstantDraft = {
   person_ids: string[];
   place_ids: string[];
   episode_ids: string[];
+  /** Recuerdos (encuentros, diario, películas, libros…) que elegiste como tema. */
+  entry_ids?: string[];
+  /** Cuadernos que elegiste como tema. */
+  notebook_ids?: string[];
 };
+
+/** Los cuadernos solo viajan si hay alguno: sin ellos, guardar no depende de la migración nueva. */
+const withNotebooks = (list: readonly string[]) => (list.length ? { notebook_ids: [...list] } : {});
 
 const clip = (list: string[], key: LinkKey) => [...new Set(list)].slice(0, CAPS[key]);
 
@@ -176,8 +209,9 @@ export async function createInstants(
       mood: d.mood,
       happened_on: d.happened_on,
       person_ids: clip(d.person_ids, 'person_ids'),
-      entry_ids: [],
+      entry_ids: clip(d.entry_ids ?? [], 'entry_ids'),
       episode_ids: clip(d.episode_ids, 'episode_ids'),
+      notebook_ids: clip(d.notebook_ids ?? [], 'notebook_ids'),
       place_ids: clip(d.place_ids, 'place_ids'),
       edited_at: null,
       created_at: at,
@@ -198,15 +232,21 @@ export async function createInstants(
       mood: r.mood,
       happened_on: r.happened_on,
       person_ids: r.person_ids,
+      entry_ids: r.entry_ids,
       episode_ids: r.episode_ids,
       place_ids: r.place_ids,
       created_at: r.created_at,
+      ...withNotebooks(r.notebook_ids),
     })),
   );
   if (error) {
     const drop = new Set(rows.map((r) => r.id));
     for (const id of drop) made.delete(id);
     set({ list: (state.list ?? []).filter((i) => !drop.has(i.id)) });
+    if (isMissingNotebooks(error)) {
+      set({ noNotebooks: true });
+      return notebooksHint;
+    }
     if (isMissingTable(error)) {
       set({ missing: true });
       return instantsHint;
@@ -252,6 +292,10 @@ export async function updateInstant(
     .eq('id', id);
   if (error) {
     if ((state.list ?? []).find((i) => i.id === id)?.updated_at === updated_at) swap(before);
+    if (isMissingNotebooks(error)) {
+      set({ noNotebooks: true });
+      return notebooksHint;
+    }
     return errorMessage(error);
   }
   return true;
@@ -316,6 +360,7 @@ export async function restoreInstants(list: Instant[]): Promise<true | string> {
       place_ids: i.place_ids,
       edited_at: i.edited_at,
       created_at: i.created_at,
+      ...withNotebooks(i.notebook_ids),
     })),
   );
   if (error) {

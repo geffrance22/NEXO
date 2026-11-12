@@ -18,14 +18,17 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '../AppContext';
+import { askNote } from '../assistant';
+import { AskSelection } from '../composer/AskSelection';
 import { historyKeys, useTextHistory } from '../composer/useTextHistory';
 import type { Named } from '../planner/shared';
+import { anchorOf, appendToNote, insertBelow, NOTE_QUICK, type NoteAnchor } from './askNote';
 import { hostOf, linksIn } from './links';
 import { parseLines, stripMarks } from './marks';
 import { imagesOf, MAX_NOTE_IMAGES, NoteGallery, useNoteUploads } from './NoteImages';
 import { AutoText, CheckEditor, IconButton, Pop, Swatches, TagEditor } from './parts';
 import { ReminderChip, ReminderMenu } from './reminders';
-import { FormatBar, RichNote, useRichEditor } from './RichNote';
+import { FormatBar, RichNote, useRichEditor, type AskTarget } from './RichNote';
 import type { KeepNote } from './useNotes';
 
 export type Draft = Omit<KeepNote, 'id' | 'created_at' | 'rank' | 'vaulted' | 'secret'>;
@@ -114,12 +117,31 @@ export function NoteForm({
   /** Avisa mientras hay fotos subiendo (para no cerrar antes de tiempo). */
   onBusyChange?: (busy: boolean) => void;
 }) {
-  const { openImages } = useApp();
+  const { openImages, notify } = useApp();
   const [list, setList] = useState(initialList || draft.checks.length > 0);
   const [tagging, setTagging] = useState(false);
   const [fmt, setFmt] = useState(false);
   const editor = useRichEditor();
   const history = useTextHistory(draft.body, (body) => set({ body }));
+  // Preguntar a la IA sobre lo seleccionado. La respuesta llega segundos después: se añade sobre
+  // el texto de ese momento (por si seguiste escribiendo), nunca sobre el de cuando preguntaste.
+  const [asking, setAsking] = useState<(AskTarget & { anchor: NoteAnchor | null }) | null>(
+    null,
+  );
+  const bodyRef = useRef(draft.body);
+  bodyRef.current = draft.body;
+  const titleRef = useRef(draft.title);
+  titleRef.current = draft.title;
+  const openAsk = (t: AskTarget) =>
+    setAsking({ ...t, anchor: anchorOf(draft.body, t.quote, t.found) });
+  /** Deja `next` como texto de la nota (un paso de deshacer) y lleva el cursor a lo añadido. */
+  const addToNote = (next: string, said: string) => {
+    setAsking(null);
+    if (next === bodyRef.current) return;
+    editor.follow.current = true;
+    history.change(next);
+    notify(said);
+  };
   const hasText = !list || Boolean(draft.body);
   const root = useRef<HTMLDivElement>(null);
   const file = useRef<HTMLInputElement>(null);
@@ -254,6 +276,37 @@ export function NoteForm({
             value={draft.body}
             onChange={(body) => set({ body })}
             history={history}
+            // Las notas de la bóveda se guardan cifradas: no se le mandan a la IA.
+            onAsk={vault ? undefined : openAsk}
+          />
+        )}
+        {asking && (
+          <AskSelection
+            quote={asking.quote}
+            point={asking.point}
+            quick={NOTE_QUICK}
+            placeholder="Pregunta algo o pide que lo añada a la nota…"
+            onAsk={(prompt) =>
+              askNote({
+                selection: asking.quote,
+                prompt,
+                text: bodyRef.current,
+                title: titleRef.current,
+              })
+            }
+            onInsert={(text) => {
+              const r = insertBelow(bodyRef.current, text, asking.anchor, asking.quote);
+              addToNote(
+                r.body,
+                r.where === 'below'
+                  ? 'Añadido debajo de la selección.'
+                  : 'No encontré la selección: lo añadí al final de la nota.',
+              );
+            }}
+            onAppend={(text) =>
+              addToNote(appendToNote(bodyRef.current, text), 'Añadido al final de la nota.')
+            }
+            onClose={() => setAsking(null)}
           />
         )}
         {list && <CheckEditor checks={draft.checks} onChange={(checks) => set({ checks })} />}

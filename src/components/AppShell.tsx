@@ -18,6 +18,7 @@ import type {
   EpisodeOrigin,
   Group,
   Page,
+  Exchange,
   Person,
   Place,
   StoredImage,
@@ -31,18 +32,22 @@ import {
   withTastes,
   type Tastes,
 } from "../lib/tastes";
+import { PeopleBatch } from "../people/batch/PeopleBatch";
+import { givingOf } from "../people/giving";
+import { entryAsInput } from "../finance/money";
 import { InstantComposer } from "../instants/InstantComposer";
 import { InstantSheet, InstantsPanel } from "../instants/InstantsPanel";
 import { PiecesBar } from "../instants/PiecesBar";
 import { setPiecesReview } from "../instants/analysis";
 import { loadInstants } from "../instants/store";
+import { useFediverseImport } from "../instants/importer";
 import { EpisodeSheet } from "../episodes/EpisodeSheet";
 import { EpisodesPage } from "../episodes/EpisodesPage";
 import { MeetingBrief } from "../people/MeetingBrief";
 import { GroupDialog } from "../relations/GroupDialog";
 import { TieDialog } from "../relations/TieDialog";
 import { todayInputValue } from "../lib/format";
-import type { PersonSection } from "../lib/people";
+import { exchangeKinds, type PersonSection } from "../lib/people";
 import { PersonSheet } from "../people/PersonSheet";
 import { QuickDialog } from "../people/QuickDialog";
 import { PlacesPage } from "../pages/PlacesPage";
@@ -193,6 +198,8 @@ export function AppShell({ user }: { user: AppUser }) {
     personId: string;
     otherId?: string;
   } | null>(null);
+  // Añadir varias personas a la vez (lista escrita o contactos importados).
+  const [peopleBatch, setPeopleBatch] = useState(false);
   // Instantes: escribir uno (o un hilo), el feed a la derecha y uno abierto en su ventana.
   const [writing, setWriting] = useState<{
     text?: string;
@@ -209,6 +216,14 @@ export function AppShell({ user }: { user: AppUser }) {
   useEffect(() => {
     void loadInstants();
   }, []);
+  // Lo que publicas en Mastodon llega a Instantes (si compartir está configurado).
+  useFediverseImport({
+    uid: user.id,
+    workspace: data.workspace,
+    ready: data.loaded,
+    notify,
+    openInstants: (focus) => setInstantsOpen({ focus }),
+  });
   // Una entrada del diario recién guardada que la IA está leyendo.
   const [diaryJob, setDiaryJob] = useState<DiaryJob | null>(null);
   const closeDiaryJob = useCallback(() => setDiaryJob(null), []);
@@ -298,6 +313,81 @@ export function AppShell({ user }: { user: AppUser }) {
       },
     );
   }
+  /**
+   * Un movimiento con personas también queda en «Dar y recibir»: un gasto es algo que le diste (con
+   * lo clave y cuánto, aproximado); un regalo o un préstamo que te hicieron, algo que recibiste. Va
+   * enlazado al movimiento: si lo editas se actualiza, y si quitas a la persona, sale de su ficha.
+   */
+  async function syncGiving(input: EntryInput, entryId: string) {
+    const want = givingOf(input);
+    const targets = new Set(want ? input.personIds : []);
+    const added: Person[] = [];
+    for (const p of latest.current.people) {
+      const list = p.profile.exchanges ?? [];
+      const had = list.find((x) => x.entryId === entryId);
+      if (!targets.has(p.id) && !had) continue;
+      let next: Exchange[];
+      if (!want || !targets.has(p.id)) next = list.filter((x) => x.entryId !== entryId);
+      else {
+        const item: Exchange = {
+          id: had?.id ?? crypto.randomUUID(),
+          date: input.date,
+          ...want,
+          entryId,
+        };
+        if (
+          had &&
+          had.date === item.date &&
+          had.dir === item.dir &&
+          had.kind === item.kind &&
+          had.weight === item.weight &&
+          had.note === item.note
+        )
+          continue;
+        next = had
+          ? list.map((x) => (x.entryId === entryId ? item : x))
+          : [item, ...list].slice(0, 500);
+      }
+      if (
+        (await data.patchPerson(p, { profile: { ...p.profile, exchanges: next } }, true)) &&
+        !had &&
+        want
+      )
+        added.push(p);
+    }
+    if (!added.length || !want) return;
+    const names = added.map((p) => p.name.split(" ")[0]);
+    const who =
+      names.length > 1
+        ? `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`
+        : names[0];
+    notify(
+      want.dir === "dar"
+        ? `En «Dar y recibir»: le diste a ${who} (${exchangeKinds[want.kind].toLowerCase()}).`
+        : `En «Dar y recibir»: recibiste de ${who} (${exchangeKinds[want.kind].toLowerCase()}).`,
+      {
+        label: "Quitar",
+        run: () => {
+          for (const a of added) {
+            const now = latest.current.people.find((p) => p.id === a.id);
+            if (!now) continue;
+            void data.patchPerson(
+              now,
+              {
+                profile: {
+                  ...now.profile,
+                  exchanges: (now.profile.exchanges ?? []).filter(
+                    (x) => x.entryId !== entryId,
+                  ),
+                },
+              },
+              true,
+            );
+          }
+        },
+      },
+    );
+  }
   const savedThen = async <T,>(
     ok: Promise<T>,
     input: EntryInput,
@@ -306,6 +396,14 @@ export function AppShell({ user }: { user: AppUser }) {
     const saved = await ok;
     // Una cápsula del tiempo sellada no le enseña nada a las fichas hasta abrirla.
     if (saved && !input.details.capsule) void learnTastes(input, before);
+    // El movimiento (nuevo o editado) en «Dar y recibir» de las personas que nombra.
+    const entryId = before?.id ?? (typeof saved === "string" ? saved : null);
+    if (
+      saved &&
+      entryId &&
+      (input.kind === "Movimiento" || before?.kind === "Movimiento")
+    )
+      void syncGiving(input, entryId);
     return saved;
   };
   /**
@@ -459,6 +557,9 @@ export function AppShell({ user }: { user: AppUser }) {
     quickPerson: (person, mode) => setQuick({ personId: person.id, mode }),
     createPerson: (name) =>
       data.savePerson({ name, role: "", interests: "", bio: "", profile: {} }),
+    savePeople: data.savePeople,
+    discardPeople: data.discardPeople,
+    openPeopleBatch: () => setPeopleBatch(true),
     openTie: (person, others) =>
       setTieFor({ personId: person?.id ?? null, others }),
     saveTie: data.saveTie,
@@ -561,7 +662,12 @@ export function AppShell({ user }: { user: AppUser }) {
           : { entryId: entry.id, anchor, mode },
       );
     },
-    removeEntry: (entry, silent) => void data.removeEntry(entry, silent),
+    removeEntry: (entry, silent) =>
+      void data.removeEntry(entry, silent).then((ok: unknown) => {
+        // Un movimiento borrado sale también de «Dar y recibir» (removeEntry da true si se borró).
+        if (ok === true && entry.kind === "Movimiento")
+          void syncGiving({ ...entryAsInput(entry), personIds: [] }, entry.id);
+      }),
     removePerson: async (person) => {
       if ((await data.removePerson(person)) && selected?.id === person.id)
         go("Personas");
@@ -747,6 +853,7 @@ export function AppShell({ user }: { user: AppUser }) {
             onClose={closeModal}
           />
         )}
+        {peopleBatch && <PeopleBatch onClose={() => setPeopleBatch(false)} />}
         {modal?.type === "place" && (
           <PlaceSheet
             place={modal.place}

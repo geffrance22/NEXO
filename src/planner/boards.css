@@ -342,15 +342,23 @@
     0 1px 0 rgba(25, 40, 30, 0.06),
     0 10px 24px -18px rgba(20, 30, 25, 0.45);
 }
-.bd-list.toned::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 14px;
-  left: 14px;
-  height: 3px;
-  border-radius: 0 0 4px 4px;
-  background: var(--lc);
+/* Columna con color: toda la columna se tiñe (un pastel de su color), no solo una raya arriba.
+   Se redefine `--bd-col` aquí dentro para que lo que usa el fondo de la columna (la hoja de
+   «Completadas») vaya del mismo color. Las tarjetas siguen blancas encima. */
+.bd-list.toned {
+  --bd-col: color-mix(in srgb, var(--lc) 24%, #f7f8f5);
+}
+.bd-list.toned .bd-list-title,
+.bd-list.toned .bd-fold-name {
+  color: color-mix(in srgb, var(--lc) 42%, var(--bd-ink));
+}
+.bd-list.toned .bd-list-count:not(.full, .over) {
+  background: color-mix(in srgb, var(--lc) 20%, transparent);
+  color: color-mix(in srgb, var(--lc) 55%, var(--bd-ink));
+}
+.bd-list.toned button.bd-list-title:hover,
+.bd-list.toned .bd-fold:hover {
+  background: color-mix(in srgb, var(--lc) 14%, transparent);
 }
 .bd-list.over {
   box-shadow:
@@ -1500,6 +1508,9 @@ body.bd-dragging * {
 /* ───────── Ficha de la tarjeta ───────── */
 .sheet-backdrop > .sheet.bdm {
   max-width: 860px;
+  /* `dvh` descuenta la barra del navegador en el móvil (sin ella, la ficha se corta por arriba). */
+  max-height: min(92vh, 900px);
+  max-height: min(92dvh, 900px);
   background: #fbfcfb;
 }
 .bdm-band {
@@ -1559,6 +1570,11 @@ body.bd-dragging * {
   letter-spacing: -0.3px;
   color: var(--bd-ink);
   field-sizing: content;
+  /* Un título larguísimo no se come la ficha: crece hasta un tope y luego se desplaza dentro. */
+  max-height: min(32vh, 240px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
   transition:
     background 0.15s,
     box-shadow 0.15s;
@@ -1583,7 +1599,8 @@ body.bd-dragging * {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 260px;
+  min-width: 0;
+  max-width: min(260px, 100%);
   height: 28px;
   padding: 0 8px 0 10px;
   border-radius: 8px;
@@ -1591,6 +1608,12 @@ body.bd-dragging * {
   font-weight: 650;
   color: var(--bd-ink);
   transition: background 0.15s;
+}
+.bdm-colbtn > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .bdm-colbtn:hover,
 .bdm-colbtn[aria-expanded="true"] {
@@ -1671,6 +1694,8 @@ body.bd-dragging * {
   display: inline-flex;
   align-items: center;
   gap: 2px;
+  min-width: 0;
+  max-width: 100%;
   height: 26px;
   padding: 0 4px 0 10px;
   border-radius: 999px;
@@ -1679,8 +1704,15 @@ body.bd-dragging * {
   font-weight: 700;
   color: var(--tc);
 }
+.bdm-tag > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .bdm-tag button {
   display: grid;
+  flex: none;
   place-items: center;
   width: 18px;
   height: 18px;
@@ -1797,7 +1829,8 @@ body.bd-dragging * {
 }
 .bdm-checks li {
   display: flex;
-  align-items: center;
+  /* Un punto largo ocupa varias líneas: casilla y botones quedan arriba, junto a la primera. */
+  align-items: flex-start;
   gap: 8px;
   padding: 2px 4px;
   border-radius: 9px;
@@ -1812,6 +1845,7 @@ body.bd-dragging * {
   place-items: center;
   width: 18px;
   height: 18px;
+  margin-top: 6px;
   border: 1.5px solid #a3ada6;
   border-radius: 5px;
   color: transparent;
@@ -1836,13 +1870,39 @@ body.bd-dragging * {
   font-size: 14px;
   color: var(--bd-ink);
 }
-.bdm-checks input:focus {
+.bdm-checks textarea {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  min-height: 30px;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 7px;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+  color: var(--bd-ink);
+  field-sizing: content;
+}
+.bdm-checks input:focus,
+.bdm-checks textarea:focus {
   background: #fff;
   box-shadow: inset 0 0 0 1.5px var(--bd-accent);
 }
-.bdm-checks li.on input {
+.bdm-checks li.on input,
+.bdm-checks li.on textarea {
   text-decoration: line-through;
   color: var(--bd-muted);
+}
+.bdm-checks li .bdm-check-due {
+  margin-top: 3px;
+}
+.bdm-checks li .bdm-icon {
+  margin-top: 2px;
 }
 .bdm-icon {
   display: grid;
@@ -2119,6 +2179,14 @@ body.bd-dragging * {
   .bdm-links {
     grid-template-columns: minmax(0, 1fr);
   }
+  .sheet-backdrop > .sheet.bdm {
+    max-height: 94vh;
+    max-height: 94dvh;
+  }
+  /* En el móvil el título cede espacio al contenido. */
+  .bdm-title {
+    max-height: 28vh;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .bd-card.lifted,
@@ -2317,10 +2385,6 @@ button.bd-ic:hover .bd-ic-box {
   min-height: 180px;
   max-height: min(100%, 520px);
   animation: bd-in 0.18s ease-out;
-}
-.bd-list.folded.toned::before {
-  right: 9px;
-  left: 9px;
 }
 .bd-fold {
   display: flex;
@@ -3130,6 +3194,8 @@ body:has(.nx-peek) .sheet-backdrop:has(> .sheet.bdm) {
 .bdm-person {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
   height: 32px;
   padding: 0 3px 0 0;
   border-radius: 999px;
@@ -3143,12 +3209,22 @@ body:has(.nx-peek) .sheet-backdrop:has(> .sheet.bdm) {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  min-width: 0;
   height: 100%;
   padding: 0 4px 0 4px;
   border-radius: 999px;
   font-size: 13px;
   font-weight: 600;
   color: var(--bd-ink);
+}
+.bdm-person-main > :first-child {
+  flex: none;
+}
+.bdm-person-main > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .bdm-person-x {
   display: grid;
@@ -3189,6 +3265,7 @@ body:has(.nx-peek) .sheet-backdrop:has(> .sheet.bdm) {
   margin: 10px 0 0;
   font-size: 12px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
   color: var(--bd-muted);
 }
 .bdm-people-note button {

@@ -15,22 +15,36 @@ const busy = (target: EventTarget | null) =>
     ),
   );
 
+/** Cualquier ventana modal, menú flotante o visor abierto (aunque no sea de los que `busy` conoce). */
+const covered = () =>
+  Boolean(document.querySelector('[aria-modal="true"], .nx-pop, .cap-lb, .chat-panel'));
+
 export function Topbar({ onToggleMenu }: { onToggleMenu: () => void }) {
-  const { page, openEntry, openCapture } = useApp();
+  const { page, openEntry, openCapture, openInstants } = useApp();
   const { dark, toggle } = useTheme();
   const themeLabel = dark ? 'Desactivar modo oscuro' : 'Activar modo oscuro';
 
   // Atajos desde cualquier sección: «N» abre «¿Qué quieres guardar?»; «P» (o «W») escribe un
-  // instante.
+  // instante; «F» abre el feed de Instantes (y, con el feed abierto, él mismo lo cierra).
   const open = useRef(openEntry);
   open.current = openEntry;
   const write = useRef(openCapture);
   write.current = openCapture;
+  const feed = useRef(openInstants);
+  feed.current = openInstants;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
       const key = e.key.toLowerCase();
-      if (key !== 'n' && key !== 'p' && key !== 'w') return;
+      if (key !== 'n' && key !== 'p' && key !== 'w' && key !== 'f') return;
+      if (key === 'f') {
+        // Ya abierto, lo cierra su propio panel (con su animación). Nunca si se escribe o si hay
+        // cualquier ventana, menú o visor encima: ahí la «f» es de ellos.
+        if (document.querySelector('.ipn-layer') || busy(e.target) || covered()) return;
+        e.preventDefault();
+        feed.current();
+        return;
+      }
       if (busy(e.target)) return;
       e.preventDefault();
       if (key === 'n') open.current();

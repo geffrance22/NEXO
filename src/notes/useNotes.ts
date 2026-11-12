@@ -7,6 +7,11 @@ import type { Named, Note } from '../planner/shared';
 /** Una nota libre tal como viene de `quick_notes`. */
 export type KeepNote = Note & {
   created_at: string;
+  /**
+   * Última vez que cambió su contenido (la pone la base de datos). null: aún no se sabe (notas de
+   * antes de la migración); undefined: la base de datos no tiene la columna.
+   */
+  updated_at?: string | null;
   /** Orden en el lienzo: menor = más arriba. */
   rank: number;
   images: StoredImage[];
@@ -16,7 +21,9 @@ export type KeepNote = Note & {
   vaulted: boolean;
   secret: string | null;
 };
-export type NoteFields = Partial<Omit<KeepNote, 'id' | 'created_at'>>;
+export type NoteFields = Partial<Omit<KeepNote, 'id' | 'created_at' | 'updated_at'>>;
+/** Lo que cuenta como modificar la nota (igual que el trigger `touch_quick_note`). */
+const CONTENT = ['title', 'body', 'checks', 'tags', 'images', 'secret'] as const;
 
 /** Lo que se dispara cuando otra parte de la app guarda una nota (p. ej. «Nueva idea»). */
 export const NOTES_CHANGED = 'nexo:idea-saved';
@@ -75,6 +82,7 @@ export const normalizeNote = (x: Partial<KeepNote> & { id: string; created_at: s
     remind_at: x.remind_at ?? null,
     vaulted: Boolean(x.vaulted),
     secret: x.secret ?? null,
+    updated_at: x.updated_at === undefined ? undefined : x.updated_at,
   }) as KeepNote;
 
 /** El orden del lienzo (estable aunque dos notas tengan el mismo rango). */
@@ -171,7 +179,17 @@ export function useNotes(enabled = true): NotesStore {
   const patch = useCallback(
     async (id: string, fields: NoteFields) => {
       const before = latest.current?.find((n) => n.id === id);
-      setNotes((list) => list && sorted(list.map((n) => (n.id === id ? { ...n, ...fields } : n))));
+      // La base de datos pone la fecha de modificación; aquí solo se adelanta lo que hará.
+      const touches =
+        before?.updated_at !== undefined &&
+        CONTENT.some(
+          (k) => k in fields && JSON.stringify(fields[k]) !== JSON.stringify(before?.[k]),
+        );
+      const stamp = touches ? { updated_at: new Date().toISOString() } : {};
+      setNotes(
+        (list) =>
+          list && sorted(list.map((n) => (n.id === id ? { ...n, ...fields, ...stamp } : n))),
+      );
       const { error } = await supabase.from('quick_notes').update(fit(fields)).eq('id', id);
       if (error) {
         if (before) setNotes((list) => list && sorted(list.map((n) => (n.id === id ? before : n))));

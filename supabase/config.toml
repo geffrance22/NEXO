@@ -15,3 +15,5 @@ verify_jwt = false
 
 [functions.board-sweep]
 verify_jwt = false
+[functions.fediverse]
+verify_jwt = false

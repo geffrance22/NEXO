@@ -3,11 +3,13 @@ import { Feather, LoaderCircle, Puzzle, Search, X } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { LoadMore, useInfinite } from '../components/LoadMore';
 import { Sheet } from '../components/Sheet';
+import { useCuadernos } from '../cuadernos/useCuadernos';
 import { normalizeText } from '../lib/format';
 import { MyFace } from '../people/MyFace';
 import { jobCount, setPiecesReview, usePieceJobs } from './analysis';
 import { ThreadCard } from './Feed';
-import { compactCount, threadsOf, type Thread } from './model';
+import { compactCount, threadsOf, type Instant, type Thread } from './model';
+import { FeedSkeleton } from './Skeleton';
 import { instantsHint, useInstants } from './store';
 import './instants.css';
 
@@ -16,25 +18,37 @@ const PAGE = 12;
 const ABOVE =
   '.sheet-backdrop, .confirm-backdrop, .modal-backdrop, .lightbox, .nx-peek-backdrop, .nx-peek, .nx-pop';
 
+/** El texto de cada instante ya sin tildes ni mayúsculas (se calcula una vez, no en cada tecla). */
+const plain = new WeakMap<Instant, string>();
+const plainBody = (i: Instant) => {
+  let s = plain.get(i);
+  if (s === undefined) {
+    s = normalizeText(i.body);
+    plain.set(i, s);
+  }
+  return s;
+};
+
 /** Texto en el que se busca un hilo: lo escrito y los nombres de lo que tiene vinculado. */
 function useSearchable() {
   const { workspace } = useApp();
+  const { list: notebooks } = useCuadernos();
   return useMemo(() => {
     const names = new Map<string, string>();
     for (const p of workspace.people) names.set(p.id, p.name);
     for (const p of workspace.places) names.set(p.id, p.name);
     for (const e of workspace.episodes) names.set(e.id, e.title);
+    for (const nb of notebooks ?? []) names.set(nb.id, nb.name);
     return (t: Thread) =>
-      normalizeText(
-        t.items
-          .map((i) =>
-            [i.body, ...[...i.person_ids, ...i.place_ids, ...i.episode_ids].map((id) => names.get(id) ?? '')].join(
-              ' ',
-            ),
-          )
-          .join(' '),
-      );
-  }, [workspace.people, workspace.places, workspace.episodes]);
+      t.items
+        .map((i) => {
+          const linked = [...i.person_ids, ...i.place_ids, ...i.episode_ids, ...i.notebook_ids]
+            .map((id) => names.get(id) ?? '')
+            .join(' ');
+          return plainBody(i) + ' ' + normalizeText(linked);
+        })
+        .join(' ');
+  }, [workspace.people, workspace.places, workspace.episodes, notebooks]);
 }
 
 /**
@@ -79,7 +93,19 @@ export function InstantsPanel({ focus, onClose }: { focus?: string; onClose: () 
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || document.querySelector(ABOVE)) return;
+      if (e.key === 'Escape') {
+        if (document.querySelector(ABOVE)) return;
+        e.preventDefault();
+        closeRef.current();
+        return;
+      }
+      // «F» abre el feed desde cualquier sección (ver Topbar) y, con él abierto, lo cierra. No
+      // actúa si estás escribiendo ni si hay algo encima.
+      if (e.key.toLowerCase() !== 'f' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      const t = e.target;
+      if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))
+        return;
+      if (document.querySelector(`${ABOVE}, [aria-modal="true"]:not(.ipn), .chat-panel`)) return;
       e.preventDefault();
       closeRef.current();
     };
@@ -121,7 +147,14 @@ export function InstantsPanel({ focus, onClose }: { focus?: string; onClose: () 
               {pieces ? `${compactCount(pieces)} por revisar` : 'Leyendo…'}
             </button>
           )}
-          <button type="button" className="ipn-x" aria-label="Cerrar" onClick={close}>
+          <button
+            type="button"
+            className="ipn-x"
+            aria-label="Cerrar"
+            aria-keyshortcuts="F"
+            title="Cerrar (F)"
+            onClick={close}
+          >
             <X size={18} />
           </button>
         </header>
@@ -153,22 +186,18 @@ export function InstantsPanel({ focus, onClose }: { focus?: string; onClose: () 
           )}
           {missing && <p className="ipn-note warn">{instantsHint}</p>}
           {error && <p className="ipn-note warn">{error}</p>}
-          {list === null &&
-            [0, 1, 2].map((k) => (
-              <div key={k} className="ipn-skel" aria-hidden="true">
-                <i />
-                <span>
-                  <b />
-                  <b />
-                  <b />
-                </span>
-              </div>
-            ))}
+          {list === null && <FeedSkeleton rows={4} />}
           {visible.map((t) => (
             <ThreadCard key={t.id} thread={t} highlight={t.id === focusThread} nav={nav} />
           ))}
-          <LoadMore rest={rest} onMore={loadMore} shown={visible.length} />
-          {list !== null && !shown.length && !missing && (
+          {/* Al acercarse al final, esqueletos en lugar de un botón: la siguiente tanda entra sola. */}
+          <LoadMore
+            rest={rest}
+            onMore={loadMore}
+            shown={visible.length}
+            placeholder={<FeedSkeleton rows={2} label="Cargando más instantes" />}
+          />
+          {list !== null && complete && !shown.length && !missing && (
             <div className="ipn-empty">
               <Feather size={22} />
               {needle ? (
@@ -184,10 +213,9 @@ export function InstantsPanel({ focus, onClose }: { focus?: string; onClose: () 
               )}
             </div>
           )}
-          {list !== null && !complete && !rest && (
-            <p className="ipn-note">
-              <LoaderCircle size={13} className="spin" /> Cargando más instantes…
-            </p>
+          {/* Aún llegan instantes del servidor (de 500 en 500): mientras, esqueletos al final. */}
+          {list !== null && !complete && !rest && !missing && !error && (
+            <FeedSkeleton rows={2} label="Cargando más instantes" />
           )}
         </div>
       </aside>

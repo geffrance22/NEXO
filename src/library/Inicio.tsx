@@ -1,9 +1,10 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowRight,
   BookMarked,
   ChevronDown,
   ChevronUp,
+  Images,
   Library,
   Newspaper,
   Plus,
@@ -11,7 +12,10 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useApp } from '../AppContext';
+import type { Shot } from '../capturas/model';
+import { peekShot } from '../capturas/nav';
 import type { Entry } from '../data';
+import { useGridCols } from '../hooks/useGridCols';
 import { kindMeta } from '../composer/kinds';
 import { isSeries, kindLabel } from '../lib/entries';
 import { friendlyDate, todayInputValue } from '../lib/format';
@@ -38,7 +42,9 @@ const COLLECTION: TabId[] = ['peliculas', 'series', 'libros'];
 const MEDIA = new Set<TabId>(['peliculas', 'series', 'libros']);
 /** Filas de «En curso» visibles al principio y cuántas suma cada «Ver más». */
 const NOW_ROWS = 2;
-const RECENT = 6;
+/** «Recientes»: dos filas como mucho, con las columnas que quepan (hasta este tope). */
+const RECENT_ROWS = 2;
+const RECENT_MAX = 16;
 
 type NowItem = {
   key: string;
@@ -54,6 +60,21 @@ type NowItem = {
   quick?: { label: string; title: string; run: () => void };
 };
 
+/** Una tarjeta de «Recientes»: una película, serie o libro, o una captura. */
+type RecentItem = {
+  key: string;
+  /** Cuándo llegó (ISO): ordena la mezcla. */
+  at: string;
+  title: string;
+  kind: string;
+  img?: string;
+  icon: LucideIcon;
+  tone: Tone;
+  /** Póster (vertical) o captura (apaisada). */
+  frame: 'media' | 'wide';
+  open: () => void;
+};
+
 /**
  * Vista principal de Libroteca: lo que tienes a medias (y se actualiza desde aquí), lo último que
  * añadiste y una tarjeta por cada sección con algo dentro. Cada tarjeta abre su pestaña.
@@ -62,6 +83,7 @@ export function Inicio({
   lists,
   readings,
   notes,
+  shots,
   onTab,
   onOpenNote,
 }: {
@@ -69,6 +91,8 @@ export function Inicio({
   readings: ShelfReading[] | null;
   /** Notas libres sin archivar, más recientes primero. */
   notes: KeepNote[];
+  /** CAPTURAS (las archivadas no salen en «Recientes»). */
+  shots: Shot[] | null;
   onTab: (tab: TabId) => void;
   onOpenNote: (id: string) => void;
 }) {
@@ -76,9 +100,9 @@ export function Inicio({
   const reading = useOpenReading();
   const today = todayInputValue();
 
-  // Columnas reales de la rejilla «En curso» (cambian con el ancho) y filas abiertas.
+  // Rejillas «En curso» y «Recientes» (sus columnas cambian con el ancho) y filas abiertas.
   const nowRef = useRef<HTMLDivElement>(null);
-  const [cols, setCols] = useState(1);
+  const recentRef = useRef<HTMLDivElement>(null);
   const [rows, setRows] = useState(NOW_ROWS);
   const [shelfOpen, setShelfOpen] = useState(false);
 
@@ -149,30 +173,50 @@ export function Inicio({
   }
 
   const hasNow = now.length > 0;
-  useLayoutEffect(() => {
-    const el = nowRef.current;
-    if (!el) return;
-    const measure = () => {
-      const tracks = getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean);
-      setCols(Math.max(1, tracks.length));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [hasNow]);
+  const cols = useGridCols(nowRef, hasNow);
   const shown = Math.min(now.length, cols * rows);
   const hidden = now.length - shown;
   const canCollapse = !hidden && rows > NOW_ROWS && now.length > cols * NOW_ROWS;
 
-  const recent = useMemo(
-    () =>
-      workspace.entries
-        .filter((e) => e.kind === 'Película' || e.kind === 'Libro')
-        .sort((a, b) => addedAt(b).localeCompare(addedAt(a)))
-        .slice(0, RECENT),
-    [workspace.entries],
-  );
+  // Lo último que llegó, mezclado: películas, series y libros con las capturas. Una captura se
+  // abre aquí mismo en su visor (no lleva a la pestaña CAPTURAS).
+  const recent = useMemo(() => {
+    const items: RecentItem[] = [];
+    for (const e of workspace.entries) {
+      if (e.kind !== 'Película' && e.kind !== 'Libro') continue;
+      items.push({
+        key: e.id,
+        at: addedAt(e),
+        title: e.title || e.kind,
+        kind: kindLabel(e),
+        img: cover(e),
+        icon: isSeries(e) ? Tv : kindMeta[e.kind].icon,
+        tone: toneOf(e),
+        frame: 'media',
+        open: () => viewEntry(e),
+      });
+    }
+    for (const s of shots ?? []) {
+      if (s.archived_at) continue;
+      items.push({
+        key: 'shot:' + s.id,
+        at: s.created_at,
+        title: s.name || 'Captura',
+        kind: 'Captura',
+        img: s.thumb ?? s.url,
+        icon: Images,
+        tone: tones.capturas,
+        frame: 'wide',
+        open: () => peekShot(s.id),
+      });
+    }
+    // Por fecha real (las de la base de datos y las del navegador no se escriben igual).
+    return items
+      .sort((a, b) => (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0))
+      .slice(0, RECENT_MAX);
+    // `cover` y `viewEntry` no cambian lo que se muestra.
+  }, [workspace.entries, shots]);
+  const recentCols = useGridCols(recentRef, recent.length > 0);
 
   const card = (id: TabId) => {
     const meta = sectionTabs.Libroteca.find((t) => t.id === id)!;
@@ -358,32 +402,31 @@ export function Inicio({
             Recientes
           </h2>
           {recent.length > 0 && (
-            <div className="lt-recent">
-              {recent.map((e) => {
-                const img = e.kind !== 'Movimiento' ? cover(e) : undefined;
-                const media = e.kind === 'Película' || e.kind === 'Libro';
-                const Icon = isSeries(e) ? Tv : kindMeta[e.kind].icon;
-                return (
-                  <button
-                    type="button"
-                    key={e.id}
-                    className="lt-rec"
-                    style={toneVars(toneOf(e))}
-                    onClick={() => viewEntry(e)}
-                  >
-                    <span className={'lt-thumb' + (media ? ' media' : '')}>
-                      {img ? <img src={img} alt="" loading="lazy" /> : <Icon size={15} />}
-                    </span>
-                    <span className="lt-rec-main">
-                      <strong>{e.title || e.kind}</strong>
-                      <small>
-                        {kindLabel(e)} ·{' '}
-                        {friendlyDate(todayInputValue(new Date(addedAt(e))), today).toLowerCase()}
-                      </small>
-                    </span>
-                  </button>
-                );
-              })}
+            <div className="lt-recent" ref={recentRef}>
+              {recent.slice(0, recentCols * RECENT_ROWS).map((it) => (
+                <button
+                  type="button"
+                  key={it.key}
+                  className="lt-rec"
+                  style={toneVars(it.tone)}
+                  onClick={it.open}
+                >
+                  <span className={'lt-thumb ' + it.frame}>
+                    {it.img ? (
+                      <img src={it.img} alt="" loading="lazy" decoding="async" />
+                    ) : (
+                      <it.icon size={15} />
+                    )}
+                  </span>
+                  <span className="lt-rec-main">
+                    <strong>{it.title}</strong>
+                    <small>
+                      {it.kind} ·{' '}
+                      {friendlyDate(todayInputValue(new Date(it.at)), today).toLowerCase()}
+                    </small>
+                  </span>
+                </button>
+              ))}
             </div>
           )}
           <RecentNotes notes={notes} onOpen={onOpenNote} onAll={() => onTab('lienzo')} />

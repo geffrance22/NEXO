@@ -54,6 +54,8 @@ import {
 } from '../lib/people';
 import { Avatar } from '../people/Avatar';
 import { BondRing } from '../people/PersonPanel';
+import { useThermoData } from '../people/Thermo';
+import { thermoOf } from '../lib/thermo';
 import { DuplicatesDialog, useDuplicates } from '../people/MergeDialog';
 import { GroupActions } from '../relations/GroupActions';
 import { PersonMenu } from '../people/PersonMenu';
@@ -94,7 +96,13 @@ const storedView = (): View => {
   return v === 'list' || v === 'faces' ? v : 'grid';
 };
 
-type Row = { person: Person; stats: PersonStats; groups: Group[] };
+type Row = {
+  person: Person;
+  stats: PersonStats;
+  groups: Group[];
+  /** Termómetro de la relación (null para quien está en memoria). */
+  thermo: number | null;
+};
 type ItemProps = { row: Row; active: boolean; onOpen: () => void };
 
 const varsOf = (p: Person) => {
@@ -105,8 +113,11 @@ const openOnEnter = (onOpen: () => void) => (e: ReactKeyboardEvent) => {
   if (e.key === 'Enter' && e.target === e.currentTarget) onOpen();
 };
 
-/** Índice de vínculo; para quien ya no está, una flor en su lugar. */
-function Bond({ row, size }: { row: Row; size: number }) {
+/**
+ * Índice de vínculo y termómetro en el mismo círculo; para quien ya no está, una flor. Con `both`,
+ * los dos números («55/73»).
+ */
+function Bond({ row, size, both = false }: { row: Row; size: number; both?: boolean }) {
   if (row.person.profile.status === 'memoria')
     return (
       <span
@@ -117,7 +128,7 @@ function Bond({ row, size }: { row: Row; size: number }) {
         <Flower2 size={Math.round(size * 0.42)} />
       </span>
     );
-  return <BondRing value={row.stats.bond} size={size} />;
+  return <BondRing value={row.stats.bond} thermo={row.thermo} size={size} both={both} />;
 }
 
 function PersonCard({ row, active, onOpen }: ItemProps) {
@@ -222,7 +233,7 @@ function PersonCard({ row, active, onOpen }: ItemProps) {
         )}
       </div>
       <div className="pc-meta">
-        <Bond row={row} size={34} />
+        <Bond row={row} size={52} both />
         <div>
           <span>
             <Clock size={12} /> <b>{relativeDay(s.last)}</b>
@@ -315,7 +326,7 @@ function PersonRow({ row, active, onOpen }: ItemProps) {
       <span className="pr-rel">{meta.label}</span>
       <span className="pr-last">{relativeDay(s.last)}</span>
       <span className="pr-pend">{s.nextPending?.title ?? '—'}</span>
-      <Bond row={row} size={30} />
+      <Bond row={row} size={44} both />
       <span onClick={(e) => e.stopPropagation()}>
         <PersonMenu person={p} />
       </span>
@@ -345,14 +356,19 @@ export function PeoplePage() {
   useEffect(() => localStorage.setItem('nexo-people-view', view), [view]);
   useEffect(() => localStorage.setItem('nexo-reminders', remOpen ? 'open' : 'closed'), [remOpen]);
 
+  const thermoData = useThermoData();
   const rows = useMemo<Row[]>(
     () =>
-      workspace.people.map((p) => ({
-        person: p,
-        stats: statsFor(p, workspace.entries),
-        groups: groupsOf(p.id, workspace.groups),
-      })),
-    [workspace],
+      workspace.people.map((p) => {
+        const stats = statsFor(p, workspace.entries);
+        return {
+          person: p,
+          stats,
+          groups: groupsOf(p.id, workspace.groups),
+          thermo: thermoOf({ person: p, entries: stats.entries, ...thermoData })?.value ?? null,
+        };
+      }),
+    [workspace, thermoData],
   );
   // Los 10 más próximos (vencidos y de hoy primero).
   const reminders = useMemo(

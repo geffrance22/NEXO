@@ -202,7 +202,11 @@ export function CaptureBlock({ opts }: BlockProps) {
             type="button"
             className="cap-all"
             onClick={() => openInstants()}
-            title={total ? `Ver tus ${total.toLocaleString('es-CO')} instantes` : 'Ver tus instantes'}
+            aria-keyshortcuts="F"
+            title={
+              (total ? `Ver tus ${total.toLocaleString('es-CO')} instantes` : 'Ver tus instantes') +
+              ' (F)'
+            }
           >
             Ver todos
             {total > 0 && <span>{compactCount(total)}</span>}

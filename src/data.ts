@@ -92,6 +92,23 @@ export type Exchange = {
   /** Cuánto pesó: 1 detalle, 2 importante, 3 enorme. */
   weight: 1 | 2 | 3;
   note?: string;
+  /** El movimiento de Finanzas del que salió (se actualiza si lo editas). */
+  entryId?: string;
+};
+
+/**
+ * Un ajuste a mano del termómetro de una relación: dónde lo pusiste, cuánto marcaba el cálculo ese
+ * día y por qué. Desde ahí el cálculo sigue subiéndolo o bajándolo.
+ */
+export type ThermoAdjust = {
+  id: string;
+  /** AAAA-MM-DD */
+  at: string;
+  /** Lo que marcaste (0 a 100). */
+  value: number;
+  /** Lo que marcaba el cálculo ese día (la diferencia es tu ajuste). */
+  computed: number;
+  why?: string;
 };
 
 export type UpdateKind =
@@ -184,6 +201,8 @@ export type PersonProfile = {
   history?: ProfileChange[];
   /** Cosas que quieres preguntarle la próxima vez que la veas. */
   askNext?: string[];
+  /** Tus ajustes del termómetro de la relación, el más reciente primero. */
+  thermo?: ThermoAdjust[];
 };
 
 export type Person = {

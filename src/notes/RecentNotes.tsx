@@ -1,12 +1,14 @@
-import type { CSSProperties } from 'react';
+import { useRef, type CSSProperties } from 'react';
 import { ArrowRight, ListChecks, Pin, StickyNote } from 'lucide-react';
+import { useGridCols } from '../hooks/useGridCols';
 import { friendlyDate, todayInputValue } from '../lib/format';
 import { colorOf } from './palette';
 import { plainOf } from './links';
 import type { KeepNote } from './useNotes';
 import './notes.css';
 
-const SHOWN = 10;
+/** Tope de papelitos: en pantalla, solo los que quepan en una fila. */
+const SHOWN = 12;
 
 /** Primera línea con algo escrito. */
 const firstLine = (s: string) =>
@@ -16,8 +18,8 @@ const firstLine = (s: string) =>
     .find(Boolean) ?? '';
 
 /**
- * Las últimas notas libres en miniatura (para «Recientes» en el inicio de Libroteca): una tira de
- * papelitos que se desplaza de lado. Cada uno abre su nota en la pestaña «Notas».
+ * Las últimas notas libres en miniatura (para «Recientes» en el inicio de Libroteca): una sola
+ * fila de papelitos, tantos como quepan a lo ancho. Cada uno abre su nota en la pestaña «Notas».
  */
 export function RecentNotes({
   notes,
@@ -28,11 +30,13 @@ export function RecentNotes({
   onOpen: (id: string) => void;
   onAll: () => void;
 }) {
+  const stripRef = useRef<HTMLDivElement>(null);
   const live = notes
     .filter((n) => !n.archived && !n.vaulted)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const cols = useGridCols(stripRef, live.length > 0);
   if (!live.length) return null;
-  const shown = live.slice(0, SHOWN);
+  const shown = live.slice(0, Math.min(SHOWN, cols));
   const today = todayInputValue();
 
   return (
@@ -45,7 +49,7 @@ export function RecentNotes({
           Ver todas <i>{live.length.toLocaleString('es-CO')}</i> <ArrowRight size={13} />
         </button>
       </div>
-      <div className="kp-strip">
+      <div className="kp-strip" ref={stripRef}>
         {shown.map((n) => {
           const c = colorOf(n.color);
           const title = n.title || firstLine(plainOf(n.body)) || n.checks[0]?.text || 'Nota';

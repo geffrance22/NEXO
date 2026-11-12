@@ -52,9 +52,11 @@ import {
 import { MiniPhotos, pastedImages } from '../composer/PhotoBlocks';
 import { useImageUploads } from '../composer/useImageUploads';
 import { PhotoThumbs } from '../components/PhotoThumbs';
+import { celsius, thermoColor, thermoLabel } from '../lib/thermo';
 import { Avatar } from './Avatar';
 import { GiftIdeas } from './GiftIdeas';
 import { PersonMenu } from './PersonMenu';
+import { ThermoBar, ThermoSheet, useThermo } from './Thermo';
 import { Moments, Together } from './Together';
 import { TieChips, TiesTab } from '../relations/TiesTab';
 
@@ -84,27 +86,78 @@ const monthNames = [
   'diciembre',
 ];
 
-/** Anillo con el índice de vínculo. */
-export function BondRing({ value, size = 52 }: { value: number; size?: number }) {
-  const r = (size - 6) / 2;
+/**
+ * Anillo con el índice de vínculo. Con `thermo`, un segundo anillo por dentro con la temperatura
+ * de la relación: un degradado de azul al color de su temperatura (naranja cuando está cálida).
+ */
+export function BondRing({
+  value,
+  size = 52,
+  thermo,
+  both = false,
+}: {
+  value: number;
+  size?: number;
+  thermo?: number | null;
+  /** Escribe los dos números dentro: «55/73» (vínculo grande, termómetro pequeño a su lado). */
+  both?: boolean;
+}) {
+  const dual = typeof thermo === 'number';
+  const pair = dual && both;
+  const stroke = dual ? (size >= 44 ? 3.5 : 3) : 4;
+  const r = (size - stroke - 2) / 2;
   const c = 2 * Math.PI * r;
+  // Con los dos números, el anillo de dentro va más pegado y más fino: deja sitio al texto.
+  const inner = dual ? (pair ? 2.5 : size >= 44 ? 3 : 2.5) : 0;
+  const gap = pair ? 2 : 2.5;
+  const t = dual ? Math.round(thermo) : 0;
+  // «100/100» no cabe con la letra de «55/73»: con más de cuatro cifras, un poco más pequeña.
+  const scale = pair && String(value).length + String(t).length > 4 ? 0.21 : 0.26;
   return (
     <span
-      className="pp-ring"
-      style={{ width: size, height: size }}
-      title={`Índice de vínculo: ${value}/100`}
+      className={'pp-ring' + (dual ? ' dual' : '') + (pair ? ' pair' : '')}
+      style={
+        {
+          width: size,
+          height: size,
+          ...(dual && {
+            '--tv': `${t}%`,
+            '--tc': thermoColor(t),
+            '--t0': thermoColor(Math.max(0, t - 55)),
+            '--ti': `${stroke + gap}px`,
+            '--tw': `${inner}px`,
+            fontSize: pair
+              ? Math.max(9, Math.round(size * scale))
+              : Math.max(9, Math.round(size * 0.3)),
+          }),
+        } as CSSProperties
+      }
+      title={
+        dual
+          ? `Vínculo ${value}/100 · Termómetro ${celsius(t)} (${thermoLabel(t)})`
+          : `Índice de vínculo: ${value}/100`
+      }
     >
       <svg width={size} height={size} aria-hidden="true">
-        <circle cx={size / 2} cy={size / 2} r={r} className="track" />
+        <circle cx={size / 2} cy={size / 2} r={r} className="track" style={{ strokeWidth: stroke }} />
         <circle
           cx={size / 2}
           cy={size / 2}
           r={r}
           className="bar"
+          style={{ strokeWidth: stroke }}
           strokeDasharray={`${(c * value) / 100} ${c}`}
         />
       </svg>
-      <b>{value}</b>
+      {dual && <i className="pp-ring-thermo" aria-hidden="true" />}
+      {pair ? (
+        <b className="pp-ring-pair">
+          {value}
+          <small>/{t}</small>
+        </b>
+      ) : (
+        <b>{value}</b>
+      )}
     </span>
   );
 }
@@ -903,10 +956,12 @@ export function PersonPanel({
     : ['resumen', 'vinculos', 'historia', 'pendientes'];
   const [tab, setTab] = useState<Tab>('resumen');
   const [gifts, setGifts] = useState(false);
+  const [thermoOpen, setThermoOpen] = useState(false);
   const stats = useMemo(
     () => statsFor(person, app.workspace.entries),
     [person, app.workspace.entries],
   );
+  const thermo = useThermo(person, stats);
   const file = useRef<HTMLInputElement>(null);
   const rel = relationOf(person);
   const meta = relationMeta[rel];
@@ -967,6 +1022,9 @@ export function PersonPanel({
             ))}
             <span>{closenessLabels[closenessOf(person)]}</span>
           </div>
+          {thermo.reading && (
+            <ThermoBar reading={thermo.reading} onOpen={() => setThermoOpen(true)} />
+          )}
           {status !== 'memoria' && <ContactActions person={person} />}
         </div>
         <div className="pp-panel-tools">
@@ -1019,7 +1077,19 @@ export function PersonPanel({
           </div>
         ) : (
           <div>
-            <BondRing value={stats.bond} size={full ? 56 : 46} />
+            <button
+              type="button"
+              className="pp-ring-btn"
+              title="Ver el termómetro de la relación"
+              onClick={() => setThermoOpen(true)}
+            >
+              <BondRing
+                value={stats.bond}
+                thermo={thermo.reading?.value}
+                size={full ? 58 : 52}
+                both
+              />
+            </button>
             <span>Vínculo</span>
           </div>
         )}
@@ -1085,6 +1155,9 @@ export function PersonPanel({
       )}
       {gifts && (
         <GiftIdeas key={person.id} person={person} standalone onClose={() => setGifts(false)} />
+      )}
+      {thermoOpen && thermo.reading && (
+        <ThermoSheet person={person} input={thermo.input} onClose={() => setThermoOpen(false)} />
       )}
     </article>
   );

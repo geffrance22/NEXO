@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import {
   AlarmClock,
   AlignLeft,
@@ -81,6 +89,52 @@ import {
   useCardTemplates,
 } from './boardCardTemplates';
 import { missingPhase2Text, usePhase2 } from './boardPhase';
+
+/** El navegador ya hace crecer los campos con su texto (`field-sizing: content`). */
+const NATIVE_FIT = typeof CSS !== 'undefined' && CSS.supports('field-sizing', 'content');
+
+/** Donde no hay `field-sizing` (Firefox, Safari antiguo), la altura del campo se ajusta a mano. */
+function fit(el: HTMLTextAreaElement | null) {
+  if (!el || NATIVE_FIT) return;
+  el.style.height = 'auto';
+  // `scrollHeight` no cuenta el borde.
+  el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+}
+/** `shown` es para campos que aparecen y desaparecen: al aparecer también se ajustan. */
+function useFit(value: string, shown = true) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => fit(ref.current), [value, shown]);
+  return ref;
+}
+
+/**
+ * Un punto de la lista de verificación: el texto largo se ve completo (el campo crece con él).
+ * Enter lo confirma; no admite saltos de línea.
+ */
+function CheckText({ text, onCommit }: { text: string; onCommit: (text: string) => void }) {
+  const ref = useFit(text);
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      defaultValue={text}
+      aria-label="Punto de la lista"
+      onInput={(e) => fit(e.currentTarget)}
+      onBlur={(e) => {
+        const next = e.target.value.replace(/\s*\n\s*/g, ' ').trim();
+        // Lo pegado con saltos de línea queda en una sola.
+        if (next) e.target.value = next;
+        onCommit(next);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
 
 /** Texto que se guarda solo: al dejar de escribir, al salir del campo o al cerrar. */
 function useDraft(value: string, commit: (v: string) => void, delay = 700) {
@@ -179,6 +233,8 @@ export function CardEditor({
   const [tag, setTag] = useState('');
   const [item, setItem] = useState('');
   const [editingBody, setEditingBody] = useState(false);
+  const titleBox = useFit(title.text);
+  const bodyBox = useFit(body.text, editingBody || !card.body.trim());
   const [colMenu, setColMenu] = useState<DOMRect | null>(null);
   const [repeatMenu, setRepeatMenu] = useState<DOMRect | null>(null);
   const [snoozeMenu, setSnoozeMenu] = useState<DOMRect | null>(null);
@@ -282,6 +338,7 @@ export function CardEditor({
         </button>
         <div className="bdm-titlebox">
           <textarea
+            ref={titleBox}
             className="bdm-title"
             rows={1}
             value={title.text}
@@ -314,10 +371,11 @@ export function CardEditor({
                   className="bdm-colbtn"
                   aria-haspopup="menu"
                   aria-expanded={Boolean(colMenu)}
+                  title={column?.name ?? card.list_name ?? undefined}
                   onClick={(e) => setColMenu(e.currentTarget.getBoundingClientRect())}
                 >
                   {toneOf(column?.color) && <i style={{ background: toneOf(column?.color)!.c }} />}
-                  {column?.name ?? card.list_name ?? 'Columna'}
+                  <span>{column?.name ?? card.list_name ?? 'Columna'}</span>
                   <ChevronDown size={13} />
                 </button>
                 {done && <span className="bdm-pill ok">Completada</span>}
@@ -377,7 +435,7 @@ export function CardEditor({
                     className="bdm-tag"
                     style={{ '--tc': tt.c, '--ts': tt.s } as CSSProperties}
                   >
-                    {t}
+                    <span title={t}>{t}</span>
                     <button
                       type="button"
                       aria-label={`Quitar la etiqueta ${t}`}
@@ -397,6 +455,7 @@ export function CardEditor({
             </h3>
             {editingBody || !card.body.trim() ? (
               <textarea
+                ref={bodyBox}
                 className="bdm-desc"
                 rows={4}
                 value={body.text}
@@ -458,17 +517,12 @@ export function CardEditor({
                       >
                         <Check size={11} strokeWidth={3} />
                       </button>
-                      <input
-                        defaultValue={c.text}
-                        aria-label="Punto de la lista"
-                        onBlur={(e) => {
-                          const text = e.target.value.trim();
+                      <CheckText
+                        text={c.text}
+                        onCommit={(text) => {
                           if (!text) setChecks(card.checks.filter((x) => x.id !== c.id));
                           else if (text !== c.text)
                             setChecks(card.checks.map((x) => (x.id === c.id ? { ...x, text } : x)));
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
                         }}
                       />
                       {dateFor === c.id ? (

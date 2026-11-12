@@ -21,7 +21,7 @@ export function PersonPeek({ person, onClose }: { person: Person; onClose: () =>
       if (
         document.querySelector(
           // La ficha de un recuerdo y el periódico quedan debajo: no cuentan.
-          '.lightbox, .confirm-backdrop, .modal-backdrop, .bdp-backdrop, .sheet-backdrop:not(:has(> .sheet.ev, > .sheet.wk, > .sheet.wkp, > .sheet.bdm))',
+          '.lightbox, .confirm-backdrop, .modal-backdrop, .bdp-backdrop, .sheet-backdrop:not(:has(> .sheet.ev, > .sheet.wk, > .sheet.wkp, > .sheet.bdm, > .sheet.cz-peek))',
         )
       )
         return;

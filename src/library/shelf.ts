@@ -336,8 +336,8 @@ export const sectionTabs: Record<ShelfSection, TabMeta[]> = {
     { id: "capturas", label: "CAPTURAS", icon: Images, divider: true },
   ],
   Agenda: [
-    { id: "notas", label: "Diario", icon: BookHeart },
-    { id: "pendientes", label: "Pendientes", icon: ListChecks, divider: true },
+    { id: "pendientes", label: "Pendientes", icon: ListChecks },
+    { id: "notas", label: "Diario", icon: BookHeart, divider: true },
     { id: "encuentros", label: "Encuentros", icon: Users },
     { id: "trabajo", label: "Trabajo", icon: Briefcase },
     { id: "aprendizajes", label: "Aprendizajes", icon: Lightbulb },
@@ -609,22 +609,36 @@ export const toneOf = (e: Entry): Tone =>
 
 const tabKey = (section: ShelfSection) =>
   section === "Libroteca" ? "nexo-lib-tab" : "nexo-agenda-tab";
+/**
+ * La pestaña en la que estás en Libroteca o Agenda. Se recuerda durante la sesión: al volver de
+ * un cuaderno, con «atrás» del navegador o al recargar, la página abre donde la dejaste.
+ */
+export function rememberTab(section: ShelfSection, tab: TabId) {
+  try {
+    sessionStorage.setItem(tabKey(section), tab);
+  } catch {
+    /* Sin almacenamiento: la página vuelve a su primera pestaña. */
+  }
+}
 /** Abre Libroteca o Agenda en una pestaña (p. ej. «Ver los pendientes» desde el inicio). */
 export function goSection(
   go: (page: ShelfSection) => void,
   section: ShelfSection,
   tab: TabId,
 ) {
-  sessionStorage.setItem(tabKey(section), tab);
+  rememberTab(section, tab);
   go(section);
 }
 /** Atajo de siempre: Libroteca en una pestaña. */
 export const goLibroteca = (go: (page: ShelfSection) => void, tab: TabId) =>
   goSection(go, "Libroteca", tab);
-/** La pestaña que pidieron al abrir la página. Se borra con `forgetTab` al montar. */
+/** La pestaña con la que abre la página: la que pidieron o la última en la que estuviste. */
 export function requestedTab(section: ShelfSection): TabId | null {
-  const tab = sessionStorage.getItem(tabKey(section));
+  let tab: string | null = null;
+  try {
+    tab = sessionStorage.getItem(tabKey(section));
+  } catch {
+    /* Sin almacenamiento. */
+  }
   return isTabOf(section, tab) ? tab : null;
 }
-export const forgetTab = (section: ShelfSection) =>
-  sessionStorage.removeItem(tabKey(section));

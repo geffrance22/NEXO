@@ -1231,6 +1231,80 @@ body.bd-dragging * {
 }
 
 /* ───────── Archivados (lista) ───────── */
+/* Se abre encima del tablero: un velo translúcido y un panel con su propio scroll. */
+.bd {
+  position: relative;
+}
+.bd-arch-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: center;
+  padding: 18px 16px;
+  background: rgba(20, 30, 25, 0.28);
+  backdrop-filter: blur(6px) saturate(1.1);
+  animation: bd-arch-fade 0.18s ease-out;
+}
+.bd-arch-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(820px, 100%);
+  min-height: 0;
+  max-height: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 30px 70px -28px rgba(15, 25, 20, 0.45);
+  overflow: hidden;
+  animation: bd-arch-rise 0.22s ease-out;
+}
+.bd-arch-panel .bd-archive {
+  padding: 18px 20px 28px;
+  scrollbar-gutter: stable;
+}
+.bd-arch-panel .bd-archive-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: -18px -20px 16px;
+  padding: 16px 20px 12px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--bd-line);
+}
+.bd-archive-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.bd-archive-tools .bd-search {
+  width: 210px;
+}
+.bd-archive-tools .bd-search:focus-within {
+  width: 240px;
+}
+@keyframes bd-arch-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes bd-arch-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+@media (max-width: 640px) {
+  .bd-arch-layer {
+    padding: 8px;
+  }
+  .bd-archive-tools .bd-search,
+  .bd-archive-tools .bd-search:focus-within {
+    width: 150px;
+  }
+}
 .bd-archive {
   flex: 1;
   min-height: 0;
@@ -3401,4 +3475,227 @@ body:has(.nx-peek) .sheet-backdrop:has(> .sheet.bdm) {
   color: var(--bd-ink);
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+/* ───────── Completadas abajo: grupo plegable al final de la columna ─────────
+   Prefijo `bd-dg`: `.bd-done` es el círculo de cada tarjeta y no se debe mezclar. */
+.bd-dg {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-width: 0;
+}
+/* Replegado, la cabecera queda siempre a la vista al pie de la columna, aunque haya scroll. */
+.bd-dg:not(.open) {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 0 -8px -6px;
+  padding: 0 8px 6px;
+  background: var(--bd-col);
+}
+.bd-dg-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 34px;
+  padding-top: 4px;
+  border-top: 1px solid var(--bd-line);
+}
+.bd-dg-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--bd-muted);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.bd-dg-toggle:hover {
+  background: rgba(25, 40, 30, 0.06);
+  color: var(--bd-ink);
+}
+.bd-dg-toggle:focus-visible,
+.bd-dg-act:focus-visible,
+.bd-dg-more:focus-visible {
+  outline: 2px solid var(--bd-accent);
+  outline-offset: 1px;
+}
+.bd-dg-chev {
+  flex: none;
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.bd-dg.open .bd-dg-chev {
+  transform: rotate(90deg);
+}
+.bd-dg-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bd-ok);
+  color: #fff;
+  line-height: 0;
+}
+.bd-dg-mark > svg {
+  display: block;
+}
+.bd-dg-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.bd-dg-count {
+  flex: none;
+  min-width: 20px;
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(25, 40, 30, 0.07);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* Las acciones aparecen al pasar por encima (siempre visibles en pantallas táctiles). */
+.bd-dg-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.bd-dg-head:hover .bd-dg-actions,
+.bd-dg-head:focus-within .bd-dg-actions,
+.bd-dg.open .bd-dg-actions {
+  opacity: 1;
+}
+@media (hover: none) {
+  .bd-dg-actions {
+    opacity: 1;
+  }
+}
+.bd-dg-act {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--bd-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.bd-dg-act:hover {
+  background: rgba(25, 40, 30, 0.07);
+  color: var(--bd-ink);
+}
+.bd-dg-act.danger:hover {
+  background: #fbe9e7;
+  color: var(--bd-danger);
+}
+/* El cuerpo se abre y se cierra con su alto real (0fr → 1fr), sin saltos. */
+.bd-dg-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  min-width: 0;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 0.18s ease;
+}
+.bd-dg.open .bd-dg-body {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+/* Las tarjetas, con el mismo ancho y separación que las de arriba. */
+.bd-dg-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  /* Margen para que la sombra y el borde de foco no se recorten durante el pliegue. */
+  margin: 0 -3px;
+  padding: 0 3px;
+  overflow: hidden;
+}
+.bd-dg.open .bd-dg-inner {
+  padding-top: 6px;
+  padding-bottom: 3px;
+}
+.bd-dg.settled .bd-dg-inner {
+  overflow: visible;
+}
+.bd-dg-more {
+  align-self: center;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bd-muted);
+  cursor: pointer;
+}
+.bd-dg-more:hover {
+  background: rgba(25, 40, 30, 0.06);
+  color: var(--bd-ink);
+}
+@media (prefers-reduced-motion: reduce) {
+  .bd-dg-body,
+  .bd-dg-chev,
+  .bd-dg-actions {
+    transition: none;
+  }
+}
+
+/* Interruptor dentro de un menú (p. ej. «Completadas abajo»). */
+.bd-pop-check .bd-pop-switch {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 17px;
+  border-radius: 999px;
+  background: rgba(25, 40, 30, 0.18);
+  transition: background 0.18s;
+}
+.bd-pop-check .bd-pop-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.bd-pop-check[aria-checked="true"] .bd-pop-switch {
+  background: var(--bd-accent);
+}
+.bd-pop-check[aria-checked="true"] .bd-pop-switch::after {
+  transform: translateX(13px);
 }

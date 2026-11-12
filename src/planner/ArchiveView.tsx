@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, ArchiveRestore, Check, ChevronDown, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Check, ChevronDown, Search, Trash2, X } from 'lucide-react';
 import { normalizeText, shortDate } from '../lib/format';
 import { CardFace } from './BoardCard';
 import { BOARD_SQL, type BoardCard } from './boardStore';
@@ -21,6 +21,8 @@ export function ArchiveView({
   onOpen,
   onUnarchive,
   onDelete,
+  onQuery,
+  onClose,
 }: {
   cards: BoardCard[] | null;
   missing: boolean;
@@ -32,6 +34,10 @@ export function ArchiveView({
   onOpen: (c: BoardCard) => void;
   onUnarchive: (c: BoardCard) => void;
   onDelete: (c: BoardCard) => void;
+  /** Con buscador propio (cuando se abre encima del tablero). */
+  onQuery?: (q: string) => void;
+  /** Con X para cerrar y volver al tablero. */
+  onClose?: () => void;
 }) {
   const needle = normalizeText(query.trim());
   const [limit, setLimit] = useState(PAGE);
@@ -66,6 +72,43 @@ export function ArchiveView({
                   : 'Lo que archives aparece aquí'}
             </small>
           </div>
+          {(onQuery || onClose) && (
+            <div className="bd-archive-tools">
+              {onQuery && (
+                <label className="bd-search">
+                  <Search size={15} aria-hidden="true" />
+                  <input
+                    value={query}
+                    placeholder="Buscar en archivados…"
+                    aria-label="Buscar en archivados"
+                    onChange={(e) => onQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape' && query) {
+                        e.stopPropagation();
+                        onQuery('');
+                      }
+                    }}
+                  />
+                  {query && (
+                    <button type="button" aria-label="Borrar la búsqueda" onClick={() => onQuery('')}>
+                      <X size={13} />
+                    </button>
+                  )}
+                </label>
+              )}
+              {onClose && (
+                <button
+                  type="button"
+                  className="bd-icon bd-archive-close"
+                  aria-label="Cerrar archivados"
+                  title="Cerrar (Esc)"
+                  onClick={onClose}
+                >
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+          )}
         </header>
 
         {missing ? (

@@ -25,10 +25,13 @@ import { useApp } from '../AppContext';
 import { ChatPanel } from '../components/ChatPanel';
 import { useAssistant } from '../hooks/useAssistant';
 import { toneVars } from '../library/Collection';
+import { goSection } from '../library/shelf';
 import { Avatar } from '../people/Avatar';
 import { NotebooksMissing, notebookVars } from './Cuadernos';
 import { askAboutNotebook, fetchExtras, type Extras } from './digest';
 import { ItemPicker } from './ItemPicker';
+import { ItemSheet, type Peek } from './ItemSheet';
+import { NOTES_CHANGED, NOTES_TOUCHED } from '../notes/useNotes';
 import {
   arrange,
   CARD_H,
@@ -84,6 +87,17 @@ export function NotebookView({ id }: { id: string }) {
     : null;
   const itemsRef = useRef<NotebookItem[]>([]);
   itemsRef.current = nb?.items ?? [];
+  // Si una nota se edita desde el lienzo (o en otra parte), su tarjeta se pone al día.
+  const [notesRev, setNotesRev] = useState(0);
+  useEffect(() => {
+    const bump = () => setNotesRev((r) => r + 1);
+    window.addEventListener(NOTES_TOUCHED, bump);
+    window.addEventListener(NOTES_CHANGED, bump);
+    return () => {
+      window.removeEventListener(NOTES_TOUCHED, bump);
+      window.removeEventListener(NOTES_CHANGED, bump);
+    };
+  }, []);
   useEffect(() => {
     if (remoteKey === null) return;
     let live = true;
@@ -91,7 +105,7 @@ export function NotebookView({ id }: { id: string }) {
     return () => {
       live = false;
     };
-  }, [remoteKey]);
+  }, [remoteKey, notesRev]);
 
   const latest = useRef({ nb, workspace, extras });
   latest.current = { nb, workspace, extras };
@@ -109,7 +123,7 @@ export function NotebookView({ id }: { id: string }) {
   });
 
   const back = (
-    <button type="button" className="cz-back" onClick={() => go('Agenda')}>
+    <button type="button" className="cz-back" onClick={() => goSection(go, 'Agenda', 'cuadernos')}>
       <ArrowLeft size={16} /> Cuadernos
     </button>
   );
@@ -148,7 +162,7 @@ function Board({
   back: ReactNode;
   assistant: ReturnType<typeof useAssistant>;
 }) {
-  const { workspace, go, notify, viewEntry, peekPerson } = useApp();
+  const { workspace, notify, viewEntry, peekPerson } = useApp();
   const stage = useRef<HTMLDivElement>(null);
   const heights = useRef(new Map<string, number>());
   const initial = useMemo(() => savedView(nb.id), [nb.id]);
@@ -164,6 +178,8 @@ function Board({
   const [picker, setPicker] = useState(false);
   const [form, setForm] = useState(false);
   const [chat, setChat] = useState(false);
+  const [peek, setPeek] = useState<Peek | null>(null);
+  const closePeek = useCallback(() => setPeek(null), []);
   const fitNext = useRef(!initial);
   const items = nb.items;
   const itemsRef = useRef(items);
@@ -415,21 +431,18 @@ function Board({
         if (p) peekPerson(p);
         return;
       }
-      case 'place': {
-        const p = workspace.places.find((x) => x.id === it.id);
-        if (p) go('Lugares', p);
+      case 'place':
+        if (workspace.places.some((x) => x.id === it.id)) setPeek({ type: 'place', id: it.id });
         return;
-      }
-      case 'episode': {
-        const ep = workspace.episodes.find((x) => x.id === it.id);
-        if (ep) go('Episodios', ep);
+      case 'episode':
+        if (workspace.episodes.some((x) => x.id === it.id))
+          setPeek({ type: 'episode', id: it.id });
         return;
-      }
       case 'reading':
-        if (extras?.readings.has(it.id)) go('Lecturas', { id: it.id });
+        if (extras?.readings.has(it.id)) setPeek({ type: 'reading', id: it.id });
         return;
       case 'note':
-        if (extras?.notes.has(it.id)) go('Libroteca', { id: it.id });
+        if (extras?.notes.has(it.id)) setPeek({ type: 'note', id: it.id });
         return;
       case 'text':
         setEditing(it.key);
@@ -654,6 +667,14 @@ function Board({
 
       {picker && <ItemPicker notebook={nb} onAdd={addRefs} onClose={() => setPicker(false)} />}
       {form && <NotebookForm notebook={nb} onClose={() => setForm(false)} />}
+      {peek && (
+        <ItemSheet
+          key={peek.type + ':' + peek.id}
+          peek={peek}
+          reading={peek.type === 'reading' ? extras?.readings.get(peek.id) : undefined}
+          onClose={closePeek}
+        />
+      )}
     </div>
   );
 }

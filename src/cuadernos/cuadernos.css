@@ -301,6 +301,167 @@
   color: var(--ink);
 }
 
+/* ───────── Ficha de un elemento abierta sobre el lienzo (lugar, episodio, lectura) ───────── */
+.sheet.cz-peek {
+  max-width: min(1120px, 100%);
+  max-height: min(92vh, 960px);
+  background: #fbfcf8;
+}
+.sheet.cz-peek.narrow {
+  max-width: 640px;
+  background: #fff;
+}
+.cz-peek-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 24px 26px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* Scroll delgado: una barra fina y redondeada que se oscurece al pasar el puntero. */
+.cz-peek-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.cz-peek-scroll::-webkit-scrollbar-track {
+  margin: 12px 0;
+  background: transparent;
+}
+.cz-peek-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #d2dac7;
+  background-clip: padding-box;
+}
+.cz-peek-scroll::-webkit-scrollbar-thumb:hover {
+  background: #aab99a;
+  background-clip: padding-box;
+}
+/* Firefox no entiende ::-webkit-scrollbar: usa las propiedades estándar. */
+@supports not selector(::-webkit-scrollbar) {
+  .cz-peek-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #d2dac7 transparent;
+  }
+}
+/* La ficha de una persona abierta desde aquí queda encima. */
+body:has(.nx-peek) .sheet-backdrop:has(> .sheet.cz-peek) {
+  z-index: 54;
+}
+/* La ficha de un lugar o un episodio, tal como en su sección, pero dentro de la ventana. */
+.cz-peek .pl-detail,
+.cz-peek .ep-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cz-peek .pl-cols {
+  margin-top: 0;
+}
+.cz-peek .nx-embed-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin: -16px -24px 0;
+  padding: 10px 16px 8px 14px;
+  background-color: #fbfcf8;
+}
+.cz-peek.narrow .nx-embed-bar {
+  background-color: #fff;
+}
+@media (max-width: 1100px) {
+  .cz-peek .pl-cols,
+  .cz-peek .ep-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Lectura */
+.cz-rd {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cz-rd-cover {
+  display: block;
+  overflow: hidden;
+  border-radius: 16px;
+  background: #f1f4ec;
+  aspect-ratio: 16 / 8;
+}
+.cz-rd-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cz-rd-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 650;
+  color: #7b8573;
+}
+.cz-rd h2 {
+  margin: 0;
+  font:
+    750 22px/1.25 "Manrope",
+    sans-serif;
+  letter-spacing: -0.4px;
+  color: #232b1e;
+}
+.cz-rd-excerpt {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #4a5442;
+  white-space: pre-line;
+}
+.cz-rd-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cz-rd-actions a.lt-add {
+  text-decoration: none;
+}
+.cz-rd-marks {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid #edf0e7;
+}
+.cz-rd-marks h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #5d6853;
+}
+.cz-rd-marks ul {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cz-rd-marks blockquote {
+  margin: 0;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--c, #c9b45a);
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #2f3a2a;
+}
+.cz-rd-marks li p {
+  margin: 4px 0 0 15px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #6b7563;
+}
+
 /* ───────── Formulario ───────── */
 .sheet-backdrop:has(> .sheet.cz-form-sheet) {
   /* Encima de la ficha de un recuerdo (65): se abre desde «Cuaderno → Nuevo cuaderno…». */
@@ -395,13 +556,20 @@
   margin-top: 4px;
 }
 
-/* ───────── Cuaderno abierto ───────── */
+/* ───────── Cuaderno abierto ─────────
+   Ocupa justo el alto de la ventana: sin scroll de página (el lienzo se mueve por dentro). */
+.main-shell > main:has(.cz-page) {
+  --main-pt: 10px;
+}
+.main-shell:has(.cz-page) .page-footer {
+  display: none;
+}
 .cz-page {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  height: calc(100dvh - var(--topbar-h) - var(--main-pt) - 22px);
-  min-height: 460px;
+  gap: 10px;
+  height: calc(100dvh - var(--topbar-h) - var(--main-pt) - 16px);
+  min-height: 420px;
 }
 .cz-back {
   display: inline-flex;
@@ -1017,4 +1185,103 @@
     border-radius: 0;
     z-index: 60;
   }
+}
+
+/* ───────── Recientes en Mi espacio: tira de cuadernos ───────── */
+.cz-recent {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 14px;
+}
+.cz-recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.cz-recent-head span,
+.cz-recent-head button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 650;
+  color: #7b8574;
+}
+.cz-recent-head button:hover {
+  color: #2f3a2a;
+}
+.cz-recent-head i {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #f1f4ec;
+  font-style: normal;
+  font-size: 10.5px;
+}
+.cz-strip {
+  display: flex;
+  gap: 10px;
+  margin: 0 -4px;
+  padding: 4px 4px 8px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+.cz-pill {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  width: 220px;
+  padding: 9px 12px 9px 9px;
+  border: 1px solid color-mix(in srgb, var(--c) 22%, #e7ebdf);
+  border-radius: 12px;
+  background: #fff;
+  text-align: left;
+  scroll-snap-align: start;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.2s,
+    transform 0.2s;
+}
+.cz-pill:hover {
+  border-color: color-mix(in srgb, var(--c) 45%, #e7ebdf);
+  box-shadow: 0 10px 24px -16px rgba(40, 52, 32, 0.4);
+  transform: translateY(-1px);
+}
+.cz-pill:focus-visible {
+  outline: 2px solid var(--c);
+  outline-offset: 2px;
+}
+.cz-pill-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--s);
+  color: var(--c);
+}
+.cz-pill-body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+.cz-pill-body strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--k);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cz-pill-body small {
+  overflow: hidden;
+  font-size: 11px;
+  color: #7b8574;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }

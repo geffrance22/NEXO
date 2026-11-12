@@ -81,7 +81,7 @@ export function OnThisDayBlock({ opts, zone }: BlockProps) {
                   </span>
                 )}
                 <span className="hk-text">
-                  <strong>{e.title || kindLabel(e)}</strong>
+                  {e.title && <strong>{e.title}</strong>}
                   <small>
                     Hace {years} {years === 1 ? 'año' : 'años'} · {kindLabel(e)}
                   </small>
@@ -230,7 +230,7 @@ export function PhotoBlock({ opts, zone, inst }: BlockProps) {
       if (!e.images.length || e.kind === 'Movimiento' || e.kind === 'Película' || e.kind === 'Libro') continue;
       if (source === 'encuentros' && e.kind !== 'Encuentro') continue;
       if (source === 'diario' && e.kind !== 'Nota') continue;
-      for (const img of e.images) out.push({ img, e, label: e.title || kindLabel(e) });
+      for (const img of e.images) out.push({ img, e, label: e.title });
     }
     return out;
   }, [workspace.entries, workspace.places, source]);

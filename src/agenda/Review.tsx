@@ -48,8 +48,11 @@ import { Connect } from "../review/Connect";
 import { dueLearnings } from "../review/learnings";
 import { modeOf, planSession, type Mode } from "../review/links";
 import { dueQuotes } from "../review/quotes";
-import { dueWords, saveWordNote, type DueWord } from "../review/words";
+import { dueWords, defineDueWord, saveWordNote, type DueWord } from "../review/words";
 import { dueFlashcards, type DueFlashcard } from "../review/flashcards";
+import { DefinitionView } from "../readings/DefinitionView";
+import type { Definition } from "../readings/define";
+import "../readings/dictionary.css";
 
 const SNOOZE = "nexo-review-snooze";
 const look = { color: "#5a49b8", soft: "#eeebfa" };
@@ -256,7 +259,7 @@ function ReviewDialog({
   const card = cards[index];
   const plan = plans[index];
   const f = card ? cardFaces(card) : null;
-  const hasBack = Boolean(f?.back);
+  const hasBack = Boolean(f?.back) || card?.source === "palabra";
   const revealed = shown || !hasBack;
   const options = hasBack ? recallGrades : reflectGrades;
   const mode: Mode = !plan
@@ -393,18 +396,20 @@ function ReviewDialog({
                 )}
                 {hasBack &&
                   (shown ? (
+                    card.source === "palabra" ? (
+                      <WordBack key={card.id} word={card.word} />
+                    ) : (
                     <div className="rv-back">
                       <small>
                         {card.source === "aprendizaje"
                           ? "Lo que escribiste"
-                          : card.source === "palabra"
-                            ? "Lo que significa"
-                            : f.kind === "pregunta"
-                              ? "Respuesta"
-                              : "Tu nota"}
+                          : f.kind === "pregunta"
+                            ? "Respuesta"
+                            : "Tu nota"}
                       </small>
                       <AiText text={f.back} />
                     </div>
+                    )
                   ) : (
                     <button
                       type="button"
@@ -413,16 +418,13 @@ function ReviewDialog({
                     >
                       <Eye size={15} />{" "}
                       {card.source === "palabra"
-                        ? "Piénsalo y mira lo que anotaste"
+                        ? "Piénsalo y mira lo que significa"
                         : f.kind === "pregunta"
                           ? "Piénsalo y mira la respuesta"
                           : "Ver tu nota"}
                       <kbd>Espacio</kbd>
                     </button>
                   ))}
-                {card.source === "palabra" && !hasBack && (
-                  <WordMeaning key={card.id} word={card.word} />
-                )}
               </div>
 
               {revealed && mode !== "recordar" && (
@@ -496,6 +498,49 @@ function ReviewDialog({
         )}
       </div>
     </Sheet>
+  );
+}
+
+/**
+ * Reverso de una palabra del diccionario: su ficha (la misma de Lecturas, con la raíz de
+ * Wiktionary) y tu nota si la escribiste. Si aún no tiene ficha, se genera y se guarda al verla.
+ */
+function WordBack({ word }: { word: DueWord }) {
+  const [def, setDef] = useState<Definition | null>(word.definition ?? null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (def) return;
+    let live = true;
+    defineDueWord(word)
+      .then((d) => {
+        word.definition = d;
+        if (live) setDef(d);
+      })
+      .catch(() => live && setFailed(true));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [word.id]);
+  const note = word.note.trim();
+  return (
+    <div className="rv-back rv-def">
+      {def ? (
+        <DefinitionView d={def} term={word.term} plain />
+      ) : failed ? (
+        !note && <WordMeaning word={word} />
+      ) : (
+        <span className="rv-def-wait">
+          <LoaderCircle className="spin" size={14} /> Buscando lo que significa…
+        </span>
+      )}
+      {note && (
+        <div className="rv-def-note">
+          <small>Tu nota</small>
+          <AiText text={note} />
+        </div>
+      )}
+    </div>
   );
 }
 

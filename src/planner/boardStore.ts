@@ -25,6 +25,10 @@ export type BoardSettings = {
   anchor?: { date: string; label: string };
   /** Vista Lienzo: dónde dejaste cada tarjeta y hacia dónde apunta cada flecha. */
   canvas?: CanvasLayout;
+  /** Columnas plegadas (ids). Sin dato: lo que recuerde este equipo. */
+  folded?: string[];
+  /** Ocultar las completadas. Sin dato: lo que recuerde este equipo. */
+  hideDone?: boolean;
 };
 /**
  * Lienzo libre. `p`: posición de cada tarjeta (x, y). `d`: en cada vínculo («a|b»), la tarjeta de

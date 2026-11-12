@@ -18,6 +18,7 @@ import { EmptyState, EntryCollection, ShelfChips, SortMenu, ViewSwitch } from '.
 import { useMediaBackfill } from './enrich';
 import { Inicio } from './Inicio';
 import { LetterboxdButton } from './LetterboxdImport';
+import { MovieCalendarButton } from './MovieCalendar';
 import { QuoteSheet, QuoteWall, countQuotes } from './Quotes';
 import { ReadingGoal } from './ReadingGoal';
 import { booksFinishedIn } from './goals';
@@ -25,7 +26,7 @@ import { useReadingShelf } from './ReadingShelf';
 import { InicioSkeleton, StatsSkeleton, TabSkeleton } from './Skeletons';
 import {
   entryTabs,
-  forgetTab,
+  rememberTab,
   requestedTab,
   searchText,
   sectionTabs,
@@ -79,7 +80,7 @@ export function Agenda({ notebookId }: { notebookId?: string | null }) {
 /**
  * Una página con pestañas: cada pestaña tiene sus estantes, su orden, su vista (tarjetas, portadas
  * o lista) y su botón «Añadir». La primera pestaña de cada página es especial: «Inicio» en
- * Libroteca y «Diario» en Agenda.
+ * Libroteca y «Pendientes» en Agenda.
  */
 function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?: string | null }) {
   const { workspace, openEntry, dataSettled } = useApp();
@@ -108,7 +109,8 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
   // Nota por abrir en «Notas» y avisos para abrir «Escribe una nota…».
   const [openNote, setOpenNote] = useState<string | null>(noteId === 'nueva' ? null : noteId);
   const [composeTick, setComposeTick] = useState(noteId === 'nueva' ? 1 : 0);
-  useEffect(() => forgetTab(section), [section]);
+  // Cada pestaña sabe que estás en ella: al volver a la página, abre aquí.
+  useEffect(() => rememberTab(section, tab), [section, tab]);
 
   const people = useMemo(() => new Map(workspace.people.map((p) => [p.id, p])), [workspace.people]);
   // Solo las pestañas de esta página (Libroteca no necesita los pendientes de Agenda, ni al revés).
@@ -398,6 +400,7 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
         <div className="lt-toolbar">
           {chips}
           <div className="lt-toolbar-end">
+            {tab === 'peliculas' && <MovieCalendarButton />}
             {tab === 'peliculas' && <LetterboxdButton />}
             <SortMenu
               options={entryTab.sorts}

@@ -34,6 +34,8 @@ import {
 import { isActive, progressOf, withEpisode } from '../../library/progress';
 import { addedAt, goLibroteca, goSection, toneOf } from '../../library/shelf';
 import { Avatar } from '../../people/Avatar';
+import { RecentNotebooks } from '../../cuadernos/RecentNotebooks';
+import { useCuadernos } from '../../cuadernos/useCuadernos';
 import { bool, list, num, str, titleOf, type BlockProps } from '../types';
 
 /** Los últimos recuerdos que añadiste (de cualquier tipo, o solo de los que elijas). */
@@ -42,6 +44,10 @@ export function RecentBlock({ opts }: BlockProps) {
   const headId = useId();
   const max = num(opts, 'count', 12);
   const only = list(opts, 'kinds') as Kind[];
+  // Los cuadernos de Agenda entran cuando se ven todos los tipos (las notas libres tienen su bloque).
+  const withNotebooks = !only.length;
+  const notebooks = useCuadernos();
+  const hasNotebooks = withNotebooks && !notebooks.missing && Boolean(notebooks.list?.length);
   const pool = useMemo(
     () => (only.length ? workspace.entries.filter((e) => only.includes(e.kind)) : workspace.entries),
     [workspace.entries, only.join()],
@@ -68,9 +74,10 @@ export function RecentBlock({ opts }: BlockProps) {
           </button>
         </div>
       </header>
+      {hasNotebooks && <RecentNotebooks />}
       {recent.length > 0 ? (
         <Masonry entries={recent} />
-      ) : (
+      ) : hasNotebooks ? null : (
         <div className="nb-empty">
           <Feather size={20} />
           <div>

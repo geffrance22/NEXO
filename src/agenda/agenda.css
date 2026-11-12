@@ -592,6 +592,64 @@
 .rv-back .rd-ai-text ul {
   margin: 0 0 6px;
 }
+/* Palabra del diccionario: la ficha de Lecturas dentro del repaso. */
+.rv-def {
+  --dc-accent: #4b3da0;
+  --dc-soft: #f3f1fb;
+  --dc-line: #ebe8f5;
+  --dc-card: #fff;
+  --dc-muted: #8b84a8;
+  --dc-done: #3f8a4d;
+  display: grid;
+  gap: 12px;
+}
+.rv-def .df-meaning {
+  text-align: left;
+}
+.rv-def .df-kind {
+  justify-self: start;
+}
+.rv-def .df-reveal {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--dc-accent);
+}
+/* Textos largos (Wiktionary, historia): se desplazan dentro con un scroll fino. */
+.rv-def .df-source p,
+.rv-def .df-block > p {
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(90, 73, 184, 0.28) transparent;
+}
+.rv-def .df-source p::-webkit-scrollbar,
+.rv-def .df-block > p::-webkit-scrollbar {
+  width: 6px;
+}
+.rv-def .df-source p::-webkit-scrollbar-thumb,
+.rv-def .df-block > p::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(90, 73, 184, 0.28);
+}
+.rv-def-wait {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13.5px;
+  color: #8b84a8;
+}
+.rv-def-note {
+  padding-top: 10px;
+  border-top: 1px solid #efedf7;
+}
 /* Pie fijo: los botones nunca se tapan ni se mueven, sea cual sea el largo del texto. */
 .rv-grades {
   display: grid;

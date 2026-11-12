@@ -122,6 +122,8 @@ export type ColumnRules = {
   sort: SortKey;
   /** Días tras completarlas para archivarlas solas (0 = nunca). */
   autoArchive: number;
+  /** Las completadas se juntan abajo, en un grupo que se pliega. */
+  doneBelow: boolean;
   rules: Rule[];
 };
 
@@ -130,6 +132,7 @@ export const emptyRules = (): ColumnRules => ({
   limitMode: 'warn',
   sort: '',
   autoArchive: 0,
+  doneBelow: false,
   rules: [],
 });
 
@@ -251,6 +254,7 @@ export function normalizeRules(raw: unknown): ColumnRules {
     limitMode: raw.limitMode === 'block' ? 'block' : 'warn',
     sort: SORTS.includes(raw.sort as SortKey) ? (raw.sort as SortKey) : '',
     autoArchive: num(raw.autoArchive, 0, 365, 0),
+    doneBelow: raw.doneBelow === true,
     rules: rules.slice(0, 40),
   };
 }

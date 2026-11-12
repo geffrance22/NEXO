@@ -74,11 +74,21 @@ export function NoteTile({ entry }: { entry: Entry }) {
           />
         )}
         <div>
-          <h3>
-            <button type="button" className="nt-open" onClick={() => viewEntry(entry)}>
-              <span>{entry.title || entry.kind}</span>
-            </button>
-          </h3>
+          {entry.title ? (
+            <h3>
+              <button type="button" className="nt-open" onClick={() => viewEntry(entry)}>
+                <span>{entry.title}</span>
+              </button>
+            </h3>
+          ) : (
+            // Sin título no se inventa uno: la tarjeta entera sigue abriendo la ficha.
+            <button
+              type="button"
+              className="nt-open"
+              aria-label={`Abrir ${(series ? 'serie' : meta.label).toLowerCase()}`}
+              onClick={() => viewEntry(entry)}
+            />
+          )}
           {entry.kind === 'Movimiento' && (
             <strong className={'nt-amount ' + entry.direction}>{signedAmount(entry)}</strong>
           )}

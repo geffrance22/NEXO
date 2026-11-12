@@ -11,6 +11,7 @@ import {
   AlarmClock,
   Archive,
   ArrowDownAZ,
+  ArrowDownToLine,
   ArrowDownWideNarrow,
   ArrowLeft,
   ArrowRight,
@@ -149,6 +150,7 @@ import { cleanDetails } from "../composer/logic";
 import { BoardHistory } from "./views/BoardHistory";
 import { ShareBoardDialog } from "./views/ShareBoard";
 import { ColumnStack } from "./ColumnStack";
+import { DoneGroup } from "./DoneGroup";
 import { useUndoStack } from "./boardUndo";
 import { blocksCard, otherOf, stillBlocks } from "./cardLinks";
 import {
@@ -168,6 +170,16 @@ const LAST = BOARD_LAST;
 const ARCHIVE = "archivados";
 /** Tableros con las completadas ocultas (cada tablero por su lado). */
 const HIDE = "nexo-board-hide-done-by";
+/** Columnas con el grupo de completadas desplegado (en este equipo). */
+const DONE_OPEN = "nexo-board-done-open";
+const readDoneOpen = () => {
+  try {
+    const v = JSON.parse(localStorage.getItem(DONE_OPEN) ?? "[]");
+    return new Set<string>(Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
+  } catch {
+    return new Set<string>();
+  }
+};
 /** Reglas programadas ya aplicadas (para no repetirlas sobre la misma situación). */
 const FIRED = "nexo-board-rule-fired";
 /** Cada cuánto se revisan las reglas programadas con el tablero abierto. */
@@ -287,14 +299,18 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   // La columna que va en la ventanita de abajo a la derecha (si hay una).
   const docked = useDock();
   const list = useBoardList(notify);
-  const [selected, setSelected] = useState(
-    () => localStorage.getItem(LAST) ?? "",
-  );
-  const inArchive = selected === ARCHIVE;
+  const [selected, setSelected] = useState(() => {
+    const last = localStorage.getItem(LAST) ?? "";
+    // Archivados ya no es un tablero más: se abre encima del tablero.
+    return last === ARCHIVE ? "" : last;
+  });
+  // Archivados, encima del tablero (al cerrarlo sigues donde estabas).
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveQuery, setArchiveQuery] = useState("");
+  const inArchive = archiveOpen;
   // También puede ser una plantilla tuya (se edita como un tablero).
-  const board = inArchive
-    ? null
-    : (list.all?.find((b) => b.id === selected) ?? list.boards?.[0] ?? null);
+  const board =
+    list.all?.find((b) => b.id === selected) ?? list.boards?.[0] ?? null;
   const editingTemplate = Boolean(board?.is_template);
   // Nuevo tablero: la galería de plantillas (con lo que quieras preseleccionar).
   const [gallery, setGallery] = useState<string | null>(null);
@@ -306,6 +322,29 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   const archive = useArchive(inArchive, notify);
   // Tarjetas desplegadas y columnas plegadas (se recuerda en este equipo).
   const view = useBoardView();
+  // Las columnas plegadas también se guardan con el tablero: así lo encuentras como lo dejaste.
+  const savedFold = board?.settings.folded;
+  const isFolded = (id: string) =>
+    savedFold ? savedFold.includes(id) : view.folded(id);
+  const setFolded = (ids: string[], on: boolean) => {
+    view.setFolded(ids, on);
+    if (!board || !api.power) return;
+    const cur = new Set(
+      savedFold ??
+        api.columns.filter((c) => view.folded(c.id)).map((c) => c.id),
+    );
+    for (const id of ids) {
+      if (on) cur.add(id);
+      else cur.delete(id);
+    }
+    const alive = new Set(api.columns.map((c) => c.id));
+    list.update(board.id, {
+      settings: {
+        ...board.settings,
+        folded: [...cur].filter((id) => alive.has(id)),
+      },
+    });
+  };
   // Columnas, lienzo, lista, tabla, calendario, línea de tiempo o matriz (cada tablero la suya).
   const [mode, setMode] = useBoardMode(board?.id ?? null);
   const boardArchived = Boolean(board?.archived_at);
@@ -315,16 +354,33 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
   const [query, setQuery] = useState("");
   // Ocultar completadas: cada tablero lo recuerda por su lado.
   const [hidden, setHidden] = useState<Record<string, 1>>(readHidden);
-  const hideDone = Boolean(board && hidden[board.id]);
+  // Grupo «Completadas» de cada columna: desplegado o replegado (se recuerda en este equipo).
+  const [doneOpen, setDoneOpen] = useState<Set<string>>(readDoneOpen);
+  const toggleDoneOpen = (listId: string) =>
+    setDoneOpen((s) => {
+      const n = new Set(s);
+      if (n.has(listId)) n.delete(listId);
+      else n.add(listId);
+      localStorage.setItem(DONE_OPEN, JSON.stringify([...n]));
+      return n;
+    });
+  const hideDone = Boolean(
+    board && (board.settings.hideDone ?? hidden[board.id]),
+  );
   const setHideDone = (fn: (v: boolean) => boolean) => {
     if (!board) return;
+    const next = fn(hideDone);
     setHidden((h) => {
       const n = { ...h };
-      if (fn(Boolean(h[board.id]))) n[board.id] = 1;
+      if (next) n[board.id] = 1;
       else delete n[board.id];
       localStorage.setItem(HIDE, JSON.stringify(n));
       return n;
     });
+    if (api.power)
+      list.update(board.id, {
+        settings: { ...board.settings, hideDone: next },
+      });
   };
   const [composer, setComposer] = useState<string | null>(null);
   const [draftAt, setDraftAt] = useState<number | null>(null);
@@ -377,6 +433,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     [...recurRuns.current.values()].forEach((run) => run());
     setSelected(id);
     localStorage.setItem(LAST, id);
+    setArchiveOpen(false);
     setMenu(null);
     setComposer(null);
     setDraftAt(null);
@@ -391,6 +448,32 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     setHistory(null);
     setSharing(false);
   };
+
+  /** Archivados se abre encima: el tablero no se mueve ni pierde dónde estabas. */
+  const openArchive = () => {
+    setMenu(null);
+    setOpenId(null);
+    setArchiveQuery("");
+    setArchiveOpen(true);
+  };
+  const closeArchive = () => {
+    setOpenId(null);
+    setArchiveOpen(false);
+  };
+  useEffect(() => {
+    if (!archiveOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      // Si hay algo encima (la ficha, una confirmación, un menú), Esc es de eso.
+      if (document.querySelector(".sheet-backdrop, .confirm-backdrop, .bd-pop"))
+        return;
+      e.preventDefault();
+      setOpenId(null);
+      setArchiveOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [archiveOpen]);
 
   // ── Completadas (también si el pendiente vinculado ya se hizo) ──
   const tasks = useMemo(
@@ -1208,7 +1291,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     try {
       const go = JSON.parse(raw) as { list?: string; card?: string };
       if (go.list && api.columns.some((c) => c.id === go.list)) {
-        view.setFolded([go.list], false);
+        setFolded([go.list], false);
         requestAnimationFrame(() => {
           const el = canvas.current?.querySelector<HTMLElement>(
             `[data-list="${go.list}"]`,
@@ -1304,6 +1387,9 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     const card = archive.unarchive(c.id);
     if (!card) return;
     list.setArchived((n) => Math.max(0, n - 1));
+    // Si vuelve a este tablero, que aparezca ya en su columna (sin recargar el tablero).
+    if (api.columns.some((col) => col.id === card.list_id))
+      window.setTimeout(() => void api.refreshList(card.list_id), 900);
     notify(
       `Volvió a «${card.list_name ?? "su columna"}»${card.board_name ? ` en ${card.board_name}` : ""}.`,
       {
@@ -1448,8 +1534,14 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     });
   }
   function archiveDone(listId: string) {
-    const done = (byList.get(listId) ?? []).filter(isDone);
-    const moved = done
+    archiveCards((byList.get(listId) ?? []).filter(isDone));
+  }
+  function archiveCards(cards: BoardCard[]) {
+    if (!api.extras)
+      return notify(
+        `Para archivar ejecuta ${BOARD_SQL} en el SQL Editor de Supabase.`,
+      );
+    const moved = cards
       .map((c) => api.archiveCard(c.id))
       .filter((c): c is BoardCard => Boolean(c));
     if (!moved.length) return;
@@ -1474,6 +1566,41 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         : (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.rank - b.rank,
     );
     api.reorder(all);
+  }
+  /** Elimina las completadas del grupo de una columna (con confirmación y «Deshacer»). */
+  async function deleteDoneCards(cards: BoardCard[]) {
+    if (!cards.length) return;
+    if (
+      !(await confirm({
+        title: `¿Eliminar ${plural(cards.length, "tarjeta completada", "tarjetas completadas")}?`,
+        message:
+          "También se eliminan los pendientes que nacieron con ellas. Podrás deshacerlo durante unos segundos.",
+        confirmLabel: "Eliminar",
+        danger: true,
+        icon: "trash",
+      }))
+    )
+      return;
+    const tied = links.of(cards.map((c) => c.id));
+    const removed = cards
+      .map((c) => api.deleteCard(c.id))
+      .filter((c): c is BoardCard => Boolean(c));
+    if (!removed.length) return;
+    const keep = dropTasksLater(
+      removed.filter((c) => boardTask(c)).map((c) => c.entry_id),
+    );
+    notify(
+      `${plural(removed.length, "tarjeta eliminada", "tarjetas eliminadas")}.`,
+      {
+        label: "Deshacer",
+        icon: "undo",
+        run: () => {
+          keep();
+          removed.forEach((c) => api.restoreCard(c));
+          links.restore(tied);
+        },
+      },
+    );
   }
 
   const openCard = openId
@@ -2038,7 +2165,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
     const full = cfg.limit > 0 && count >= cfg.limit;
 
     // Plegada: una franja delgada con su nombre en vertical. Un clic la despliega.
-    if (view.folded(col.id))
+    if (isFolded(col.id))
       return (
         <section
           key={col.id}
@@ -2055,7 +2182,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             onPointerDown={(e) =>
               dnd.start(e, { kind: "list", id: col.id, before: nextCol })
             }
-            onClick={() => !dnd.wasDrag() && view.setFolded([col.id], false)}
+            onClick={() => !dnd.wasDrag() && setFolded([col.id], false)}
           >
             <UnfoldHorizontal size={15} className="bd-fold-icon" />
             <span className="bd-list-count">{all.length}</span>
@@ -2080,8 +2207,18 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
       />
     );
     const items: ReactNode[] = [];
+    // «Completadas abajo»: las completadas salen de la lista y van al grupo plegable del final.
+    const grouped = cfg.doneBelow;
+    const inGroup = (c: BoardCard) => grouped && !isDivider(c.title) && isDone(c);
+    const groupCards: ReactNode[] = [];
+    // Cuenta también la que arrastras: así el grupo no desaparece a mitad del arrastre.
+    const groupCount = grouped
+      ? every.filter((c) => visible(c) && inGroup(c)).length
+      : 0;
+    const groupOpen = doneOpen.has(col.id);
     shown.forEach((c, j) => {
-      if (here && drag.before === c.id) items.push(placeholder);
+      const into = inGroup(c) ? groupCards : items;
+      if (here && drag.before === c.id) into.push(placeholder);
       if (isDivider(c.title)) {
         items.push(
           <DividerTile
@@ -2097,7 +2234,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         return;
       }
       const cardDone = isDone(c);
-      items.push(
+      into.push(
         <CardTile
           key={c.id}
           card={c}
@@ -2132,7 +2269,12 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         />,
       );
     });
-    if (here && drag.before === null) items.push(placeholder);
+    if (here && drag.before === null)
+      // Una completada que cae al final de una columna agrupada va al final de su grupo.
+      (grouped && drag.done && groupCount > 0 && groupOpen
+        ? groupCards
+        : items
+      ).push(placeholder);
     return (
       <section
         key={col.id}
@@ -2231,7 +2373,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             aria-label="Plegar la columna"
             onClick={() => {
               if (composer === col.id) setComposer(null);
-              view.setFolded([col.id], true);
+              setFolded([col.id], true);
             }}
           >
             <FoldHorizontal size={15} />
@@ -2284,6 +2426,20 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               onAdd={(titles) => addFrom(col.id, titles)}
               onTemplate={(title, tpl) => addFromTemplate(col.id, title, tpl)}
               onClose={() => setComposer(null)}
+            />
+          )}
+          {groupCount > 0 && (
+            <DoneGroup
+              count={groupCount}
+              open={groupOpen}
+              onToggle={() => toggleDoneOpen(col.id)}
+              onArchiveAll={
+                api.extras
+                  ? () => archiveCards(shown.filter(inGroup))
+                  : undefined
+              }
+              onDeleteAll={() => void deleteDoneCards(shown.filter(inGroup))}
+              cards={groupCards}
             />
           )}
         </ColumnStack>
@@ -2387,9 +2543,9 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
 
   return (
     <section
-      className={"bd" + (bg.dark && !inArchive ? " on-dark" : "")}
+      className={"bd" + (bg.dark ? " on-dark" : "")}
       style={
-        { "--bd-bg": inArchive ? backgrounds[0].css : bg.css } as CSSProperties
+        { "--bd-bg": bg.css } as CSSProperties
       }
     >
       <header className="bd-bar">
@@ -2417,17 +2573,17 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         >
           <span
             className="bd-picker-mark"
-            style={{ background: inArchive ? "#66727f" : bg.css }}
+            style={{ background: bg.css }}
           >
-            {inArchive ? <Archive size={14} /> : <Columns3 size={14} />}
+            <Columns3 size={14} />
           </span>
           <strong>
-            {inArchive ? "Archivados" : (board?.name ?? "Tableros")}
+            {board?.name ?? "Tableros"}
           </strong>
           {editingTemplate && <span className="bd-picker-tag">Plantilla</span>}
           <ChevronDown size={15} />
         </button>
-        {board && !inArchive && api.status === "ready" && (
+        {board && api.status === "ready" && (
           <span className="bd-stats">
             {activeCount} {activeCount === 1 ? "tarjeta" : "tarjetas"}
             {doneCount > 0 &&
@@ -2443,7 +2599,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             )}
           </span>
         )}
-        {board?.settings.anchor && !inArchive && !editingTemplate && (
+        {board?.settings.anchor && !editingTemplate && (
           <span
             className="bd-anchor"
             title={`${board.settings.anchor.label}: ${friendlyDate(board.settings.anchor.date).toLowerCase()}`}
@@ -2460,7 +2616,6 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           </span>
         )}
         {board &&
-          !inArchive &&
           api.status === "ready" &&
           overdue.length > 0 &&
           !boardArchived && (
@@ -2474,7 +2629,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               {overdue.length} {overdue.length === 1 ? "vencida" : "vencidas"}
             </button>
           )}
-        {board && !inArchive && api.status === "ready" && (
+        {board && api.status === "ready" && (
           <ViewSwitch
             mode={mode}
             onChange={(m) => {
@@ -2485,7 +2640,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             }}
           />
         )}
-        {board && !inArchive && api.status === "ready" && progressTotal > 0 && (
+        {board && api.status === "ready" && progressTotal > 0 && (
           <i
             className="bd-progress"
             aria-hidden="true"
@@ -2493,14 +2648,12 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           />
         )}
         <div className="bd-bar-end">
-          {(board || inArchive) && (
+          {board && (
             <label className="bd-search">
               <Search size={15} aria-hidden="true" />
               <input
                 value={query}
-                placeholder={
-                  inArchive ? "Buscar en archivados…" : "Filtrar tarjetas…"
-                }
+                placeholder="Filtrar tarjetas…"
                 aria-label="Filtrar tarjetas"
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -2521,7 +2674,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               )}
             </label>
           )}
-          {board && !inArchive && (
+          {board && (
             <>
               <button
                 type="button"
@@ -2627,14 +2780,14 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         </div>
       )}
 
-      {board && !inArchive && api.progress && (
+      {board && api.progress && (
         <p className="bd-notice bd-loading-note" role="status">
           Cargando {api.progress.loaded.toLocaleString("es")} de{" "}
           {api.progress.total.toLocaleString("es")} tarjetas…
         </p>
       )}
 
-      {board && !inArchive && !api.extras && api.status === "ready" && (
+      {board && !api.extras && api.status === "ready" && (
         <p className="bd-notice">
           Para completar, archivar y dar color, ejecuta <code>{BOARD_SQL}</code>{" "}
           en el SQL Editor de Supabase.
@@ -2648,18 +2801,6 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           </p>
         ) : list.boards === null ? (
           <Skeleton />
-        ) : inArchive ? (
-          <ArchiveView
-            cards={archive.cards}
-            missing={archive.missing}
-            loading={archive.loading}
-            query={query}
-            isDone={isDone}
-            linked={linked}
-            onOpen={(c) => setOpenId(c.id)}
-            onUnarchive={unarchive}
-            onDelete={deleteArchived}
-          />
         ) : !board ? (
           <Welcome
             onCreate={async (name) => {
@@ -2781,6 +2922,37 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         )}
       </div>
 
+      {/* Archivados: encima del tablero, que queda tal cual debajo */}
+      {archiveOpen && (
+        <div
+          className="bd-arch-layer"
+          onPointerDown={(e) => {
+            if (e.target === e.currentTarget) closeArchive();
+          }}
+        >
+          <div
+            className="bd-arch-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Archivados"
+          >
+            <ArchiveView
+              cards={archive.cards}
+              missing={archive.missing}
+              loading={archive.loading}
+              query={archiveQuery}
+              isDone={isDone}
+              linked={linked}
+              onOpen={(c) => setOpenId(c.id)}
+              onUnarchive={unarchive}
+              onDelete={deleteArchived}
+              onQuery={setArchiveQuery}
+              onClose={closeArchive}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Lo que arrastras, siguiendo al puntero */}
       {drag &&
         createPortal(
@@ -2837,7 +3009,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
                   const col = cols.find((x) => x.id === drag.id);
                   if (!col) return null;
                   const tone = toneOf(col.color);
-                  if (view.folded(col.id))
+                  if (isFolded(col.id))
                     return (
                       <section
                         className={
@@ -2925,7 +3097,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           <p className="bd-pop-label">Tus tableros</p>
           <div className="bd-pick-list">
             {(list.boards ?? []).map((b) => {
-              const on = !inArchive && b.id === board?.id;
+              const on = b.id === board?.id;
               return (
                 <button
                   type="button"
@@ -2942,22 +3114,22 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           </div>
           <button
             type="button"
-            className={"bd-pick-item" + (inArchive ? " on" : "")}
-            onClick={() => pick(ARCHIVE)}
+            className="bd-pick-item"
+            onClick={openArchive}
           >
             <i className="arch">
               <Archive size={13} />
             </i>
             <span>Archivados</span>
             {list.archived > 0 && <small>{list.archived}</small>}
-            {inArchive && <Check size={15} />}
+            
           </button>
           {list.archivedBoards.length > 0 && (
             <>
               <p className="bd-pop-label">Tableros cerrados</p>
               <div className="bd-pick-list short">
                 {list.archivedBoards.map((b) => {
-                  const on = !inArchive && b.id === board?.id;
+                  const on = b.id === board?.id;
                   const pct = b.closing?.cards
                     ? Math.round(
                         (100 * (b.closing.done ?? 0)) / b.closing.cards,
@@ -2992,7 +3164,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               <p className="bd-pop-label">Mis plantillas</p>
               <div className="bd-pick-list short">
                 {list.templates.map((t) => {
-                  const on = !inArchive && t.id === board?.id;
+                  const on = t.id === board?.id;
                   return (
                     <button
                       type="button"
@@ -3096,11 +3268,11 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             ))}
           </div>
           <div className="bd-pop-sep" />
-          {cols.some((c) => view.folded(c.id)) ? (
+          {cols.some((c) => isFolded(c.id)) ? (
             <MenuItem
               icon={<UnfoldHorizontal size={15} />}
               onClick={() => {
-                view.setFolded(
+                setFolded(
                   cols.map((c) => c.id),
                   false,
                 );
@@ -3115,7 +3287,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               disabled={!cols.length}
               onClick={() => {
                 setComposer(null);
-                view.setFolded(
+                setFolded(
                   cols.map((c) => c.id),
                   true,
                 );
@@ -3201,7 +3373,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             <MenuItem
               icon={<Archive size={15} />}
               hint={list.archived ? String(list.archived) : undefined}
-              onClick={() => pick(ARCHIVE)}
+              onClick={openArchive}
             >
               Ver archivados
             </MenuItem>
@@ -3323,7 +3495,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             onClick={() => {
               close();
               if (composer === menuCol.id) setComposer(null);
-              view.setFolded([menuCol.id], true);
+              setFolded([menuCol.id], true);
             }}
           >
             Plegar columna
@@ -3444,6 +3616,25 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
           >
             Ordenar de la A a la Z
           </MenuItem>
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={menuCol.rules.doneBelow}
+            className="bd-pop-item bd-pop-check"
+            title="Junta las completadas abajo, en un grupo que se despliega y se repliega"
+            onClick={() =>
+              api.updateColumn(menuCol.id, {
+                rules: {
+                  ...menuCol.rules,
+                  doneBelow: !menuCol.rules.doneBelow,
+                },
+              })
+            }
+          >
+            <ArrowDownToLine size={15} />
+            <span>Completadas abajo</span>
+            <i className="bd-pop-switch" aria-hidden="true" />
+          </button>
           <MenuItem
             icon={<ArrowLeft size={15} />}
             disabled={menuIdx <= 0}

@@ -27,7 +27,16 @@ function Chips({ label, items, tone }: { label: string; items: string[]; tone?: 
 }
 
 /** La ficha completa de una palabra: significado, raíz, truco, ejemplo, relaciones y ejercicio. */
-export function DefinitionView({ d, term = '' }: { d: Definition; term?: string }) {
+export function DefinitionView({
+  d,
+  term = '',
+  plain = false,
+}: {
+  d: Definition;
+  term?: string;
+  /** Sin avisos de que lo escribió la IA (p. ej. en el repaso). */
+  plain?: boolean;
+}) {
   const [shown, show] = useState(false);
   // Fichas de antes de usar Wiktionary: se busca la fuente al abrirlas (no se guarda).
   const [late, setLate] = useState<Etymology | null | undefined>(undefined);
@@ -65,6 +74,7 @@ export function DefinitionView({ d, term = '' }: { d: Definition; term?: string 
               <small>Texto de Wiktionary, CC BY-SA 4.0.</small>
             </details>
           ) : (
+            !plain &&
             (d.root || d.history) && (
               <small className="df-unverified">
                 <TriangleAlert size={12} />

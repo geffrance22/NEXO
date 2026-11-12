@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { PhotoThumbs } from '../components/PhotoThumbs';
+import { EmbedBar } from '../components/EmbedBar';
 import { kindMeta } from '../composer/kinds';
 import type { Entry, Episode, EpisodeKind, Person } from '../data';
 import { commitmentKinds, commitmentOf } from '../lib/commitments';
@@ -573,7 +574,17 @@ function EpisodeCard({ row, today }: { row: Row; today: string }) {
   );
 }
 
-function EpisodeDetail({ episode: ep }: { episode: Episode }) {
+/**
+ * La ficha de un episodio. Con `onClose` va dentro de una ventana (p. ej. desde un cuaderno): en
+ * vez de «Episodios» lleva un acceso a la sección y un botón para cerrar.
+ */
+export function EpisodeDetail({
+  episode: ep,
+  onClose,
+}: {
+  episode: Episode;
+  onClose?: () => void;
+}) {
   const app = useApp();
   const {
     workspace,
@@ -607,9 +618,13 @@ function EpisodeDetail({ episode: ep }: { episode: Episode }) {
 
   return (
     <div className="ep-detail" style={{ '--c': m.color, '--s': m.soft } as CSSProperties}>
-      <button type="button" className="pp-back" onClick={() => go('Episodios')}>
-        <ArrowLeft size={15} /> Episodios
-      </button>
+      {onClose ? (
+        <EmbedBar label="Abrir en Episodios" onOpen={() => go('Episodios', ep)} onClose={onClose} />
+      ) : (
+        <button type="button" className="pp-back" onClick={() => go('Episodios')}>
+          <ArrowLeft size={15} /> Episodios
+        </button>
+      )}
       <header className="ep-hero">
         <span className="ep-hero-icon">
           <m.icon size={26} />

@@ -15,7 +15,16 @@ import {
  */
 
 export type Drag =
-  | { kind: 'card'; id: string; list: string; before: string | null; w: number; h: number }
+  | {
+      kind: 'card';
+      id: string;
+      list: string;
+      before: string | null;
+      w: number;
+      h: number;
+      /** La tarjeta está completada: en columnas con «Completadas abajo» cae en su grupo. */
+      done: boolean;
+    }
   | { kind: 'list'; id: string; before: string | null; w: number; h: number };
 
 type Start =
@@ -81,10 +90,13 @@ export function useBoardDrag(canvas: RefObject<HTMLDivElement | null>, onDrop: (
     const stack = best?.querySelector<HTMLElement>('[data-stack]');
     if (!best || !stack) return;
     const top = stack.getBoundingClientRect().top - stack.scrollTop;
+    // Con «Completadas abajo», una completada solo se acomoda entre las del grupo y una pendiente
+    // solo entre las de arriba (si no, el hueco sale donde la tarjeta nunca se va a ver).
+    let cards = [...stack.querySelectorAll<HTMLElement>('[data-card]')];
+    if (stack.querySelector('[data-done-group]'))
+      cards = cards.filter((el) => !!el.closest('[data-done-group]') === d.done);
     const before =
-      [...stack.querySelectorAll<HTMLElement>('[data-card]')].find(
-        (el) => top + el.offsetTop + el.offsetHeight / 2 > y,
-      )?.dataset.card ?? null;
+      cards.find((el) => top + el.offsetTop + el.offsetHeight / 2 > y)?.dataset.card ?? null;
     const list = best.dataset.list!;
     if (list !== d.list || before !== d.before) setDrag({ ...d, list, before });
   };
@@ -126,7 +138,15 @@ export function useBoardDrag(canvas: RefObject<HTMLDivElement | null>, onDrop: (
     if (p.touch) navigator.vibrate?.(8);
     setDrag(
       p.kind === 'card'
-        ? { kind: 'card', id: p.id, list: p.list, before: p.before, w: r.width, h: r.height }
+        ? {
+            kind: 'card',
+            id: p.id,
+            list: p.list,
+            before: p.before,
+            w: r.width,
+            h: r.height,
+            done: p.el.classList.contains('done'),
+          }
         : { kind: 'list', id: p.id, before: p.before, w: r.width, h: r.height },
     );
     cancelAnimationFrame(frame.current);

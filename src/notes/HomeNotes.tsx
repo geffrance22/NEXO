@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ArrowUpRight, Bell, ImageIcon, ListChecks, Pin, Plus, StickyNote } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { friendlyDate, todayInputValue } from '../lib/format';
@@ -12,7 +12,9 @@ import { ToBoardSheet } from './ToBoardSheet';
 import { useNotes, type KeepNote } from './useNotes';
 import './notes.css';
 
-const SHOWN = 8;
+/** Ancho mínimo de una nota y separación (deben coincidir con `.kp-home-grid`). */
+const MIN_W = 172;
+const GAP = 12;
 const firstLine = (s: string) =>
   s
     .split('\n')
@@ -29,6 +31,18 @@ export function HomeNotes({ title }: { title?: string } = {}) {
   const cmd = useNoteCommands(store);
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [toBoard, setToBoard] = useState<KeepNote | null>(null);
+  // Una sola línea: tantas notas como quepan a lo ancho (3, 4, 5…), las más recientes.
+  const [cols, setCols] = useState(4);
+  const ro = useRef<ResizeObserver | null>(null);
+  const gridRef = useCallback((el: HTMLDivElement | null) => {
+    ro.current?.disconnect();
+    ro.current = null;
+    if (!el) return;
+    const fit = () => setCols(Math.max(1, Math.floor((el.clientWidth + GAP) / (MIN_W + GAP))));
+    fit();
+    ro.current = new ResizeObserver(fit);
+    ro.current.observe(el);
+  }, []);
 
   const live = useMemo(
     () => (store.notes ?? []).filter((n) => !n.archived && !n.vaulted),
@@ -42,8 +56,8 @@ export function HomeNotes({ title }: { title?: string } = {}) {
           Number(isDue(b.remind_at, now)) - Number(isDue(a.remind_at, now)) ||
           b.created_at.localeCompare(a.created_at),
       )
-      .slice(0, SHOWN);
-  }, [live]);
+      .slice(0, cols);
+  }, [live, cols]);
   const episodes = useMemo(
     () => workspace.episodes.map((e) => ({ id: e.id, title: e.title })),
     [workspace.episodes],
@@ -73,7 +87,11 @@ export function HomeNotes({ title }: { title?: string } = {}) {
       </header>
 
       {recent.length > 0 ? (
-        <div className="kp-home-grid">
+        <div
+          className="kp-home-grid"
+          ref={gridRef}
+          style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+        >
           {recent.map((n) => {
             const c = colorOf(n.color);
             const title = n.title || firstLine(plainOf(n.body)) || n.checks[0]?.text || 'Nota';

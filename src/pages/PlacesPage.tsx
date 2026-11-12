@@ -21,12 +21,17 @@ import {
   placeStats,
 } from '../lib/places';
 import { RichText } from '../components/RichText';
+import { EmbedBar } from '../components/EmbedBar';
 import { moods } from '../composer/controls';
 import { Avatar } from '../people/Avatar';
 import '../people/people.css';
 import '../places/places.css';
 
-function PlaceDetail({ place }: { place: Place }) {
+/**
+ * La ficha de un lugar. Con `onClose` va dentro de una ventana (p. ej. desde un cuaderno): en vez
+ * de «Todos los lugares» lleva un acceso a Lugares y un botón para cerrar.
+ */
+export function PlaceDetail({ place, onClose }: { place: Place; onClose?: () => void }) {
   const {
     workspace,
     go,
@@ -48,9 +53,13 @@ function PlaceDetail({ place }: { place: Place }) {
   const mood = moods.find((m) => m.value === s.mood);
   return (
     <div className="pl-detail" style={{ '--c': meta.color, '--s': meta.soft } as CSSProperties}>
-      <button type="button" className="pp-back" onClick={() => go('Lugares')}>
-        <ArrowLeft size={15} /> Todos los lugares
-      </button>
+      {onClose ? (
+        <EmbedBar label="Abrir en Lugares" onOpen={() => go('Lugares', place)} onClose={onClose} />
+      ) : (
+        <button type="button" className="pp-back" onClick={() => go('Lugares')}>
+          <ArrowLeft size={15} /> Todos los lugares
+        </button>
+      )}
       <header className={'pl-hero' + (cover ? ' photo' : '')}>
         {cover && <img src={cover.url} alt="" />}
         <div className="pl-hero-body">

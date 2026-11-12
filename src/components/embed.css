@@ -1,0 +1,39 @@
+/* Barra de una ficha abierta en una ventana (p. ej. un lugar o un episodio desde un cuaderno). */
+.nx-embed-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.nx-embed-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: #5d6853;
+}
+.nx-embed-open:hover {
+  background: #f1f4ec;
+  color: #232b1e;
+}
+.nx-embed-x {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  color: #5d6853;
+}
+.nx-embed-x:hover {
+  background: #f1f4ec;
+  color: #232b1e;
+}
+.nx-embed-open:focus-visible,
+.nx-embed-x:focus-visible {
+  outline: 2px solid #6b8a4f;
+  outline-offset: 1px;
+}

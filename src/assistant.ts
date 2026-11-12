@@ -1,5 +1,6 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from './backend';
+import type { SelfContext } from './lib/myself';
 
 const FALLBACK =
   'No se pudo consultar la IA. Comprueba que la función assistant esté desplegada y que GROQ_API_KEY esté configurada.';
@@ -122,6 +123,8 @@ export async function captureWithAssistant(
     /** `kin`: lo que la persona es para ti («tu mamá»), para entender «mi mamá». */
     people: { id: string; name: string; alias?: string; kin?: string }[];
     places: { id: string; name: string }[];
+    /** Tu ciudad, tu empresa y tus lugares: para entender «en casa» o «en la oficina». */
+    me?: SelfContext;
   },
 ): Promise<unknown> {
   const data = await call({ mode: 'capture', text, ...context });
@@ -148,6 +151,8 @@ export type DiaryReadInput = {
   tasks: { id: string; title: string; due?: string; people?: string }[];
   works: { id: string; title: string; stage: string; next?: string }[];
   media: { id: string; type: string; title: string; status: string }[];
+  /** Tu ciudad, tu empresa y tus lugares: para entender «en casa» o «mi trabajo». */
+  me?: SelfContext;
 };
 
 /**

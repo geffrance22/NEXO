@@ -194,16 +194,14 @@ function readLocal(userId: string): unknown {
  * en tu ficha (así es igual en todos tus dispositivos).
  */
 export function useHomeLayout(known: (type: string) => boolean) {
-  const { user, me, meMissing, saveMe } = useApp();
+  const { user, me, meMissing, patchMe } = useApp();
   const [layout, setLayout] = useState<HomeLayout>(
     () => fixLayout(me.profile.home, known) ?? fixLayout(readLocal(user.id), known) ?? DEFAULT_LAYOUT,
   );
   const current = useRef(layout);
   const touched = useRef(false);
-  const profile = useRef(me.profile);
-  profile.current = me.profile;
-  const save = useRef({ saveMe, meMissing });
-  save.current = { saveMe, meMissing };
+  const save = useRef({ patchMe, meMissing });
+  save.current = { patchMe, meMissing };
   const timer = useRef<number | undefined>(undefined);
   const pending = useRef<HomeLayout | null>(null);
 
@@ -223,7 +221,7 @@ export function useHomeLayout(known: (type: string) => boolean) {
     const next = pending.current;
     pending.current = null;
     if (!next || save.current.meMissing) return;
-    void save.current.saveMe({ ...profile.current, home: next });
+    void save.current.patchMe({ home: next });
   }, []);
   useEffect(() => flush, [flush]);
 

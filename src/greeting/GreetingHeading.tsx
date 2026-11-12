@@ -20,6 +20,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useApp } from '../AppContext';
+import { Ambient } from '../ambient/Ambient';
 import { resolveAction, type ActionIcon } from './actions';
 import type { WeatherIcon } from './greeting';
 import { useGreeting } from './useGreeting';
@@ -104,6 +105,7 @@ export function GreetingHeading() {
           </div>
         )}
       </div>
+      <Ambient />
     </div>
   );
 }

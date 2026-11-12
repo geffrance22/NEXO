@@ -1,4 +1,4 @@
-import type { Entry, Episode, Person, PersonUpdate, Workspace } from '../data';
+import type { Entry, Episode, MyProfile, Person, PersonUpdate, Workspace } from '../data';
 import type { FeedCard } from '../planner/boardFeed';
 import { plainMarks } from '../planner/cardMarks';
 import { ageInDays, commitmentKinds, commitmentOf, counterpartOf, isOpenTask } from './commitments';
@@ -16,6 +16,7 @@ export type AgendaKind =
   | 'encuentro'
   | 'cierre'
   | 'cumple'
+  | 'propio'
   | 'proyecto'
   | 'episodio'
   | 'contacto';
@@ -28,13 +29,22 @@ export const agendaKindLabels: Record<AgendaKind, string> = {
   encuentro: 'Encuentros próximos',
   cierre: 'Encuentros por cerrar',
   cumple: 'Cumpleaños',
+  propio: 'Tus fechas (tu cumpleaños, aniversarios…)',
   proyecto: 'Proyectos sin próximo paso',
   episodio: 'Episodios por cerrar',
   contacto: 'Personas a las que escribir',
 };
 
 export type AgendaAction =
-  'completar' | 'preguntado' | 'preparar' | 'cerrar' | 'abrir' | 'paso' | 'escribir' | 'recordar';
+  | 'completar'
+  | 'preguntado'
+  | 'preparar'
+  | 'cerrar'
+  | 'abrir'
+  | 'paso'
+  | 'escribir'
+  | 'recordar'
+  | 'mi-ficha';
 
 export type AgendaItem = {
   /** Clave estable de esta aparición (para posponer o descartar). */
@@ -64,6 +74,7 @@ export const defaultAgendaPrefs: AgendaPrefs = {
     encuentro: true,
     cierre: true,
     cumple: true,
+    propio: true,
     proyecto: true,
     episodio: true,
     contacto: true,
@@ -73,6 +84,9 @@ export const defaultAgendaPrefs: AgendaPrefs = {
 
 const day = (iso: string) => todayInputValue(new Date(iso));
 const first = (p?: Person | null) => p?.name.split(' ')[0] ?? '';
+/** Días hasta una fecha MM-DD que vuelve cada año (0 = hoy). */
+const daysToMonthDay = (md: string | undefined, today: string) =>
+  md ? daysToBirthday({ profile: { birthday: md } } as Person, today) : null;
 
 /** «tu hermana», «tu jefe» o el nombre, según el vínculo que tengas con ella. */
 function howYouCall(p: Person, ws: Workspace) {
@@ -114,11 +128,46 @@ export function agendaFor(
   today = todayInputValue(),
   /** Tarjetas de tableros (las que tienen fecha entran como compromisos). */
   cards: readonly FeedCard[] = [],
+  /** Tu ficha: tu cumpleaños y tus fechas (aniversarios, tu santo…). */
+  me?: MyProfile,
 ): AgendaItem[] {
   const out: AgendaItem[] = [];
   const byId = new Map(ws.people.map((p) => [p.id, p]));
   const closeBonus = (p?: Person | null) =>
     !p ? 0 : (closenessOf(p) >= 4 ? 8 : 0) + (p.profile.favorite ? 5 : 0);
+
+  // ── Tus fechas: tu cumpleaños y las que vuelven cada año ──
+  if (me) {
+    const year = Number(today.slice(0, 4));
+    const own = daysToMonthDay(me.birthday, today);
+    if (own !== null && own <= 1) {
+      const turns = me.birthYear ? year - me.birthYear + (today.slice(5) > me.birthday! ? 1 : 0) : null;
+      out.push({
+        id: `me|cumple|${today.slice(0, 4)}`,
+        kind: 'propio',
+        title: own === 0 ? '¡Hoy es tu cumpleaños!' : 'Mañana es tu cumpleaños',
+        detail: turns ? `Cumples ${turns} años.` : 'Date un gusto: es tu día.',
+        why: [own === 0 ? 'Hoy' : 'Mañana', 'Tu fecha'],
+        score: own === 0 ? 92 : 55,
+        action: 'mi-ficha',
+      });
+    }
+    for (const f of me.dates ?? []) {
+      const d = daysToMonthDay(f.md, today);
+      if (d === null || d > 3) continue;
+      const n = f.year ? year - f.year + (today.slice(5) > f.md ? 1 : 0) : 0;
+      out.push({
+        id: `me|${f.id}|${today.slice(0, 4)}`,
+        kind: 'propio',
+        title:
+          d === 0 ? `Hoy: ${f.label}` : d === 1 ? `Mañana: ${f.label}` : `${f.label} en ${d} días`,
+        detail: n > 0 ? `Se cumplen ${n} ${n === 1 ? 'año' : 'años'}.` : 'Una fecha tuya.',
+        why: [d === 0 ? 'Hoy' : d === 1 ? 'Mañana' : `En ${d} días`, 'Tu fecha'],
+        score: d === 0 ? 80 : d === 1 ? 55 : 35,
+        action: 'mi-ficha',
+      });
+    }
+  }
 
   // ── Tarjetas de tableros con fecha ──
   const entryIds = new Set(ws.entries.map((e) => e.id));

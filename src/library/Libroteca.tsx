@@ -83,7 +83,14 @@ export function Agenda({ notebookId }: { notebookId?: string | null }) {
  * Libroteca y «Pendientes» en Agenda.
  */
 function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?: string | null }) {
-  const { workspace, openEntry, dataSettled } = useApp();
+  const { workspace, openEntry, dataSettled, me } = useApp();
+  const taste = useMemo(
+    () => ({
+      likes: [...(me.profile.interests ?? []), ...(me.profile.likes ?? [])],
+      dislikes: me.profile.dislikes ?? [],
+    }),
+    [me.profile.interests, me.profile.likes, me.profile.dislikes],
+  );
   const tabs = sectionTabs[section];
   const home = tabs[0].id;
   const [tab, setTab] = useState<TabId>(() =>
@@ -255,10 +262,10 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
     const test = entryTab.shelves?.find((s) => s.id === shelf)?.test;
     return {
       found,
-      sorted: sortEntries(test ? found.filter(test) : found, sort),
+      sorted: sortEntries(test ? found.filter(test) : found, sort, taste),
     };
     // `matches` depende solo de `needle` y `searchIndex`.
-  }, [tab, entryTab, lists, library, needle, searchIndex, shelf, sort]);
+  }, [tab, entryTab, lists, library, needle, searchIndex, shelf, sort, taste]);
   // Por tandas: cuantas más caben, más grande la tanda (las portadas son pequeñas).
   const pager = useInfinite(
     pipeline.sorted,

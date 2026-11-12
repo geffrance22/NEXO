@@ -45,7 +45,7 @@ const validGoal = (n: unknown) => (typeof n === 'number' && n > 0 ? Math.round(n
  * este navegador por si la ficha aún no se puede guardar.
  */
 export function useReadingGoals() {
-  const { me, meMissing, saveMe } = useApp();
+  const { me, meMissing, patchMe } = useApp();
   const [local, setLocal] = useState(localGoals);
   const goals = { ...local, ...me.profile.readingGoals };
 
@@ -63,9 +63,9 @@ export function useReadingGoals() {
         /* Sin almacenamiento: queda en tu ficha. */
       }
       if (meMissing) return true;
-      return saveMe({ ...me.profile, readingGoals: next });
+      return patchMe({ readingGoals: next });
     },
-    [me.profile, meMissing, saveMe],
+    [me.profile, meMissing, patchMe],
   );
 
   return { goalOf, setGoal };

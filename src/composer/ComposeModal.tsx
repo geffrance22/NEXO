@@ -132,6 +132,7 @@ export function ComposeModal({
     createPerson,
     patchPerson,
     readDiary,
+    me,
   } = useApp();
   const c = useComposer(
     {
@@ -466,7 +467,7 @@ export function ComposeModal({
     const text = plainText(input.body).trim();
     if (text.split(/\s+/).length < 4) return;
     const ws = workspace;
-    const reading = readDiaryWithAssistant(readingInput(input, ws)).then(
+    const reading = readDiaryWithAssistant(readingInput(input, ws, me.profile)).then(
       (r) => ({
         summary: r.summary,
         pieces: piecesFromAi(

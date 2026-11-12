@@ -89,14 +89,17 @@ export function useBoardDrag(canvas: RefObject<HTMLDivElement | null>, onDrop: (
     }
     const stack = best?.querySelector<HTMLElement>('[data-stack]');
     if (!best || !stack) return;
-    const top = stack.getBoundingClientRect().top - stack.scrollTop;
-    // Con «Completadas abajo», una completada solo se acomoda entre las del grupo y una pendiente
-    // solo entre las de arriba (si no, el hueco sale donde la tarjeta nunca se va a ver).
-    let cards = [...stack.querySelectorAll<HTMLElement>('[data-card]')];
-    if (stack.querySelector('[data-done-group]'))
-      cards = cards.filter((el) => !!el.closest('[data-done-group]') === d.done);
+    // Con «Completadas abajo», las completadas viven en su hoja (con scroll propio, encima de la
+    // columna) y las pendientes en la lista: una completada solo se acomoda entre las de la hoja y
+    // una pendiente solo entre las de la lista (si no, el hueco sale donde la tarjeta nunca se va
+    // a ver). Con la hoja plegada no hay tarjetas montadas, así que cae al final del grupo.
+    const sheet = best.querySelector<HTMLElement>('[data-dg-scroll]');
+    const host = d.done && sheet ? sheet : stack;
+    const top = host.getBoundingClientRect().top - host.scrollTop;
     const before =
-      cards.find((el) => top + el.offsetTop + el.offsetHeight / 2 > y)?.dataset.card ?? null;
+      [...host.querySelectorAll<HTMLElement>('[data-card]')].find(
+        (el) => top + el.offsetTop + el.offsetHeight / 2 > y,
+      )?.dataset.card ?? null;
     const list = best.dataset.list!;
     if (list !== d.list || before !== d.before) setDrag({ ...d, list, before });
   };
@@ -113,7 +116,11 @@ export function useBoardDrag(canvas: RefObject<HTMLDivElement | null>, onDrop: (
     if (x < box.left + EDGE) root.scrollLeft -= Math.ceil((box.left + EDGE - x) / 4);
     else if (x > box.right - EDGE) root.scrollLeft += Math.ceil((x - box.right + EDGE) / 4);
     if (d.kind === 'card') {
-      const stack = root.querySelector<HTMLElement>(`[data-list="${d.list}"] [data-stack]`);
+      const col = root.querySelector<HTMLElement>(`[data-list="${d.list}"]`);
+      // Una completada con la hoja abierta desplaza la hoja; todo lo demás, la lista de la columna.
+      const stack =
+        (d.done ? col?.querySelector<HTMLElement>('.bd-dg.open [data-dg-scroll]') : null) ??
+        col?.querySelector<HTMLElement>('[data-stack]');
       if (stack) {
         const r = stack.getBoundingClientRect();
         if (x >= r.left - 20 && x <= r.right + 20) {

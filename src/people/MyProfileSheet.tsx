@@ -1,196 +1,461 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Check, LoaderCircle, RefreshCw, Sparkles, Users, X } from 'lucide-react';
-import { useApp } from '../AppContext';
-import { selfReading } from '../assistant';
-import { supabase } from '../backend';
-import { Sheet } from '../components/Sheet';
-import { AutoTextarea } from '../composer/controls';
-import { TagInput } from '../composer/TagInput';
-import type { Gender, MyProfile } from '../data';
-import { MY_PROFILE_SQL } from '../hooks/useMyProfile';
-import { errorMessage, initials, normalizeText } from '../lib/format';
-import { genderLabels, genderOf } from '../lib/gender';
-import { relativeDay } from '../lib/people';
-import { ME, kindWord, surnamesOf, tieKinds, tiesOf } from '../lib/relations';
-import { buildSelfDigest, selfBasis, type ReadingLite } from '../lib/selfDigest';
-import { Avatar } from './Avatar';
-import './myprofile.css';
-
-const STEPS = [
-  'Mirando a tu gente…',
-  'Repasando tus recuerdos…',
-  'Hojeando tus lecturas…',
-  'Escribiendo tu lectura…',
-];
-
-/** Sin textos ni listas vacías: así la ficha guardada queda limpia. */
-function tidy(p: MyProfile): MyProfile {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(p)) {
-    const val = typeof v === 'string' ? v.trim() : v;
-    if (val === '' || val === undefined || val === null) continue;
-    if (Array.isArray(val) && !val.length) continue;
-    out[k] = val;
-  }
-  return out as MyProfile;
-}
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Cake,
+  Camera,
+  Check,
+  ChevronRight,
+  LoaderCircle,
+  Pencil,
+  Trash2,
+  X,
+} from "lucide-react";
+import { useApp } from "../AppContext";
+import { supabase } from "../backend";
+import { Sheet } from "../components/Sheet";
+import type { Person } from "../data";
+import { MY_PROFILE_SQL } from "../hooks/useMyProfile";
+import { useDismiss } from "../hooks/useDismiss";
+import {
+  errorMessage,
+  initials,
+  normalizeText,
+  todayInputValue,
+} from "../lib/format";
+import { MAX_INPUT_BYTES, uploadToImgbb } from "../lib/imgbb";
+import { ageOf, daysToBirthday } from "../lib/people";
+import type { ReadingLite } from "../lib/selfDigest";
+import { checklist, pickDraft, toPatch, type Draft } from "./myDraft";
+import { photoSrc } from "./MyFace";
+import { FORM_SECTIONS, MyProfileForm } from "./MyProfileForm";
+import { MyProfileView } from "./MyProfileView";
+import { MyReading, useTraits } from "./MyReading";
+import { PhotoCropper } from "./PhotoCropper";
+import "./myprofile.css";
 
 /** Tus lecturas recientes (títulos y temas). Sin la migración 012 no hay «terminadas». */
 async function loadReadings(): Promise<ReadingLite[]> {
   const recent = (columns: string) =>
-    supabase.from('readings').select(columns).order('created_at', { ascending: false }).limit(60);
-  const full = await recent('title,tags,read_at');
+    supabase
+      .from("readings")
+      .select(columns)
+      .order("created_at", { ascending: false })
+      .limit(60);
+  const full = await recent("title,tags,read_at");
   if (!full.error) return full.data as unknown as ReadingLite[];
-  const basic = await recent('title,tags');
+  const basic = await recent("title,tags");
   return basic.error
     ? []
-    : (basic.data as unknown as Omit<ReadingLite, 'read_at'>[]).map((r) => ({
+    : (basic.data as unknown as Omit<ReadingLite, "read_at">[]).map((r) => ({
         ...r,
         read_at: null,
       }));
 }
 
-/** Qué tanto has contado de ti (para animarte a completar). */
-const filled = (p: MyProfile) => {
-  const checks = [
-    surnamesOf(p.name ?? '').length > 0,
-    Boolean(p.birthday),
-    Boolean(p.city),
-    Boolean(p.occupation),
-    Boolean(p.interests?.length),
-    Boolean(p.likes?.length),
-    Boolean(p.goals?.length),
-    Boolean(p.about?.trim()),
-  ];
-  return Math.round((100 * checks.filter(Boolean).length) / checks.length);
-};
+/** Las etiquetas que ya usas (recuerdos y lecturas), las más usadas primero. */
+function usedTags(tagLists: (string[] | null | undefined)[]) {
+  const count = new Map<string, { label: string; n: number }>();
+  for (const list of tagLists)
+    for (const raw of list ?? []) {
+      const t = raw.trim();
+      if (!t || t.length > 40) continue;
+      const k = normalizeText(t);
+      const x = count.get(k);
+      if (x) x.n++;
+      else count.set(k, { label: t, n: 1 });
+    }
+  return [...count.values()]
+    .sort((a, b) => b.n - a.n)
+    .map((x) => x.label)
+    .slice(0, 80);
+}
 
-/** «Mi ficha»: tus datos, tu familia en Nexo y la lectura que hace la IA de todo lo que guardas. */
+const birthdayLine = (days: number | null) =>
+  days === null
+    ? ""
+    : days === 0
+      ? "¡Hoy es tu cumpleaños!"
+      : days === 1
+        ? "Tu cumpleaños es mañana"
+        : `Cumpleaños en ${days} días`;
+
+type FormSection = (typeof FORM_SECTIONS)[number]["id"];
+
+/**
+ * «Mi ficha»: se abre como una ficha para leer (lo esencial de ti, tu gente y la lectura de Nexo)
+ * y pasa a formulario solo al pulsar «Editar».
+ */
 export function MyProfileSheet({ onClose }: { onClose: () => void }) {
-  const { user, workspace, me, meMissing, saveMe, saveMyReading, confirm, openTie } = useApp();
-  const [d, setD] = useState<MyProfile>(() => ({ ...me.profile }));
+  const {
+    user,
+    workspace,
+    me,
+    meLoaded,
+    meMissing,
+    meFailed,
+    patchMe,
+    confirm,
+    notify,
+  } = useApp();
+  const [mode, setMode] = useState<"ver" | "editar">("ver");
+  const [d, setD] = useState<Draft | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [thinking, setThinking] = useState(false);
-  const [step, setStep] = useState(0);
-  const [error, setError] = useState('');
+  const [readings, setReadings] = useState<ReadingLite[] | null>(null);
+  const [checkOpen, setCheckOpen] = useState(false);
+  const [tab, setTab] = useState<FormSection>("basico");
+  const [pendingJump, setPendingJump] = useState<string | null>(null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const scroller = useRef<HTMLDivElement>(null);
+  const meter = useRef<HTMLDivElement>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const closeCheck = useCallback(() => setCheckOpen(false), []);
+  useDismiss(checkOpen, meter, closeCheck);
+  const { traits } = useTraits();
 
-  const set = <K extends keyof MyProfile>(key: K, value: MyProfile[K]) => {
+  const editing = mode === "editar" && d !== null;
+  const canSave = !meMissing && !meFailed;
+  const photo = me.profile.photo;
+
+  // Tus lecturas: alimentan las sugerencias de etiquetas y la lectura de la IA.
+  useEffect(() => {
+    let live = true;
+    void loadReadings().then((r) => live && setReadings(r));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const tagSuggestions = useMemo(
+    () =>
+      usedTags([
+        ...workspace.entries.map((e) => e.tags),
+        ...(readings ?? []).map((r) => r.tags),
+      ]),
+    [workspace.entries, readings],
+  );
+
+  const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     setDirty(true);
     setD((x) => ({ ...x, [key]: value }));
   };
 
-  // Mientras la IA trabaja, se cuenta qué está mirando.
+  /** Lleva a un campo del formulario, lo enfoca y lo resalta un momento. */
+  const focusField = (id: string) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.focus({ preventScroll: true });
+    const box = el.closest(".mf-field, .mf-tagrow, .mf-rows, .mf-grid") ?? el;
+    box.classList.remove("mf-flash");
+    void (box as HTMLElement).offsetWidth;
+    box.classList.add("mf-flash");
+    window.setTimeout(() => box.classList.remove("mf-flash"), 1400);
+  };
   useEffect(() => {
-    if (!thinking) return;
-    setStep(0);
-    const t = window.setInterval(() => setStep((s) => Math.min(s + 1, STEPS.length - 1)), 1900);
-    return () => window.clearInterval(t);
-  }, [thinking]);
+    if (!pendingJump || !editing) return;
+    const t = window.setTimeout(() => {
+      focusField(pendingJump);
+      setPendingJump(null);
+    }, 60);
+    return () => window.clearTimeout(t);
+  }, [pendingJump, editing]);
 
-  // ── Tu familia en Nexo: la que ya vinculaste y quienes comparten tus apellidos ──
-  const byId = useMemo(() => new Map(workspace.people.map((p) => [p.id, p])), [workspace.people]);
-  const mine = useMemo(() => tiesOf(ME, workspace.ties), [workspace.ties]);
-  const family = mine.filter(
-    (v) => v.other !== ME && byId.has(v.other) && tieKinds[v.kind].category === 'familia',
-  );
-  const surnames = surnamesOf(d.name ?? '');
-  const tied = new Set(mine.map((v) => v.other));
-  const myName = normalizeText((d.name ?? '').trim());
-  const kin = surnames.length
-    ? workspace.people
-        .filter(
-          (p) =>
-            !tied.has(p.id) &&
-            normalizeText(p.name.trim()) !== myName &&
-            surnamesOf(p.name).some((s) => surnames.includes(s)),
-        )
-        .slice(0, 12)
-    : [];
-  // La forma original de tus apellidos («Gómez», no «gomez»).
-  const pretty = surnames.map(
-    (s) => (d.name ?? '').split(/\s+/).find((w) => normalizeText(w) === s) ?? s,
-  );
+  const startEdit = (field?: string) => {
+    if (!canSave)
+      return notify(
+        meMissing
+          ? `Ejecuta ${MY_PROFILE_SQL} para poder editar tu ficha.`
+          : "Recarga la página antes de editar tu ficha.",
+      );
+    setCheckOpen(false);
+    if (!editing) {
+      setD(pickDraft(me.profile));
+      setDirty(false);
+      setMode("editar");
+      setTab("basico");
+      scroller.current?.scrollTo({ top: 0 });
+    }
+    if (field) setPendingJump(field);
+  };
+  const jump = (id: string) => {
+    setCheckOpen(false);
+    if (id === "mf-photo") return photoInput.current?.click();
+    startEdit(id);
+  };
 
-  const basis = selfBasis(workspace);
-  const percent = filled(d);
-  const birthDate = d.birthday && d.birthYear ? `${d.birthYear}-${d.birthday}` : '';
+  const confirmDiscard = () =>
+    confirm({
+      title: "¿Descartar los cambios?",
+      message: "Lo que no hayas guardado de tu ficha se perderá.",
+      confirmLabel: "Descartar",
+      cancelLabel: "Seguir editando",
+      danger: true,
+      icon: "warning",
+    });
+
+  const backToView = async () => {
+    if (dirty && !(await confirmDiscard())) return;
+    setMode("ver");
+    setD(null);
+    setDirty(false);
+    scroller.current?.scrollTo({ top: 0 });
+  };
 
   async function save() {
-    if (saving) return false;
+    if (saving || !d) return;
     setSaving(true);
-    const ok = await saveMe(tidy(d));
+    const ok = await patchMe(toPatch(d, me.profile));
     setSaving(false);
-    if (ok) setDirty(false);
-    return ok;
-  }
-
-  /** Pide a la IA una lectura nueva con todo lo que hay de ti (y lo que acabas de escribir). */
-  async function generate() {
-    if (thinking || meMissing) return;
-    setError('');
-    if (dirty && !(await save())) return;
-    setThinking(true);
-    try {
-      const readings = await loadReadings();
-      const result = await selfReading(buildSelfDigest(workspace, tidy(d), readings));
-      await saveMyReading(result.reading, result.highlights);
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setThinking(false);
-    }
+    if (!ok) return;
+    notify("Ficha guardada.");
+    setDirty(false);
+    setMode("ver");
+    setD(null);
+    scroller.current?.scrollTo({ top: 0 });
   }
 
   const requestClose = async () => {
-    if (thinking) return;
-    if (dirty) {
-      const ok = await confirm({
-        title: '¿Descartar los cambios?',
-        message: 'Lo que no hayas guardado de tu ficha se perderá.',
-        confirmLabel: 'Descartar',
-        cancelLabel: 'Seguir editando',
-        danger: true,
-        icon: 'warning',
-      });
-      if (!ok) return;
-    }
+    if (uploading) return;
+    if (editing && dirty && !(await confirmDiscard())) return;
     onClose();
   };
 
-  const field = (
-    key: 'alias' | 'city' | 'occupation' | 'company',
-    label: string,
-    placeholder: string,
-  ) => (
-    <label className="mf-field">
-      <span>{label}</span>
-      <input
-        value={d[key] ?? ''}
-        maxLength={80}
-        placeholder={placeholder}
-        onChange={(e) => set(key, e.target.value)}
-      />
-    </label>
-  );
+  // ── Foto: eliges, la acomodas en el círculo y se sube al momento ──
+  const pickPhoto = (file: File) => {
+    if (!file.type.startsWith("image/")) return notify("Elige una imagen.");
+    if (file.size > MAX_INPUT_BYTES)
+      return notify("La foto pesa demasiado (máximo 32 MB).");
+    setCropFile(file);
+  };
+  async function uploadCropped(blob: Blob) {
+    setUploading(true);
+    try {
+      const image = await uploadToImgbb(blob, "yo.jpg");
+      if (await patchMe({ photo: image })) notify("Foto actualizada.");
+      setCropFile(null);
+    } catch (e) {
+      notify(errorMessage(e));
+    } finally {
+      setUploading(false);
+    }
+  }
+  async function removePhoto() {
+    const ok = await confirm({
+      title: "¿Quitar tu foto?",
+      message:
+        "Volverán a verse tus iniciales. Para recuperarla tendrás que subirla de nuevo.",
+      confirmLabel: "Quitar",
+      danger: true,
+      icon: "trash",
+    });
+    if (ok && (await patchMe({ photo: undefined }))) notify("Foto quitada.");
+  }
+
+  // ── Secciones del formulario ──
+  const onScroll = () => {
+    const box = scroller.current;
+    if (!box || !editing) return;
+    if (box.scrollTop + box.clientHeight >= box.scrollHeight - 4)
+      return setTab(FORM_SECTIONS[FORM_SECTIONS.length - 1].id);
+    let current: FormSection = "basico";
+    for (const s of FORM_SECTIONS) {
+      const el = document.getElementById("mf-s-" + s.id);
+      if (el && el.offsetTop - 24 <= box.scrollTop) current = s.id;
+    }
+    setTab(current);
+  };
+  const goTo = (id: FormSection) => {
+    const el = document.getElementById("mf-s-" + id);
+    if (!el || !scroller.current) return;
+    scroller.current.scrollTo({ top: el.offsetTop - 12, behavior: "smooth" });
+    setTab(id);
+  };
+
+  // ── Mientras carga: un esqueleto ──
+  if (!meLoaded)
+    return (
+      <Sheet label="Mi ficha" size="md" className="mf" onRequestClose={onClose}>
+        <header className="mf-head">
+          <span className="mf-avatar skel" aria-hidden="true" />
+          <div className="mf-id">
+            <i className="mf-skel-line" style={{ width: "42%", height: 16 }} />
+            <i
+              className="mf-skel-line"
+              style={{ width: "64%", marginTop: 8 }}
+            />
+          </div>
+          <button
+            type="button"
+            className="cp-close"
+            aria-label="Cerrar"
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
+        </header>
+        <div className="mf-scroll" aria-busy="true">
+          <p className="mf-loading" role="status">
+            <LoaderCircle className="spin" size={15} /> Cargando tu ficha…
+          </p>
+          {[78, 92, 60, 85, 70].map((w, i) => (
+            <i key={i} className="mf-skel-line" style={{ width: `${w}%` }} />
+          ))}
+        </div>
+      </Sheet>
+    );
+
+  // Lo que se muestra arriba: lo que escribes mientras editas, o lo guardado.
+  const shown = editing ? d : pickDraft(me.profile);
+  const { percent, missing } = checklist(shown, Boolean(photo));
+  const today = todayInputValue();
+  const asPerson = {
+    profile: { birthday: shown.birthday, birthYear: shown.birthYear },
+  } as Person;
+  const age = ageOf(asPerson, today);
+  const bdayIn = daysToBirthday(asPerson, today);
+  const src = photoSrc(photo, 120);
+  const displayName = shown.name?.trim() || "Tu ficha";
 
   return (
-    <Sheet label="Mi ficha" size="md" className="mf" onRequestClose={() => void requestClose()}>
+    <Sheet
+      label="Mi ficha"
+      size="md"
+      className={"mf" + (editing ? " editing" : "")}
+      yieldTo=".nx-peek, .mf-crop"
+      onRequestClose={() => void requestClose()}
+    >
+      <input
+        ref={photoInput}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) pickPhoto(file);
+        }}
+      />
+
       <header className="mf-head">
-        <span className="mf-avatar" aria-hidden="true">
-          {initials(d.name?.trim() || user.email || 'Yo').toUpperCase()}
-        </span>
+        <button
+          type="button"
+          className="mf-avatar"
+          title={photo ? "Cambiar tu foto" : "Subir una foto tuya"}
+          aria-label={photo ? "Cambiar tu foto" : "Subir una foto tuya"}
+          disabled={!canSave || uploading}
+          onClick={() => photoInput.current?.click()}
+        >
+          {src ? (
+            <img src={src} alt="" />
+          ) : (
+            initials(shown.name?.trim() || user.email || "Yo").toUpperCase()
+          )}
+          <span className="mf-avatar-cam" aria-hidden="true">
+            {uploading ? (
+              <LoaderCircle className="spin" size={13} />
+            ) : (
+              <Camera size={13} />
+            )}
+          </span>
+        </button>
         <div className="mf-id">
-          <h2>{d.name?.trim() || 'Tu ficha'}</h2>
+          <h2>
+            {displayName}
+            {shown.alias?.trim() && (
+              <span className="mf-alias">«{shown.alias.trim()}»</span>
+            )}
+          </h2>
           <p>
-            {[d.occupation?.trim(), d.city?.trim()].filter(Boolean).join(' · ') || user.email}
-            <span className="mf-meter" title="Qué tanto has contado de ti">
+            {[
+              shown.occupation?.trim(),
+              shown.company?.trim(),
+              shown.city?.trim(),
+            ]
+              .filter(Boolean)
+              .join(" · ") || user.email}
+          </p>
+          {(age !== null || bdayIn !== null) && (
+            <p className="mf-id-when">
+              {age !== null && <span>{age} años</span>}
+              {bdayIn !== null && (
+                <span className={bdayIn <= 7 ? "soon" : ""}>
+                  <Cake size={12} /> {birthdayLine(bdayIn)}
+                </span>
+              )}
+            </p>
+          )}
+          {editing && photo ? (
+            <button
+              type="button"
+              className="mf-photo-off"
+              disabled={!canSave || uploading}
+              onClick={() => void removePhoto()}
+            >
+              <Trash2 size={12} /> Quitar foto
+            </button>
+          ) : (
+            !editing &&
+            traits.length > 0 && (
+              <div className="mf-id-traits">
+                {traits.slice(0, 3).map((t) => (
+                  <span key={t}>{t}</span>
+                ))}
+              </div>
+            )
+          )}
+        </div>
+        <div className="mf-head-side">
+          <div className="mf-meter-wrap" ref={meter}>
+            <button
+              type="button"
+              className="mf-meter"
+              aria-expanded={checkOpen}
+              aria-haspopup="dialog"
+              title="Qué tanto has contado de ti. Toca para ver qué falta."
+              onClick={() => setCheckOpen((v) => !v)}
+            >
               <b>
                 <i style={{ width: `${percent}%` }} />
               </b>
               {percent}%
-            </span>
-          </p>
+            </button>
+            {checkOpen && (
+              <div
+                className="mf-check"
+                role="dialog"
+                aria-label="Lo que falta en tu ficha"
+              >
+                {missing.length ? (
+                  <>
+                    <strong>Te falta contar</strong>
+                    <ul>
+                      {missing.map((m) => (
+                        <li key={m.id}>
+                          <button type="button" onClick={() => jump(m.id)}>
+                            {m.todo} <ChevronRight size={14} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <p className="mf-check-done">
+                    <Check size={15} /> Tu ficha está completa.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+          {!editing && (
+            <button
+              type="button"
+              className="mf-edit"
+              disabled={!canSave}
+              onClick={() => startEdit()}
+            >
+              <Pencil size={13} /> Editar
+            </button>
+          )}
         </div>
         <button
           type="button"
@@ -202,267 +467,115 @@ export function MyProfileSheet({ onClose }: { onClose: () => void }) {
         </button>
       </header>
 
-      <div className="mf-scroll">
+      {editing && (
+        <nav className="mf-tabs" aria-label="Secciones de tu ficha">
+          {FORM_SECTIONS.map((s) => (
+            <button
+              type="button"
+              key={s.id}
+              className={tab === s.id ? "on" : ""}
+              aria-current={tab === s.id ? "true" : undefined}
+              onClick={() => goTo(s.id)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      <div className="mf-scroll" ref={scroller} onScroll={onScroll}>
         {meMissing && (
           <p className="mf-notice" role="status">
-            Para guardar tu ficha ejecuta <code>{MY_PROFILE_SQL}</code> en el SQL Editor de
-            Supabase.
+            Para guardar tu ficha ejecuta <code>{MY_PROFILE_SQL}</code> en el
+            SQL Editor de Supabase.
+          </p>
+        )}
+        {meFailed && (
+          <p className="mf-notice" role="alert">
+            Tu ficha no terminó de cargar. Recarga la página antes de editarla:
+            si guardas ahora, podrías perder lo que ya tenías.
           </p>
         )}
 
-        {/* ── Lectura de la IA: la descripción general de la ficha ── */}
-        <section className={'mf-reading' + (thinking ? ' busy' : '')} aria-busy={thinking}>
-          <div className="mf-reading-head">
-            <span className="mf-spark">
-              <Sparkles size={16} />
-            </span>
-            <div>
-              <strong>Lectura de Nexo</strong>
-              <small>
-                {me.reading_at
-                  ? `Actualizada ${relativeDay(me.reading_at.slice(0, 10)).toLowerCase()}`
-                  : 'Quién eres hoy, según todo lo que guardas'}
-              </small>
-            </div>
-            <button
-              type="button"
-              className="mf-gen"
-              disabled={thinking || meMissing}
-              onClick={() => void generate()}
-            >
-              {thinking ? (
-                <LoaderCircle className="spin" size={14} />
-              ) : me.reading ? (
-                <RefreshCw size={14} />
-              ) : (
-                <Sparkles size={14} />
-              )}
-              {thinking ? 'Leyendo…' : me.reading ? 'Actualizar' : 'Generar lectura'}
-            </button>
-          </div>
-
-          {thinking ? (
-            <div className="mf-shimmer" aria-live="polite">
-              <i />
-              <i />
-              <i />
-              <i />
-              <span key={step}>{STEPS[step]}</span>
-            </div>
-          ) : me.reading ? (
-            <>
-              <div className="mf-reading-text">
-                {me.reading
-                  .split(/\n{2,}/)
-                  .filter((p) => p.trim())
-                  .map((p, i) => (
-                    <p key={i}>{p.trim()}</p>
+        {editing ? (
+          <MyProfileForm d={d} set={set} tagSuggestions={tagSuggestions} />
+        ) : (
+          <>
+            <MyReading
+              readings={readings}
+              loadReadings={loadReadings}
+              canSave={canSave}
+            />
+            {missing.length > 0 && (
+              <div className="mf-todo">
+                <span>
+                  Tu ficha va al <b>{percent}%</b>. Te falta:
+                </span>
+                <div>
+                  {missing.slice(0, 4).map((m) => (
+                    <button type="button" key={m.id} onClick={() => jump(m.id)}>
+                      {m.todo}
+                    </button>
                   ))}
-              </div>
-              {me.highlights.length > 0 && (
-                <div className="mf-traits">
-                  {me.highlights.map((h) => (
-                    <span key={h}>{h}</span>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <p className="mf-reading-empty">
-              Nexo lee a tu gente, tus recuerdos, tus lecturas y tus episodios, y escribe una
-              descripción de quién eres hoy. Pídela cuando quieras: se actualiza con lo nuevo.
-            </p>
-          )}
-          {error && (
-            <p className="mf-error" role="alert">
-              {error}
-            </p>
-          )}
-          <small className="mf-basis">
-            Con {basis.people} {basis.people === 1 ? 'persona' : 'personas'}, {basis.entries}{' '}
-            {basis.entries === 1 ? 'recuerdo' : 'recuerdos'}, {basis.episodes}{' '}
-            {basis.episodes === 1 ? 'episodio' : 'episodios'} y tus lecturas.
-          </small>
-        </section>
-
-        {/* ── Lo esencial ── */}
-        <section className="mf-sec">
-          <h3>Lo esencial</h3>
-          <div className="mf-grid">
-            <label className="mf-field full">
-              <span>Nombre completo</span>
-              <input
-                value={d.name ?? ''}
-                maxLength={120}
-                placeholder="Con tus apellidos"
-                onChange={(e) => set('name', e.target.value)}
-              />
-              <small>
-                {pretty.length
-                  ? `Tus apellidos: ${pretty.join(' · ')}. Con ellos Nexo reconoce a tu familia.`
-                  : 'Escríbelo con tus apellidos: así Nexo reconoce a tu familia.'}
-              </small>
-            </label>
-            {field('alias', 'Cómo te dicen', 'Apodo')}
-            <div className="mf-field">
-              <span>Sexo</span>
-              <div className="mf-seg" role="radiogroup" aria-label="Sexo">
-                {(['f', 'm'] as Gender[]).map((g) => (
-                  <button
-                    type="button"
-                    role="radio"
-                    key={g}
-                    aria-checked={d.gender === g}
-                    className={d.gender === g ? 'on' : ''}
-                    onClick={() => set('gender', d.gender === g ? undefined : g)}
-                  >
-                    {genderLabels[g]}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <label className="mf-field">
-              <span>Cumpleaños</span>
-              <input
-                type="date"
-                value={birthDate}
-                max={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setDirty(true);
-                  setD((x) => ({
-                    ...x,
-                    birthday: v ? v.slice(5) : undefined,
-                    birthYear: v ? Number(v.slice(0, 4)) : undefined,
-                  }));
-                }}
-              />
-            </label>
-            {field('city', 'Ciudad', 'Dónde vives')}
-            {field('occupation', 'A qué te dedicas', 'Diseñadora, estudiante…')}
-            {field('company', 'Dónde trabajas o estudias', 'Empresa o institución')}
-          </div>
-        </section>
-
-        {/* ── Tu familia en Nexo ── */}
-        <section className="mf-sec">
-          <h3>Tu familia en Nexo</h3>
-          {family.length > 0 ? (
-            <div className="mf-kin-list">
-              {family.map((v) => {
-                const p = byId.get(v.other)!;
-                return (
-                  <span className="mf-kin" key={v.tie.id}>
-                    <Avatar person={p} size={26} />
-                    <strong>{p.name.split(' ')[0]}</strong>
-                    <small>{kindWord(v.kind, genderOf(p))}</small>
-                  </span>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="mf-muted">Aún no vinculas a tu familia.</p>
-          )}
-          {kin.length > 0 && (
-            <div className="mf-kin-box">
-              <div>
-                <strong>
-                  {kin.length === 1
-                    ? `${kin[0].name.split(' ')[0]} comparte tu apellido`
-                    : `${kin.length} personas comparten tus apellidos`}
-                </strong>
-                <div className="mf-faces">
-                  {kin.slice(0, 8).map((p) => (
-                    <Avatar key={p.id} person={p} size={26} />
-                  ))}
+                  {missing.length > 4 && (
+                    <button
+                      type="button"
+                      className="more"
+                      onClick={() => setCheckOpen(true)}
+                    >
+                      +{missing.length - 4} más
+                    </button>
+                  )}
                 </div>
               </div>
-              <button
-                type="button"
-                className="mf-link-btn"
-                onClick={() =>
-                  openTie(
-                    null,
-                    kin.map((p) => p.id),
-                  )
-                }
-              >
-                <Users size={14} /> ¿Son tu familia?
-              </button>
-            </div>
-          )}
-        </section>
-
-        {/* ── Gustos ── */}
-        <section className="mf-sec">
-          <h3>Tus gustos</h3>
-          <div className="mf-tags">
-            <span className="mf-label">Te interesa</span>
-            <TagInput
-              tags={d.interests ?? []}
-              max={20}
-              onChange={(v) => set('interests', v)}
-              placeholder="Fotografía, historia, correr…"
+            )}
+            <MyProfileView
+              profile={me.profile}
+              onEdit={startEdit}
+              onClose={onClose}
             />
-            <span className="mf-label">Te encanta</span>
-            <TagInput
-              tags={d.likes ?? []}
-              max={20}
-              onChange={(v) => set('likes', v)}
-              placeholder="Café de la mañana, el mar…"
-            />
-            <span className="mf-label">No te gusta</span>
-            <TagInput
-              tags={d.dislikes ?? []}
-              max={20}
-              onChange={(v) => set('dislikes', v)}
-              placeholder="Madrugar, el ruido…"
-            />
-          </div>
-        </section>
-
-        {/* ── Ahora mismo ── */}
-        <section className="mf-sec">
-          <h3>Ahora mismo</h3>
-          <div className="mf-tags">
-            <span className="mf-label">En qué estás</span>
-            <TagInput
-              tags={d.goals ?? []}
-              max={12}
-              onChange={(v) => set('goals', v)}
-              placeholder="Aprender inglés, terminar la tesis…"
-            />
-            <span className="mf-label">En tus palabras</span>
-            <AutoTextarea
-              className="cp-soft-area mf-about"
-              minRows={3}
-              maxLength={3000}
-              placeholder="Lo que quieras que Nexo tenga en cuenta de ti."
-              value={d.about ?? ''}
-              onChange={(e) => set('about', e.target.value)}
-            />
-          </div>
-        </section>
+          </>
+        )}
       </div>
 
-      <footer className="mf-foot">
-        <small>
-          {dirty
-            ? 'Tienes cambios sin guardar.'
-            : 'La lectura usa tu ficha y todo lo que guardas en Nexo.'}
-        </small>
-        <button type="button" className="cp-btn ghost" onClick={() => void requestClose()}>
-          Cerrar
-        </button>
-        <button
-          type="button"
-          className="cp-btn cta"
-          disabled={!dirty || saving || meMissing}
-          onClick={() => void save()}
-        >
-          {saving ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />} Guardar
-        </button>
-      </footer>
+      {editing && (
+        <footer className="mf-foot">
+          <small>
+            {dirty
+              ? "Tienes cambios sin guardar."
+              : "Tu foto se guarda al momento."}
+          </small>
+          <button
+            type="button"
+            className="cp-btn ghost"
+            onClick={() => void backToView()}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="cp-btn cta"
+            disabled={!dirty || saving || !canSave}
+            onClick={() => void save()}
+          >
+            {saving ? (
+              <LoaderCircle className="spin" size={16} />
+            ) : (
+              <Check size={16} />
+            )}{" "}
+            Guardar
+          </button>
+        </footer>
+      )}
+
+      {cropFile && (
+        <PhotoCropper
+          file={cropFile}
+          busy={uploading}
+          onCancel={() => !uploading && setCropFile(null)}
+          onDone={(blob) => void uploadCropped(blob)}
+        />
+      )}
     </Sheet>
   );
 }

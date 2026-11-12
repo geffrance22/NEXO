@@ -372,6 +372,21 @@ nav button:hover {
   font-size: 11px;
   background: #e4e9da;
   border: 0;
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+}
+/* La foto va fuera del flujo del grid para que rellene siempre el círculo completo
+   (como grid item, su tamaño intrínseco desbordaba y se veía recortada). */
+.top-avatar .my-face {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
 }
 .mobile-menu {
   display: none;
@@ -1363,16 +1378,68 @@ main:has(.lt-agenda, .ep-page, .ep-detail, .fz, .cx, .pl-page, .pl-detail) {
   font-size: 12px;
   margin: 12px 0 20px;
 }
-.toast {
+/* Pila de avisos: el más nuevo entra abajo y empuja a los demás hacia arriba. */
+.toast-stack {
   position: fixed;
-  /* Anula el inset/margin/border que el navegador pone a [popover]. */
+  /* Anula el inset/margin/border/fondo que el navegador pone a [popover]. */
   inset: auto;
   margin: 0;
   border: 0;
+  padding: 0;
+  background: none;
   overflow: visible;
   bottom: 25px;
   left: 50%;
   transform: translateX(-50%);
+  /* Respaldo para navegadores sin popover. */
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 90vw;
+  pointer-events: none;
+}
+/* Cada aviso va en una ranura que crece al entrar y se encoge al salir,
+   así los de arriba se desplazan con suavidad en vez de saltar. */
+.toast-slot {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: toast-in 0.26s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.toast-slot > .toast {
+  min-height: 0;
+  overflow: hidden;
+}
+.toast-slot + .toast-slot {
+  padding-top: 8px;
+}
+.toast-slot.leaving {
+  animation: toast-out 0.22s ease forwards;
+}
+@keyframes toast-in {
+  from {
+    grid-template-rows: 0fr;
+    padding-top: 0;
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+}
+@keyframes toast-out {
+  to {
+    grid-template-rows: 0fr;
+    padding-top: 0;
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast-slot,
+  .toast-slot.leaving {
+    animation-duration: 0.01s;
+  }
+}
+.toast {
+  pointer-events: auto;
   background: #344730;
   color: #fff;
   padding: 15px 20px;

@@ -1,6 +1,20 @@
-import type { GraphBand, GraphEdge, GraphNode, GraphRing } from '../components/GraphCanvas';
-import type { Entry, Gender, Group, Person, Place, Tie, TieKind } from '../data';
-import { genderOf } from '../lib/gender';
+import type {
+  GraphBand,
+  GraphEdge,
+  GraphNode,
+  GraphRing,
+} from "../components/GraphCanvas";
+import type {
+  Entry,
+  Gender,
+  Group,
+  Person,
+  Place,
+  StoredImage,
+  Tie,
+  TieKind,
+} from "../data";
+import { genderOf } from "../lib/gender";
 import {
   ME,
   generations,
@@ -9,8 +23,8 @@ import {
   kindTitle,
   tieCategories,
   tieKinds,
-} from '../lib/relations';
-import { initials } from '../lib/format';
+} from "../lib/relations";
+import { initials } from "../lib/format";
 import {
   closenessLabels,
   closenessOf,
@@ -18,10 +32,21 @@ import {
   relationMeta,
   relationOf,
   relations,
-} from '../lib/people';
-import { placeKinds, placeOf } from '../lib/places';
+} from "../lib/people";
+import { placeKinds, placeOf } from "../lib/places";
 
 export type GraphFilter = { people: boolean; places: boolean };
+
+/** Pone tu foto de «Mi ficha» en el nodo «Tú» (si tienes una). */
+export const withMyPhoto = (
+  nodes: GraphNode[],
+  photo?: StoredImage,
+): GraphNode[] => {
+  const src = photo?.thumb ?? photo?.medium ?? photo?.url;
+  return src
+    ? nodes.map((n) => (n.id === ME ? { ...n, photo: src } : n))
+    : nodes;
+};
 
 const photoOf = (p: Person) =>
   p.profile.photo?.thumb ?? p.profile.photo?.medium ?? p.profile.photo?.url;
@@ -32,7 +57,7 @@ const personNode = (p: Person, x: number, y: number, r: number): GraphNode => {
     x,
     y,
     r,
-    label: p.name.split(' ').slice(0, 2).join(' '),
+    label: p.name.split(" ").slice(0, 2).join(" "),
     initials: initials(p.name).toUpperCase(),
     fill: m.soft,
     stroke: m.color,
@@ -49,17 +74,18 @@ const placeNode = (p: Place, x: number, y: number, r: number): GraphNode => {
     y,
     r,
     label: p.name,
-    initials: '',
+    initials: "",
     fill: m.soft,
     stroke: m.color,
     ink: m.color,
-    shape: 'place',
+    shape: "place",
     icon: m.icon,
     photo: img ? (img.thumb ?? img.url) : undefined,
   };
 };
 
-const isInteraction = (e: Entry) => e.kind !== 'Pendiente' && e.kind !== 'Movimiento';
+const isInteraction = (e: Entry) =>
+  e.kind !== "Pendiente" && e.kind !== "Movimiento";
 
 /** Visitas a cada lugar y cuántas veces estuvo cada persona en cada lugar. */
 function placeLinks(entries: Entry[], places: Place[]) {
@@ -71,7 +97,7 @@ function placeLinks(entries: Entry[], places: Place[]) {
     if (!place) continue;
     visits.set(place.id, (visits.get(place.id) ?? 0) + 1);
     for (const id of new Set(e.person_ids)) {
-      const key = id + '|' + place.id;
+      const key = id + "|" + place.id;
       const x = pairs.get(key);
       if (x) x.n++;
       else pairs.set(key, { person: id, place: place.id, n: 1 });
@@ -81,22 +107,27 @@ function placeLinks(entries: Entry[], places: Place[]) {
 }
 
 /** Tú en el centro; cada persona en la órbita de su cercanía y los lugares en la órbita exterior. */
-export function egoGraph(people: Person[], places: Place[], entries: Entry[], f: GraphFilter) {
+export function egoGraph(
+  people: Person[],
+  places: Place[],
+  entries: Entry[],
+  f: GraphFilter,
+) {
   const { counts, pairs } = coOccurrence(entries);
   const shown = f.people ? people.filter((p) => counts.has(p.id)) : [];
   const max = Math.max(1, ...shown.map((p) => counts.get(p.id)!));
   const ringR = (c: number) => 120 + (5 - c) * 95;
   const nodes: GraphNode[] = [
     {
-      id: 'me',
+      id: "me",
       x: 0,
       y: 0,
       r: 34,
-      label: 'Tú',
-      initials: 'Tú',
-      fill: '#303f31',
-      stroke: '#303f31',
-      ink: '#fff',
+      label: "Tú",
+      initials: "Tú",
+      fill: "#303f31",
+      stroke: "#303f31",
+      ink: "#fff",
       center: true,
     },
   ];
@@ -120,7 +151,7 @@ export function egoGraph(people: Person[], places: Place[], entries: Entry[], f:
           15 + 13 * Math.sqrt(n / max),
         ),
       );
-      edges.push({ a: 'me', b: p.id, w: n, tone: 'soft' });
+      edges.push({ a: "me", b: p.id, w: n, tone: "soft" });
     });
   }
   for (const x of pairs) if (f.people) edges.push({ a: x.a, b: x.b, w: x.n });
@@ -146,18 +177,35 @@ export function egoGraph(people: Person[], places: Place[], entries: Entry[], f:
           14 + 10 * Math.sqrt(links.visits.get(p.id)! / maxV),
         ),
       );
-      edges.push({ a: 'me', b: p.id, w: links.visits.get(p.id)!, tone: 'soft' });
+      edges.push({
+        a: "me",
+        b: p.id,
+        w: links.visits.get(p.id)!,
+        tone: "soft",
+      });
     });
     if (f.people)
       for (const x of links.pairs)
-        if (counts.has(x.person)) edges.push({ a: x.person, b: x.place, w: x.n, tone: 'place' });
-    if (list.length) rings.push({ r: outer, label: 'Lugares' });
+        if (counts.has(x.person))
+          edges.push({ a: x.person, b: x.place, w: x.n, tone: "place" });
+    if (list.length) rings.push({ r: outer, label: "Lugares" });
   }
-  return { nodes, edges, rings, hidden: f.people ? people.length - shown.length : 0, hiddenPlaces };
+  return {
+    nodes,
+    edges,
+    rings,
+    hidden: f.people ? people.length - shown.length : 0,
+    hiddenPlaces,
+  };
 }
 
 /** Quién aparece con quién (y en qué lugares), acomodado con un modelo de fuerzas. */
-export function networkGraph(people: Person[], places: Place[], entries: Entry[], f: GraphFilter) {
+export function networkGraph(
+  people: Person[],
+  places: Place[],
+  entries: Entry[],
+  f: GraphFilter,
+) {
   const { counts, pairs } = coOccurrence(entries);
   const links = f.places
     ? placeLinks(entries, places)
@@ -187,7 +235,9 @@ export function networkGraph(people: Person[], places: Place[], entries: Entry[]
       if (!byPlace.has(x.place)) byPlace.set(x.place, new Set());
       byPlace.get(x.place)!.add(x.person);
     }
-    const list = places.filter((p) => (f.people ? byPlace.has(p.id) : links.visits.has(p.id)));
+    const list = places.filter((p) =>
+      f.people ? byPlace.has(p.id) : links.visits.has(p.id),
+    );
     for (const p of list)
       items.push({
         id: p.id,
@@ -195,14 +245,23 @@ export function networkGraph(people: Person[], places: Place[], entries: Entry[]
         node: (x, y, r) => placeNode(p, x, y, r),
       });
     if (f.people) {
-      for (const x of links.pairs) edges.push({ a: x.person, b: x.place, w: x.n, tone: 'place' });
+      for (const x of links.pairs)
+        edges.push({ a: x.person, b: x.place, w: x.n, tone: "place" });
     } else {
       // Sin personas: dos lugares se unen si la misma gente estuvo en ambos.
       for (let i = 0; i < list.length; i++) {
         for (let j = i + 1; j < list.length; j++) {
           const a = byPlace.get(list[i].id) ?? new Set<string>();
-          const shared = [...(byPlace.get(list[j].id) ?? [])].filter((id) => a.has(id)).length;
-          if (shared) edges.push({ a: list[i].id, b: list[j].id, w: shared, tone: 'place' });
+          const shared = [...(byPlace.get(list[j].id) ?? [])].filter((id) =>
+            a.has(id),
+          ).length;
+          if (shared)
+            edges.push({
+              a: list[i].id,
+              b: list[j].id,
+              w: shared,
+              tone: "place",
+            });
         }
       }
     }
@@ -221,37 +280,41 @@ export function networkGraph(people: Person[], places: Place[], entries: Entry[]
 
 // ───────────────────────── Relaciones y árbol familiar ─────────────────────────
 
-export type RelationFilter = { ties: boolean; groups: boolean; inferred: boolean };
+export type RelationFilter = {
+  ties: boolean;
+  groups: boolean;
+  inferred: boolean;
+};
 
 const meNode = (x = 0, y = 0): GraphNode => ({
   id: ME,
   x,
   y,
   r: 30,
-  label: 'Tú',
-  initials: 'Tú',
-  fill: '#303f31',
-  stroke: '#303f31',
-  ink: '#fff',
+  label: "Tú",
+  initials: "Tú",
+  fill: "#303f31",
+  stroke: "#303f31",
+  ink: "#fff",
   center: true,
 });
 /** Etiqueta de la línea: con el sexo de quien es «a» («madre», «tía»), o la forma corta. */
 const shortKind = (k: TieKind, g?: Gender | null) =>
-  g ? kindTitle(k, g) : tieKinds[k].label.split(' /')[0].split('/')[0];
+  g ? kindTitle(k, g) : tieKinds[k].label.split(" /")[0].split("/")[0];
 
 function groupNode(g: Group, x: number, y: number, r: number): GraphNode {
   const m = groupKinds[g.kind] ?? groupKinds.otro;
   return {
-    id: 'g:' + g.id,
+    id: "g:" + g.id,
     x,
     y,
     r,
     label: g.name,
-    initials: '',
+    initials: "",
     fill: m.soft,
     stroke: m.color,
     ink: m.color,
-    shape: 'place',
+    shape: "place",
     icon: m.icon,
   };
 }
@@ -265,33 +328,45 @@ export function relationsGraph(
   skip?: ReadonlySet<string>,
 ) {
   const byId = new Map(people.map((p) => [p.id, p]));
-  const list: Tie[] = [...(f.ties ? ties : []), ...(f.inferred ? inferTies(ties, skip) : [])];
+  const list: Tie[] = [
+    ...(f.ties ? ties : []),
+    ...(f.inferred ? inferTies(ties, skip) : []),
+  ];
   const edges: GraphEdge[] = [];
   const degree = new Map<string, number>();
   const bump = (id: string) => degree.set(id, (degree.get(id) ?? 0) + 1);
   for (const t of list) {
     const a = t.a ?? ME;
     if ((a !== ME && !byId.has(a)) || !byId.has(t.b)) continue;
-    const cat = tieCategories[tieKinds[t.kind]?.category ?? 'otro'];
+    const cat = tieCategories[tieKinds[t.kind]?.category ?? "otro"];
     edges.push({
       a,
       b: t.b,
       w: 2,
       color: cat.color,
       dashed: t.inferred,
-      label: `${shortKind(t.kind, a === ME ? null : genderOf(byId.get(a)))}${t.inferred ? ' (deducido)' : ''}`,
+      label: `${shortKind(t.kind, a === ME ? null : genderOf(byId.get(a)))}${t.inferred ? " (deducido)" : ""}`,
     });
     bump(a);
     bump(t.b);
   }
-  const shownGroups = f.groups ? groups.filter((g) => g.member_ids.some((m) => byId.has(m))) : [];
+  const shownGroups = f.groups
+    ? groups.filter((g) => g.member_ids.some((m) => byId.has(m)))
+    : [];
   for (const g of shownGroups) {
     const m = groupKinds[g.kind] ?? groupKinds.otro;
     for (const id of g.member_ids) {
       if (!byId.has(id)) continue;
-      edges.push({ a: 'g:' + g.id, b: id, w: 1, color: m.color, tone: 'soft', label: g.name });
+      edges.push({
+        a: "g:" + g.id,
+        b: id,
+        w: 1,
+        color: m.color,
+        tone: "soft",
+        label: g.name,
+      });
       bump(id);
-      bump('g:' + g.id);
+      bump("g:" + g.id);
     }
   }
   const ids = [...degree.keys()];
@@ -301,9 +376,9 @@ export function relationsGraph(
     const { x, y } = pos[i];
     const r = 15 + 12 * Math.sqrt((degree.get(id) ?? 1) / max);
     if (id === ME) return meNode(x, y);
-    if (id.startsWith('g:'))
+    if (id.startsWith("g:"))
       return groupNode(
-        shownGroups.find((g) => 'g:' + g.id === id)!,
+        shownGroups.find((g) => "g:" + g.id === id)!,
         x,
         y,
         r + 2,
@@ -314,17 +389,21 @@ export function relationsGraph(
 }
 
 const genLabels: Record<number, string> = {
-  [-3]: 'Bisabuelos',
-  [-2]: 'Abuelos',
-  [-1]: 'Padres y tíos',
-  0: 'Tu generación',
-  1: 'Hijos y sobrinos',
-  2: 'Nietos',
-  3: 'Bisnietos',
+  [-3]: "Bisabuelos",
+  [-2]: "Abuelos",
+  [-1]: "Padres y tíos",
+  0: "Tu generación",
+  1: "Hijos y sobrinos",
+  2: "Nietos",
+  3: "Bisnietos",
 };
 
 /** Árbol genealógico: cada generación en su fila, parejas juntas e hijos bajo sus padres. */
-export function familyTree(people: Person[], ties: Tie[], skip?: ReadonlySet<string>) {
+export function familyTree(
+  people: Person[],
+  ties: Tie[],
+  skip?: ReadonlySet<string>,
+) {
   const byId = new Map(people.map((p) => [p.id, p]));
   const all = [...ties, ...inferTies(ties, skip)].filter(
     (t) => (t.a === null || byId.has(t.a)) && byId.has(t.b),
@@ -334,9 +413,10 @@ export function familyTree(people: Person[], ties: Tie[], skip?: ReadonlySet<str
   const partnerOf = new Map<string, string>();
   for (const t of family) {
     const a = t.a ?? ME;
-    if (t.kind === 'padre') parentsOf.set(t.b, [...(parentsOf.get(t.b) ?? []), a]);
-    if (t.kind === 'hijo') parentsOf.set(a, [...(parentsOf.get(a) ?? []), t.b]);
-    if (t.kind === 'pareja') {
+    if (t.kind === "padre")
+      parentsOf.set(t.b, [...(parentsOf.get(t.b) ?? []), a]);
+    if (t.kind === "hijo") parentsOf.set(a, [...(parentsOf.get(a) ?? []), t.b]);
+    if (t.kind === "pareja") {
       partnerOf.set(a, t.b);
       partnerOf.set(t.b, a);
     }
@@ -350,15 +430,21 @@ export function familyTree(people: Person[], ties: Tie[], skip?: ReadonlySet<str
   // El componente con «Tú» va primero; el resto, a la derecha.
   comps.sort((a, b) => (a === meComp ? -1 : b === meComp ? 1 : a - b));
   for (const c of comps) {
-    const members = [...comp.entries()].filter(([, cc]) => cc === c).map(([id]) => id);
-    const gens = [...new Set(members.map((id) => gen.get(id)!))].sort((a, b) => a - b);
+    const members = [...comp.entries()]
+      .filter(([, cc]) => cc === c)
+      .map(([id]) => id);
+    const gens = [...new Set(members.map((id) => gen.get(id)!))].sort(
+      (a, b) => a - b,
+    );
     let width = 0;
     for (const g of gens) {
       const row = members.filter((id) => gen.get(id) === g);
       // Orden: bajo el promedio de sus padres; las parejas, juntas.
       const score = (id: string) => {
         const ps = (parentsOf.get(id) ?? []).filter((p) => x.has(p));
-        return ps.length ? ps.reduce((s, p) => s + x.get(p)!, 0) / ps.length : Infinity;
+        return ps.length
+          ? ps.reduce((s, p) => s + x.get(p)!, 0) / ps.length
+          : Infinity;
       };
       row.sort(
         (a, b) =>
@@ -367,20 +453,29 @@ export function familyTree(people: Person[], ties: Tie[], skip?: ReadonlySet<str
             ? -1
             : b === ME
               ? 1
-              : (byId.get(a)?.name ?? '').localeCompare(byId.get(b)?.name ?? '', 'es')),
+              : (byId.get(a)?.name ?? "").localeCompare(
+                  byId.get(b)?.name ?? "",
+                  "es",
+                )),
       );
       const ordered: string[] = [];
       for (const id of row) {
         if (ordered.includes(id)) continue;
         ordered.push(id);
         const partner = partnerOf.get(id);
-        if (partner && row.includes(partner) && !ordered.includes(partner)) ordered.push(partner);
+        if (partner && row.includes(partner) && !ordered.includes(partner))
+          ordered.push(partner);
       }
-      const centered = ordered.map((id) => score(id)).filter((s) => s !== Infinity);
+      const centered = ordered
+        .map((id) => score(id))
+        .filter((s) => s !== Infinity);
       const center = centered.length
         ? centered.reduce((a, b) => a + b, 0) / centered.length
         : offset + ((ordered.length - 1) * SPACING) / 2;
-      const start = Math.max(offset, center - ((ordered.length - 1) * SPACING) / 2);
+      const start = Math.max(
+        offset,
+        center - ((ordered.length - 1) * SPACING) / 2,
+      );
       ordered.forEach((id, i) => x.set(id, start + i * SPACING));
       width = Math.max(width, start - offset + ordered.length * SPACING);
     }
@@ -397,35 +492,49 @@ export function familyTree(people: Person[], ties: Tie[], skip?: ReadonlySet<str
   for (const t of all) {
     const a = t.a ?? ME;
     if (!x.has(a) || !x.has(t.b)) continue;
-    if (t.kind === 'padre' || t.kind === 'hijo')
+    if (t.kind === "padre" || t.kind === "hijo")
       edges.push({
         a,
         b: t.b,
         w: 2,
         color: fam,
         dashed: t.inferred,
-        label: t.kind === 'padre' ? 'Padre / Madre' : 'Hijo / Hija',
+        label: t.kind === "padre" ? "Padre / Madre" : "Hijo / Hija",
       });
-    else if (t.kind === 'pareja')
-      edges.push({ a, b: t.b, w: 4, color: tieCategories.pareja.color, label: 'Pareja' });
-    else if (t.kind === 'expareja')
+    else if (t.kind === "pareja")
+      edges.push({
+        a,
+        b: t.b,
+        w: 4,
+        color: tieCategories.pareja.color,
+        label: "Pareja",
+      });
+    else if (t.kind === "expareja")
       edges.push({
         a,
         b: t.b,
         w: 1,
         color: tieCategories.pareja.color,
         dashed: true,
-        label: 'Expareja',
+        label: "Expareja",
       });
-    else if (t.kind === 'hermano' && !t.inferred)
-      edges.push({ a, b: t.b, w: 1, color: fam, dashed: true, tone: 'soft', label: 'Hermanos' });
+    else if (t.kind === "hermano" && !t.inferred)
+      edges.push({
+        a,
+        b: t.b,
+        w: 1,
+        color: fam,
+        dashed: true,
+        tone: "soft",
+        label: "Hermanos",
+      });
   }
   const used = [...new Set(nodes.map((n) => n.y / ROW))].sort((a, b) => a - b);
   const bands: GraphBand[] = used.map((g, i) => ({
     y: g * ROW,
     label:
       meComp !== undefined
-        ? (genLabels[g] ?? `Generación ${g > 0 ? '+' : ''}${g}`)
+        ? (genLabels[g] ?? `Generación ${g > 0 ? "+" : ""}${g}`)
         : `Generación ${i + 1}`,
   }));
   return { nodes, edges, bands };

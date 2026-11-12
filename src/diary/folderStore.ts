@@ -49,7 +49,7 @@ export const folderOf = (e: Entry, folders: DiaryFolder[]) =>
  * dispositivos); si esa tabla aún no existe, en este navegador.
  */
 export function useDiaryFolders() {
-  const { user, me, meMissing, saveMe } = useApp();
+  const { user, me, meMissing, patchMe } = useApp();
   const [local, setLocal] = useState(() => readLocal(user.id));
   const folders = (meMissing ? local : me.profile.diaryFolders?.filter(isFolder)) ?? [];
 
@@ -64,9 +64,9 @@ export function useDiaryFolders() {
         }
         return true;
       }
-      return saveMe({ ...me.profile, diaryFolders: next });
+      return patchMe({ diaryFolders: next });
     },
-    [meMissing, me.profile, saveMe, user.id],
+    [meMissing, patchMe, user.id],
   );
 
   const create = async (name: string, color: string) => {

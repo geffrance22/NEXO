@@ -52,6 +52,7 @@ import { ME, kinCall, tiesOf } from "../lib/relations";
 import { commitmentKindList, commitmentKinds } from "../lib/commitments";
 import { episodeKindList, episodeKinds } from "../lib/episodes";
 import { errorMessage, thousands, todayInputValue } from "../lib/format";
+import { selfContext } from "../lib/myself";
 import { updateKindList, updateKinds } from "../lib/updates";
 import { expenseCategories, incomeCategories } from "../composer/logic";
 import { Avatar } from "../people/Avatar";
@@ -256,6 +257,7 @@ export function CaptureDialog({
         places: workspace.places
           .slice(0, 200)
           .map((p) => ({ id: p.id, name: p.name })),
+        me: selfContext(app.me.profile, workspace.places),
       });
       const next = planFromAi(raw, base, workspace);
       setPlans((ps) => (ps ?? list).map((p, i) => (i === index ? next : p)));

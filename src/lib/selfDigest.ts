@@ -1,19 +1,25 @@
-import type { Entry, MyProfile, Person, Workspace } from '../data';
-import { moodTone } from '../composer/moods';
-import { addDays, todayInputValue } from './format';
-import { genderOf } from './gender';
-import { totals } from '../finance/money';
-import { relationMeta, relationOf } from './people';
-import { ME, kindWord, tiesOf, tieKinds } from './relations';
+import type { Entry, MyProfile, Person, Workspace } from "../data";
+import { moodTone } from "../composer/moods";
+import { addDays, todayInputValue } from "./format";
+import { genderOf } from "./gender";
+import { totals } from "../finance/money";
+import { relationMeta, relationOf } from "./people";
+import { ME, kindWord, tiesOf, tieKinds } from "./relations";
+import { goalItemsOf, voiceOf } from "./myself";
 
 /** Una lectura guardada en Lecturas (solo lo necesario para describirte). */
-export type ReadingLite = { title: string; tags: string[] | null; read_at: string | null };
+export type ReadingLite = {
+  title: string;
+  tags: string[] | null;
+  read_at: string | null;
+};
 
 /** Tope del resumen que se envía: la función rechaza lo que pase de 30 000 caracteres. */
 const MAX_CHARS = 26000;
 
 const day = (e: Entry) => e.created_at.slice(0, 10);
-const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
+const clip = (s: string, n: number) =>
+  s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s;
 const count = <T>(items: T[], keyOf: (x: T) => string | undefined) => {
   const m = new Map<string, number>();
   for (const x of items) {
@@ -37,35 +43,41 @@ export function buildSelfDigest(
   const byId = new Map(ws.people.map((p) => [p.id, p]));
   const nameOf = (p: Person) => p.name.trim();
   const since90 = addDays(today, -90);
-  const since180 = addDays(today, -180);
-  const entries = [...ws.entries].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const entries = [...ws.entries].sort((a, b) =>
+    b.created_at.localeCompare(a.created_at),
+  );
   const recent = entries.filter((e) => day(e) >= since90);
 
   // Tu gente: parentescos y vínculos contigo, los cercanos y con quién más te ves.
-  const mine = tiesOf(ME, ws.ties).filter((v) => v.other !== ME && byId.has(v.other));
+  const mine = tiesOf(ME, ws.ties).filter(
+    (v) => v.other !== ME && byId.has(v.other),
+  );
   const vinculos = mine.slice(0, 60).map((v) => {
     const p = byId.get(v.other)!;
     return `${nameOf(p)}: tu ${kindWord(v.kind, genderOf(p))}`;
   });
-  const family = mine.filter((v) => tieKinds[v.kind].category === 'familia').length;
-  const times = new Map<string, number>();
-  for (const e of entries)
-    if (day(e) >= since180 && e.kind !== 'Movimiento')
-      for (const id of e.person_ids) times.set(id, (times.get(id) ?? 0) + 1);
-  const masCerca = [...times]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 12)
-    .flatMap(([id, n]) => (byId.has(id) ? [`${nameOf(byId.get(id)!)} (${n} recuerdos)`] : []));
+  const family = mine.filter(
+    (v) => tieKinds[v.kind].category === "familia",
+  ).length;
+  const masCerca = closestPeople(ws, today).map(
+    ({ person, count: n }) => `${nameOf(person)} (${n} recuerdos)`,
+  );
   const cercanos = ws.people
     .filter((p) => p.profile.favorite || (p.profile.closeness ?? 0) >= 4)
     .slice(0, 20)
-    .map((p) => `${nameOf(p)} (${relationMeta[relationOf(p)].label.toLowerCase()})`);
+    .map(
+      (p) =>
+        `${nameOf(p)} (${relationMeta[relationOf(p)].label.toLowerCase()})`,
+    );
   const porRelacion = Object.fromEntries(
-    count(ws.people, (p) => relationMeta[relationOf(p)].label).map(([k, n]) => [k, n]),
+    count(ws.people, (p) => relationMeta[relationOf(p)].label).map(([k, n]) => [
+      k,
+      n,
+    ]),
   );
 
-  const of = (kind: Entry['kind']) => entries.filter((e) => e.kind === kind);
-  const libros = of('Libro')
+  const of = (kind: Entry["kind"]) => entries.filter((e) => e.kind === kind);
+  const libros = of("Libro")
     .slice(0, 30)
     .map((e) =>
       [
@@ -75,31 +87,41 @@ export function buildSelfDigest(
         e.details.rating && `${e.details.rating}/5`,
       ]
         .filter(Boolean)
-        .join(' '),
+        .join(" "),
     );
-  const peliculas = of('Película')
+  const peliculas = of("Película")
     .slice(0, 30)
     .map((e) =>
       [
         e.title,
-        e.details.series ? '(serie)' : '',
+        e.details.series ? "(serie)" : "",
         e.details.watch && `(${e.details.watch})`,
         e.details.rating && `${e.details.rating}/5`,
       ]
         .filter(Boolean)
-        .join(' '),
+        .join(" "),
     );
-  const aprendizajes = of('Aprendizaje')
+  const aprendizajes = of("Aprendizaje")
     .slice(0, 20)
     .map((e) => clip(e.title, 120));
-  const trabajo = of('Trabajo')
+  const trabajo = of("Trabajo")
     .slice(0, 20)
-    .map((e) => `${clip(e.title, 100)}${e.details.stage ? ` [${e.details.stage}]` : ''}`);
-  const abiertos = of('Pendiente').filter((e) => e.status !== 'completado');
-  const plata = recent.filter((e) => e.kind === 'Movimiento');
+    .map(
+      (e) =>
+        `${clip(e.title, 100)}${e.details.stage ? ` [${e.details.stage}]` : ""}`,
+    );
+  const abiertos = of("Pendiente").filter((e) => e.status !== "completado");
+  const plata = recent.filter((e) => e.kind === "Movimiento");
   const plataTotals = totals(plata);
-  const sum = (dir: string) => Math.round(dir === 'ingreso' ? plataTotals.income : plataTotals.spent);
-  const moods = recent.map((e) => moodTone(e.details.mood)).filter((m): m is number => typeof m === 'number');
+  const sum = (dir: string) =>
+    Math.round(dir === "ingreso" ? plataTotals.income : plataTotals.spent);
+  const moods = recent
+    .map((e) => moodTone(e.details.mood))
+    .filter((m): m is number => typeof m === "number");
+  // Lo que pediste dejar fuera de la lectura.
+  const out = new Set(me.readingExclude ?? []);
+  const placeById = new Map(ws.places.map((p) => [p.id, p.name]));
+  const fieldWord = { city: "vivía en", occupation: "trabajaba como", company: "estaba en" };
 
   const digest = {
     hoy: today,
@@ -109,13 +131,47 @@ export function buildSelfDigest(
       cumpleanos: me.birthday,
       nacio: me.birthYear,
       ciudad: me.city,
+      de_donde_es: me.hometown,
       ocupacion: me.occupation,
       empresa: me.company,
+      trayectoria: me.history?.length
+        ? me.history
+            .slice(0, 15)
+            .map((h) => `${fieldWord[h.field]} ${h.value} hasta ${h.until.slice(0, 7)}`)
+        : undefined,
+      mis_lugares:
+        out.has("lugares") || !me.places
+          ? undefined
+          : Object.fromEntries(
+              Object.entries(me.places).flatMap(([k, id]) =>
+                id && placeById.has(id) ? [[k, placeById.get(id)]] : [],
+              ),
+            ),
       intereses: me.interests,
       me_encanta: me.likes,
       no_me_gusta: me.dislikes,
-      ahora_mismo: me.goals,
+      idiomas: me.languages,
+      habilidades: me.skills,
+      datos: me.facts?.length
+        ? me.facts.slice(0, 20).map((f) => `${f.label}: ${clip(f.value, 120)}`)
+        : undefined,
+      ahora_mismo: goalItemsOf(me).map((g) =>
+        [
+          g.text,
+          g.progress !== undefined && `${g.progress}%`,
+          g.due && `para ${g.due}`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      ),
       en_mis_palabras: me.about ? clip(me.about, 1500) : undefined,
+      como_quiero_que_me_hable: voiceOf(me),
+      rasgos_que_me_representan: me.traitsPinned?.length
+        ? me.traitsPinned
+        : undefined,
+      rasgos_que_no_me_representan: me.traitsHidden?.length
+        ? me.traitsHidden
+        : undefined,
     },
     mi_gente: {
       personas: ws.people.length,
@@ -124,7 +180,9 @@ export function buildSelfDigest(
       vinculos_conmigo: vinculos,
       cercanos,
       con_quien_mas_me_veo_6_meses: masCerca,
-      grupos: ws.groups.slice(0, 30).map((g) => `${g.name} (${g.member_ids.length})`),
+      grupos: ws.groups
+        .slice(0, 30)
+        .map((g) => `${g.name} (${g.member_ids.length})`),
     },
     recuerdos: {
       total: entries.length,
@@ -137,33 +195,44 @@ export function buildSelfDigest(
         .slice(0, 15)
         .map(([t, n]) => `${t} (${n})`),
       recientes: entries
-        .filter((e) => e.kind !== 'Movimiento')
+        .filter((e) => e.kind !== "Movimiento")
         .slice(0, 40)
         .map((e) => ({
           fecha: day(e),
           tipo: e.kind,
           titulo: clip(e.title, 100),
-          texto: e.body ? clip(e.body.replace(/\s+/g, ' '), 160) : undefined,
-          con: e.person_ids.flatMap((id) => (byId.has(id) ? [nameOf(byId.get(id)!)] : [])),
+          texto:
+            e.body && !out.has("textos")
+              ? clip(e.body.replace(/\s+/g, " "), 160)
+              : undefined,
+          con: e.person_ids.flatMap((id) =>
+            byId.has(id) ? [nameOf(byId.get(id)!)] : [],
+          ),
         })),
-      animo_promedio_90_dias: moods.length
-        ? Math.round((10 * moods.reduce((s, m) => s + m, 0)) / moods.length) / 10
-        : undefined,
+      animo_promedio_90_dias:
+        moods.length && !out.has("animo")
+          ? Math.round((10 * moods.reduce((s, m) => s + m, 0)) / moods.length) /
+            10
+          : undefined,
     },
     libros,
     peliculas_y_series: peliculas,
     aprendizajes,
-    trabajo,
-    pendientes: {
-      abiertos: abiertos.length,
-      algunos: abiertos.slice(0, 10).map((e) => clip(e.title, 100)),
-    },
-    finanzas_90_dias: plata.length
+    trabajo: out.has("pendientes") ? [] : trabajo,
+    pendientes: out.has("pendientes")
+      ? undefined
+      : {
+          abiertos: abiertos.length,
+          algunos: abiertos.slice(0, 10).map((e) => clip(e.title, 100)),
+        },
+    finanzas_90_dias: plata.length && !out.has("finanzas")
       ? {
-          ingresos: sum('ingreso'),
-          gastos: sum('egreso'),
+          ingresos: sum("ingreso"),
+          gastos: sum("egreso"),
           en_que_gasto: count(
-            plata.filter((e) => e.direction === 'egreso').flatMap((e) => e.tags.slice(0, 1)),
+            plata
+              .filter((e) => e.direction === "egreso")
+              .flatMap((e) => e.tags.slice(0, 1)),
             (t) => t,
           )
             .slice(0, 6)
@@ -176,7 +245,9 @@ export function buildSelfDigest(
       estado: ep.status,
       desde: ep.starts_on ?? undefined,
     })),
-    lugares: {
+    lugares: out.has("lugares")
+      ? undefined
+      : {
       total: ws.places.length,
       favoritos: ws.places
         .filter((p) => p.favorite)
@@ -204,10 +275,39 @@ export function buildSelfDigest(
       0,
       Math.floor(digest.recuerdos.recientes.length * 0.7),
     );
-  for (const list of ['libros', 'peliculas_y_series', 'aprendizajes', 'trabajo'] as const)
+  for (const list of [
+    "libros",
+    "peliculas_y_series",
+    "aprendizajes",
+    "trabajo",
+  ] as const)
     if (!fits()) digest[list] = digest[list].slice(0, 10);
-  if (!fits()) digest.mi_gente.vinculos_conmigo = digest.mi_gente.vinculos_conmigo.slice(0, 25);
+  if (!fits())
+    digest.mi_gente.vinculos_conmigo = digest.mi_gente.vinculos_conmigo.slice(
+      0,
+      25,
+    );
   return digest;
+}
+
+/** Con quién más te ves: personas por número de recuerdos juntos en los últimos 6 meses. */
+export function closestPeople(
+  ws: Workspace,
+  today = todayInputValue(),
+  limit = 12,
+) {
+  const since180 = addDays(today, -180);
+  const byId = new Map(ws.people.map((p) => [p.id, p]));
+  const times = new Map<string, number>();
+  for (const e of ws.entries)
+    if (day(e) >= since180 && e.kind !== "Movimiento")
+      for (const id of e.person_ids) times.set(id, (times.get(id) ?? 0) + 1);
+  return [...times]
+    .sort((a, b) => b[1] - a[1])
+    .flatMap(([id, n]) =>
+      byId.has(id) ? [{ person: byId.get(id)!, count: n }] : [],
+    )
+    .slice(0, limit);
 }
 
 /** Cuánto sabe Nexo de ti (para mostrar en qué se basa la lectura). */

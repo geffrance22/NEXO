@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from "react";
 import {
   ArrowRight,
   GitBranch,
@@ -9,53 +9,90 @@ import {
   TreePine,
   Users,
   X,
-} from 'lucide-react';
-import { useApp } from '../AppContext';
-import { GraphCanvas } from '../components/GraphCanvas';
-import type { Group } from '../data';
-import { groupKinds, tieCategories, tieCategoryList } from '../lib/relations';
-import { useDismissed } from './dismissed';
-import { SuggestionsDialog, useInferred, useSuggestions } from './Suggestions';
-import { Avatar } from '../people/Avatar';
-import { FloatCard } from '../pages/ConnectionsPage';
-import { familyTree, relationsGraph, type RelationFilter } from '../pages/graphs';
-import './relations.css';
+} from "lucide-react";
+import { useApp } from "../AppContext";
+import { GraphCanvas } from "../components/GraphCanvas";
+import type { Group } from "../data";
+import { groupKinds, tieCategories, tieCategoryList } from "../lib/relations";
+import { useDismissed } from "./dismissed";
+import { SuggestionsDialog, useInferred, useSuggestions } from "./Suggestions";
+import { Avatar } from "../people/Avatar";
+import { FloatCard } from "../pages/ConnectionsPage";
+import {
+  familyTree,
+  relationsGraph,
+  withMyPhoto,
+  type RelationFilter,
+} from "../pages/graphs";
+import "./relations.css";
 
 function GroupFloat({ group, onClose }: { group: Group; onClose: () => void }) {
   const { workspace, openGroup, go } = useApp();
   const m = groupKinds[group.kind] ?? groupKinds.otro;
-  const members = group.member_ids.flatMap((id) => workspace.people.find((p) => p.id === id) ?? []);
+  const members = group.member_ids.flatMap(
+    (id) => workspace.people.find((p) => p.id === id) ?? [],
+  );
   return (
     <aside
       className="gc-float"
-      style={{ '--accent': m.color, '--soft': m.soft, '--ink': '#27301f' } as CSSProperties}
+      style={
+        {
+          "--accent": m.color,
+          "--soft": m.soft,
+          "--ink": "#27301f",
+        } as CSSProperties
+      }
     >
-      <button type="button" className="gc-float-x" aria-label="Cerrar" onClick={onClose}>
+      <button
+        type="button"
+        className="gc-float-x"
+        aria-label="Cerrar"
+        onClick={onClose}
+      >
         <X size={15} />
       </button>
       <div className="gc-float-head">
         <span
           className="lf-place-tile"
-          style={{ '--c': m.color, '--s': m.soft, width: 44, height: 44 } as CSSProperties}
+          style={
+            {
+              "--c": m.color,
+              "--s": m.soft,
+              width: 44,
+              height: 44,
+            } as CSSProperties
+          }
         >
           <m.icon size={20} />
         </span>
         <div>
           <strong>{group.name}</strong>
           <span>
-            {m.label} · {members.length} {members.length === 1 ? 'persona' : 'personas'}
+            {m.label} · {members.length}{" "}
+            {members.length === 1 ? "persona" : "personas"}
           </span>
         </div>
       </div>
-      {group.description && <p className="rl-float-desc">{group.description}</p>}
+      {group.description && (
+        <p className="rl-float-desc">{group.description}</p>
+      )}
       <div className="rl-float-members">
         {members.slice(0, 12).map((p) => (
-          <button type="button" key={p.id} title={p.name} onClick={() => go('Personas', p)}>
+          <button
+            type="button"
+            key={p.id}
+            title={p.name}
+            onClick={() => go("Personas", p)}
+          >
             <Avatar person={p} size={30} />
           </button>
         ))}
       </div>
-      <button type="button" className="gc-float-link" onClick={() => openGroup(group)}>
+      <button
+        type="button"
+        className="gc-float-link"
+        onClick={() => openGroup(group)}
+      >
         <Pencil size={13} /> Editar grupo
       </button>
     </aside>
@@ -77,8 +114,8 @@ const relLegend = () => (
 );
 
 /** Red de vínculos entre personas (con grupos) o el árbol familiar. */
-export function RelationsView({ mode }: { mode: 'relaciones' | 'arbol' }) {
-  const { workspace, openTie, openGroup } = useApp();
+export function RelationsView({ mode }: { mode: "relaciones" | "arbol" }) {
+  const { workspace, openTie, openGroup, me } = useApp();
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<RelationFilter>(() => {
     try {
@@ -86,7 +123,7 @@ export function RelationsView({ mode }: { mode: 'relaciones' | 'arbol' }) {
         ties: true,
         groups: true,
         inferred: true,
-        ...JSON.parse(localStorage.getItem('nexo-rel-filter') ?? '{}'),
+        ...JSON.parse(localStorage.getItem("nexo-rel-filter") ?? "{}"),
       };
     } catch {
       return { ties: true, groups: true, inferred: true };
@@ -96,7 +133,7 @@ export function RelationsView({ mode }: { mode: 'relaciones' | 'arbol' }) {
     const next = { ...filter, [k]: !filter[k] };
     setFilter(next);
     setSelected(null);
-    localStorage.setItem('nexo-rel-filter', JSON.stringify(next));
+    localStorage.setItem("nexo-rel-filter", JSON.stringify(next));
   };
 
   const skip = useDismissed();
@@ -104,18 +141,29 @@ export function RelationsView({ mode }: { mode: 'relaciones' | 'arbol' }) {
   const suggestions = useSuggestions();
   const graph = useMemo(
     () =>
-      mode === 'arbol'
+      mode === "arbol"
         ? { ...familyTree(workspace.people, workspace.ties, skip) }
         : {
-            ...relationsGraph(workspace.people, workspace.ties, workspace.groups, filter, skip),
+            ...relationsGraph(
+              workspace.people,
+              workspace.ties,
+              workspace.groups,
+              filter,
+              skip,
+            ),
             bands: [],
           },
     [mode, workspace.people, workspace.ties, workspace.groups, filter, skip],
   );
+  const myPhoto = me.profile.photo;
+  const nodes = useMemo(
+    () => withMyPhoto(graph.nodes, myPhoto),
+    [graph.nodes, myPhoto],
+  );
   const inferredCount = useInferred().length;
   const person = workspace.people.find((p) => p.id === selected) ?? null;
-  const group = selected?.startsWith('g:')
-    ? workspace.groups.find((g) => 'g:' + g.id === selected)
+  const group = selected?.startsWith("g:")
+    ? workspace.groups.find((g) => "g:" + g.id === selected)
     : undefined;
   const first = workspace.people[0];
 
@@ -123,36 +171,37 @@ export function RelationsView({ mode }: { mode: 'relaciones' | 'arbol' }) {
     <>
       <div className="cx-sub">
         <p className="cx-hint">
-          {mode === 'arbol'
-            ? 'Tu familia por generaciones. Los parentescos que se deducen se dibujan punteados.'
-            : 'Quién es qué de quién, y los grupos que los reúnen. Pasa el cursor para ver cada vínculo.'}
+          {mode === "arbol"
+            ? "Tu familia por generaciones. Los parentescos que se deducen se dibujan punteados."
+            : "Quién es qué de quién, y los grupos que los reúnen. Pasa el cursor para ver cada vínculo."}
         </p>
         <div className="cx-toggles" role="group" aria-label="Mostrar">
-          {mode === 'relaciones' && (
+          {mode === "relaciones" && (
             <>
               <button
                 type="button"
                 aria-pressed={filter.ties}
-                className={filter.ties ? 'on' : ''}
-                onClick={() => toggle('ties')}
+                className={filter.ties ? "on" : ""}
+                onClick={() => toggle("ties")}
               >
                 <Link2 size={14} /> Vínculos
               </button>
               <button
                 type="button"
                 aria-pressed={filter.groups}
-                className={filter.groups ? 'on' : ''}
-                onClick={() => toggle('groups')}
+                className={filter.groups ? "on" : ""}
+                onClick={() => toggle("groups")}
               >
                 <Users size={14} /> Grupos
               </button>
               <button
                 type="button"
                 aria-pressed={filter.inferred}
-                className={filter.inferred ? 'on' : ''}
-                onClick={() => toggle('inferred')}
+                className={filter.inferred ? "on" : ""}
+                onClick={() => toggle("inferred")}
               >
-                <Sparkles size={14} /> Deducidos {inferredCount > 0 && <i>{inferredCount}</i>}
+                <Sparkles size={14} /> Deducidos{" "}
+                {inferredCount > 0 && <i>{inferredCount}</i>}
               </button>
             </>
           )}
@@ -160,12 +209,21 @@ export function RelationsView({ mode }: { mode: 'relaciones' | 'arbol' }) {
             <Users size={14} /> Nuevo grupo
           </button>
           {first && (
-            <button type="button" className="rl-tool" onClick={() => openTie(person)}>
-              <Link2 size={14} /> {person ? `Vincular a ${person.name.split(' ')[0]}` : 'Vincular'}
+            <button
+              type="button"
+              className="rl-tool"
+              onClick={() => openTie(person)}
+            >
+              <Link2 size={14} />{" "}
+              {person ? `Vincular a ${person.name.split(" ")[0]}` : "Vincular"}
             </button>
           )}
           {suggestions.length > 0 && (
-            <button type="button" className="rl-tool sug" onClick={() => setReviewing(true)}>
+            <button
+              type="button"
+              className="rl-tool sug"
+              onClick={() => setReviewing(true)}
+            >
               <Sparkles size={14} /> Por confirmar <i>{suggestions.length}</i>
             </button>
           )}
@@ -177,7 +235,7 @@ export function RelationsView({ mode }: { mode: 'relaciones' | 'arbol' }) {
         <>
           <GraphCanvas
             key={mode + JSON.stringify(filter)}
-            nodes={graph.nodes}
+            nodes={nodes}
             edges={graph.edges}
             bands={graph.bands}
             selected={selected}
@@ -198,29 +256,39 @@ export function RelationsView({ mode }: { mode: 'relaciones' | 'arbol' }) {
           <div className="cx-foot">
             {relLegend()}
             <span>
-              <Users size={13} />{' '}
-              {graph.nodes.filter((n) => !n.center && !n.id.startsWith('g:')).length} personas
-              {mode === 'relaciones' && filter.groups && ` · ${workspace.groups.length} grupos`}
+              <Users size={13} />{" "}
+              {
+                graph.nodes.filter((n) => !n.center && !n.id.startsWith("g:"))
+                  .length
+              }{" "}
+              personas
+              {mode === "relaciones" &&
+                filter.groups &&
+                ` · ${workspace.groups.length} grupos`}
             </span>
           </div>
         </>
       ) : (
         <div className="wr-empty">
-          {mode === 'arbol' ? <TreePine size={28} /> : <Share2 size={28} />}
+          {mode === "arbol" ? <TreePine size={28} /> : <Share2 size={28} />}
           <h3>
-            {mode === 'arbol'
-              ? 'Tu árbol aún no tiene ramas.'
-              : 'Aún no hay vínculos entre personas.'}
+            {mode === "arbol"
+              ? "Tu árbol aún no tiene ramas."
+              : "Aún no hay vínculos entre personas."}
           </h3>
           <p>
-            {mode === 'arbol'
-              ? 'Vincula padres, hijos, hermanos o parejas desde la ficha de cada persona (pestaña Vínculos).'
-              : 'Desde la ficha de una persona, en «Vínculos», di quién es qué de quién o crea un grupo en común.'}
+            {mode === "arbol"
+              ? "Vincula padres, hijos, hermanos o parejas desde la ficha de cada persona (pestaña Vínculos)."
+              : "Desde la ficha de una persona, en «Vínculos», di quién es qué de quién o crea un grupo en común."}
           </p>
           {first && (
-            <button type="button" className="pp-btn dark" onClick={() => openTie(null)}>
-              {mode === 'arbol' ? <GitBranch size={15} /> : <Link2 size={15} />} Crear el primer
-              vínculo <ArrowRight size={14} />
+            <button
+              type="button"
+              className="pp-btn dark"
+              onClick={() => openTie(null)}
+            >
+              {mode === "arbol" ? <GitBranch size={15} /> : <Link2 size={15} />}{" "}
+              Crear el primer vínculo <ArrowRight size={14} />
             </button>
           )}
         </div>

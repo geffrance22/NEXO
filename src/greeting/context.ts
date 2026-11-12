@@ -3,6 +3,7 @@ import { agendaFor, defaultAgendaPrefs } from '../lib/agenda';
 import { isOpenTask } from '../lib/commitments';
 import { moodTone } from '../composer/moods';
 import { addDays, todayInputValue } from '../lib/format';
+import { voiceOf } from '../lib/myself';
 import { ageOf, closenessOf, daysBetween, daysToBirthday, relativeDay } from '../lib/people';
 import { isActive, progressOf } from '../library/progress';
 import type { FeedCard } from '../planner/boardFeed';
@@ -75,7 +76,7 @@ export function buildGreetingInput(
   const name = nameOf(me);
   const weekly = now.getDay() === 0 || now.getDay() === 1;
 
-  const agenda = agendaFor(ws, { ...defaultAgendaPrefs, max: 4 }, skip, today, cards);
+  const agenda = agendaFor(ws, { ...defaultAgendaPrefs, max: 4 }, skip, today, cards, p);
 
   // Tableros elegidos: lo vencido, lo de hoy, lo prioritario y lo resaltado (lo demás no importa aquí).
   const open = cards.filter((c) => !c.done && !(c.snoozed_until && c.snoozed_until > today));
@@ -231,6 +232,7 @@ export function buildGreetingInput(
       sobre_mi: clip(p.about, 450) || undefined,
       rasgos: short(me.highlights, 6),
       lectura_de_nexo: clip(me.reading, 600) || undefined,
+      como_hablarme: voiceOf(p),
     },
     cumple_propio:
       ownDays !== null && ownDays <= 14 ? { hoy: ownDays === 0, en_dias: ownDays } : undefined,

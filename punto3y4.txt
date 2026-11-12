@@ -1,0 +1,17 @@
+## 3. Datos nuevos que valen la pena (sin saturar)
+
+- **Trayectoria:** dónde viviste, trabajaste y estudiaste, y hasta cuándo. Es el mismo modelo `ProfileChange` / `history` que ya usan las personas. Alimenta la lectura y una línea de vida.
+- **Tus lugares:** casa, trabajo, de dónde eres, vinculados a `Places`. La IA de captura y del diario podría entender «en casa» o «en la oficina».
+- **Metas con estructura:** hoy `goals` es una lista de texto. Cada meta podría tener plazo, avance y un vínculo opcional a un episodio, un trabajo o un tablero. Así el bloque «En qué estás» muestra progreso real.
+- **Datos libres:** el mismo patrón `facts` de las personas (talla, alergias, grupo sanguíneo, signo), más idiomas y habilidades.
+- **Fechas tuyas:** aniversarios o tu santo, para que aparezcan en la agenda de hoy.
+- **Cómo quieres que te hable Nexo:** tono, extensión, temas que prefieres que no saque. El saludo y el chat lo usarían en su instrucción de sistema.
+- **Privacidad de la IA:** casillas para excluir partes de la lectura (por ejemplo, las finanzas, que hoy entran en `selfDigest`).
+
+## 4. Conectar la ficha con el resto de NEXO
+
+- **Colegas y vecinos por coincidencia**, igual que la familia por apellidos: «3 personas trabajan en tu empresa», «5 viven en tu ciudad», «Ana comparte tu interés por la fotografía». Lleva a vincularlos o a crear un grupo.
+- **Captura y diario con contexto propio:** `captureWithAssistant` y `readDiaryWithAssistant` hoy no reciben tu ficha. Con tu ciudad, empresa y lugares entenderían «mi trabajo» o «en casa».
+- **Tu propio cumpleaños en la agenda.** Hoy solo lo usa el saludo.
+- **Libroteca:** usar intereses y disgustos para ordenar o sugerir libros y películas.
+- **Mostrar en la ficha lo que ya guarda:** la meta de lectura del año con su progreso, y un panel «Tu Nexo en números» (personas, recuerdos, ánimo de los últimos 90 días, racha del diario). Se calcula localmente, sin IA.

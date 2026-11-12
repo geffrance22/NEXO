@@ -7,11 +7,13 @@ import type {
   Entry,
   EntryInput,
   ExchangeKind,
+  MyProfile,
   UpdateKind,
   Workspace,
 } from "../../data";
 import { genderOf } from "../../lib/gender";
 import { normalizeText } from "../../lib/format";
+import { selfContext } from "../../lib/myself";
 import { ME, kinCall, tiesOf } from "../../lib/relations";
 
 /**
@@ -98,6 +100,8 @@ export type DiaryReading = { summary: string; pieces: DiaryPiece[] };
 export function readingInput(
   input: EntryInput,
   workspace: Workspace,
+  /** Tu ficha: para entender «en casa», «mi trabajo». */
+  me?: MyProfile,
 ): DiaryReadInput {
   const byId = new Map(workspace.people.map((p) => [p.id, p]));
   const kin = new Map(
@@ -164,6 +168,7 @@ export function readingInput(
             ? (e.details.read ?? "leyendo")
             : (e.details.watch ?? "quiero"),
       })),
+    ...(me && { me: selfContext(me, workspace.places) }),
   };
 }
 

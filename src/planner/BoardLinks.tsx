@@ -114,14 +114,21 @@ export function BoardLinks({
       const col = list ? colAt.get(list) : undefined;
       if (col === undefined) return null;
       const r = el.getBoundingClientRect();
+      // La lista con scroll de la tarjeta: la de la columna o la hoja de completadas.
       const s = el
-        .closest<HTMLElement>("[data-stack]")
+        .closest<HTMLElement>("[data-stack], [data-dg-scroll]")
         ?.getBoundingClientRect();
       let y = r.top + r.height / 2;
       let clipped = false;
       if (s) {
         const top = s.top + 6;
-        const bottom = s.bottom - 6;
+        let bottom = s.bottom - 6;
+        // La hoja de completadas abierta tapa lo de abajo de la lista: el lazo llega a su borde.
+        const sheet = el
+          .closest<HTMLElement>("[data-list]")
+          ?.querySelector<HTMLElement>(".bd-dg.open [data-dg-scroll]");
+        if (sheet && !sheet.contains(el))
+          bottom = Math.min(bottom, sheet.getBoundingClientRect().top - 6);
         if (y < top) [y, clipped] = [top, true];
         else if (y > bottom) [y, clipped] = [bottom, true];
       }

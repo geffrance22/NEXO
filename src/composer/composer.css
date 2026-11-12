@@ -954,6 +954,40 @@
   color: #a2aa98;
   font-size: 13px;
 }
+/* Sugerencias de etiquetas (las que ya usas en otras partes). */
+.cp-tokens.with-sug {
+  position: relative;
+}
+.cp-tag-sug {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+  border: 1px solid #e2e7da;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(40, 55, 30, 0.14);
+}
+.cp-tag-sug li {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f3f6ee;
+  font-size: 13px;
+  color: #4c5642;
+  cursor: pointer;
+}
+.cp-tag-sug li.on {
+  background: var(--soft, #e6eedc);
+  color: var(--ink, #27301f);
+  box-shadow: inset 0 0 0 1px var(--accent, #6b8a4f);
+}
 .cp-results {
   display: flex;
   flex-direction: column;

@@ -75,7 +75,7 @@ import { PersonPeek } from "../people/PersonPeek";
 import { WeeklyDigest } from "../weekly/WeeklyDigest";
 import { PageHeading } from "./PageHeading";
 import { Sidebar } from "./Sidebar";
-import { Toast } from "./Toast";
+import { Toasts } from "./Toast";
 import { Topbar } from "./Topbar";
 
 type ModalState =
@@ -136,7 +136,7 @@ function renderPage(page: Page, route: Route, toggleMenu: () => void) {
 
 /** Interfaz principal. Solo se muestra con una sesión iniciada. */
 export function AppShell({ user }: { user: AppUser }) {
-  const { message, action, notify, clear } = useToast();
+  const { toasts, notify, dismiss } = useToast();
   const { confirm, dialog: confirmDialog } = useConfirm();
   const data = useWorkspace(user, notify, confirm);
   const mine = useMyProfile(user, notify);
@@ -502,10 +502,13 @@ export function AppShell({ user }: { user: AppUser }) {
     openChat: () => setChat(true),
     me: mine.me,
     meMissing: mine.meMissing,
+    meLoaded: mine.meLoaded,
+    meFailed: mine.meFailed,
     dataReady: data.loaded && mine.meLoaded,
     dataSettled: data.loaded || Boolean(data.error),
     openMe: () => setMeOpen(true),
     saveMe: mine.saveMe,
+    patchMe: mine.patchMe,
     saveMyReading: mine.saveMyReading,
     signOut: () => void supabase.auth.signOut(),
     toggleEntry: (entry) => void data.toggleEntry(entry),
@@ -657,7 +660,7 @@ export function AppShell({ user }: { user: AppUser }) {
             </footer>
           </main>
         </div>
-        <Toast message={message} action={action} onClose={clear} />
+        <Toasts items={toasts} onClose={dismiss} />
         <NoteReminders />
         <BoardInbox />
         <ColumnDock />

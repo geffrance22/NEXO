@@ -383,6 +383,17 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
       });
   };
   const [composer, setComposer] = useState<string | null>(null);
+  // Al empezar a escribir una tarjeta, la hoja de completadas de esa columna baja: tapaba el campo.
+  useEffect(() => {
+    if (!composer) return;
+    setDoneOpen((s) => {
+      if (!s.has(composer)) return s;
+      const n = new Set(s);
+      n.delete(composer);
+      localStorage.setItem(DONE_OPEN, JSON.stringify([...n]));
+      return n;
+    });
+  }, [composer]);
   const [draftAt, setDraftAt] = useState<number | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
@@ -2216,6 +2227,9 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
       ? every.filter((c) => visible(c) && inGroup(c)).length
       : 0;
     const groupOpen = doneOpen.has(col.id);
+    // Mientras arrastras una pendiente, la hoja de completadas baja: tapa la lista donde cae. Al
+    // soltar (o cancelar) vuelve a subir sola, porque lo abierto/cerrado no cambia.
+    const groupUp = groupOpen && !(drag?.kind === "card" && !drag.done);
     shown.forEach((c, j) => {
       const into = inGroup(c) ? groupCards : items;
       if (here && drag.before === c.id) into.push(placeholder);
@@ -2403,35 +2417,41 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
             />
           )}
         </header>
-        <ColumnStack
-          items={items}
-          onDoubleClick={(e) =>
-            e.target === e.currentTarget && setComposer(col.id)
-          }
-        >
-          {!shown.length && !here && all.length > 0 && composer !== col.id && (
-            <p className="bd-list-none">
-              {needle
-                ? "Nada coincide"
-                : sleeping === all.length
-                  ? "Todas pospuestas"
-                  : "Todas completadas"}
-            </p>
-          )}
-          {composer === col.id && (
-            <Composer
-              people={workspace.people}
-              tags={boardTags}
-              templates={cardTemplates.all}
-              onAdd={(titles) => addFrom(col.id, titles)}
-              onTemplate={(title, tpl) => addFromTemplate(col.id, title, tpl)}
-              onClose={() => setComposer(null)}
-            />
-          )}
+        <div className="bd-body">
+          <ColumnStack
+            items={items}
+            onDoubleClick={(e) =>
+              e.target === e.currentTarget && setComposer(col.id)
+            }
+          >
+            {!shown.length &&
+              !here &&
+              all.length > 0 &&
+              composer !== col.id && (
+                <p className="bd-list-none">
+                  {needle
+                    ? "Nada coincide"
+                    : sleeping === all.length
+                      ? "Todas pospuestas"
+                      : "Todas completadas"}
+                </p>
+              )}
+            {composer === col.id && (
+              <Composer
+                people={workspace.people}
+                tags={boardTags}
+                templates={cardTemplates.all}
+                onAdd={(titles) => addFrom(col.id, titles)}
+                onTemplate={(title, tpl) => addFromTemplate(col.id, title, tpl)}
+                onClose={() => setComposer(null)}
+              />
+            )}
+          </ColumnStack>
+          {/* Fuera de la lista con scroll: fija al pie de la columna, y al abrirla sube encima. */}
           {groupCount > 0 && (
             <DoneGroup
               count={groupCount}
-              open={groupOpen}
+              open={groupUp}
               onToggle={() => toggleDoneOpen(col.id)}
               onArchiveAll={
                 api.extras
@@ -2442,7 +2462,7 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               cards={groupCards}
             />
           )}
-        </ColumnStack>
+        </div>
         {(composer !== col.id || sleeping > 0) && (
           <footer className="bd-list-foot">
             {composer !== col.id && (
@@ -2879,8 +2899,10 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
               const el = canvas.current;
               if (!el || e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX))
                 return;
+              // Una lista con scroll propio (la de la columna o la hoja de completadas) se
+              // queda con la rueda mientras tenga a dónde desplazarse.
               const stack = (e.target as HTMLElement).closest<HTMLElement>(
-                "[data-stack]",
+                "[data-stack], [data-dg-scroll]",
               );
               if (stack && stack.scrollHeight > stack.clientHeight + 1) return;
               el.scrollLeft += e.deltaY;

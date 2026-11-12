@@ -53,7 +53,8 @@ export type SortId =
   | "anio"
   | "progreso"
   | "confianza"
-  | "vence";
+  | "vence"
+  | "afinidad";
 
 export const sortLabels: Record<SortId, string> = {
   reciente: "Más recientes",
@@ -64,6 +65,7 @@ export const sortLabels: Record<SortId, string> = {
   progreso: "Más avanzados",
   confianza: "Por reforzar primero",
   vence: "Fecha límite",
+  afinidad: "Más afines a ti",
 };
 
 export type Shelf = { id: string; label: string; test: (e: Entry) => boolean };
@@ -134,7 +136,7 @@ export const entryTabs: EntryTab[] = [
       { id: "viendo", label: "Viendo", test: (e) => watch(e) === "viendo" },
       { id: "vista", label: "Vistas", test: (e) => watch(e) === "vista" },
     ],
-    sorts: ["reciente", "calificacion", "anio", "titulo", "antiguo"],
+    sorts: ["reciente", "calificacion", "anio", "titulo", "antiguo", "afinidad"],
     noun: "película",
     addDetails: (s) =>
       s === "quiero" || s === "viendo" ? { watch: s } : undefined,
@@ -153,7 +155,7 @@ export const entryTabs: EntryTab[] = [
       { id: "viendo", label: "Viendo", test: (e) => watch(e) === "viendo" },
       { id: "vista", label: "Vistas", test: (e) => watch(e) === "vista" },
     ],
-    sorts: ["reciente", "calificacion", "anio", "titulo", "antiguo"],
+    sorts: ["reciente", "calificacion", "anio", "titulo", "antiguo", "afinidad"],
     noun: "serie",
     addDetails: (s) => ({
       series: true,
@@ -179,7 +181,7 @@ export const entryTabs: EntryTab[] = [
       },
       { id: "estanteria", label: "Estantería", test: inMyShelf },
     ],
-    sorts: ["reciente", "progreso", "calificacion", "titulo", "antiguo"],
+    sorts: ["reciente", "progreso", "calificacion", "titulo", "antiguo", "afinidad"],
     noun: "libro",
     addDetails: (s) =>
       s === "estanteria"
@@ -358,11 +360,52 @@ const progressOf = (e: Entry) =>
       : (bookPace(e)?.percent ?? (read(e) === "leyendo" ? 0 : -1))
     : 0;
 
-export function sortEntries(list: Entry[], sort: SortId) {
+/** Tus gustos (de «Mi ficha») para ordenar por afinidad. */
+export type Taste = { likes: string[]; dislikes: string[] };
+
+/**
+ * Qué tan afín a ti es una obra: suma por cada interés o gusto tuyo que aparece en sus géneros,
+ * etiquetas, autor, título o reseña, y resta por cada cosa que no te gusta.
+ */
+export function affinityOf(e: Entry, taste: Taste) {
+  const d = e.details;
+  const text = normalizeText(
+    [
+      e.title,
+      d.author,
+      d.movieInfo?.genres.join(" "),
+      d.movieInfo?.director,
+      ...e.tags,
+      plainText(e.body).slice(0, 600),
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+  const has = (t: string) => {
+    const k = normalizeText(t.trim());
+    return k.length >= 3 && text.includes(k);
+  };
+  return (
+    taste.likes.filter(has).length * 2 - taste.dislikes.filter(has).length * 3
+  );
+}
+
+export function sortEntries(list: Entry[], sort: SortId, taste?: Taste) {
   const out = [...list];
   const newest = (a: Entry, b: Entry) =>
     b.created_at.localeCompare(a.created_at);
   switch (sort) {
+    case "afinidad": {
+      if (!taste || !(taste.likes.length + taste.dislikes.length))
+        return out.sort(newest);
+      const score = new Map(out.map((e) => [e.id, affinityOf(e, taste)]));
+      return out.sort(
+        (a, b) =>
+          score.get(b.id)! - score.get(a.id)! ||
+          (b.details.rating ?? 0) - (a.details.rating ?? 0) ||
+          newest(a, b),
+      );
+    }
     case "reciente":
       return out.sort(newest);
     case "antiguo":

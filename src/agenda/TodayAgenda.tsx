@@ -12,6 +12,7 @@ import {
   ListChecks,
   MessageCircle,
   MessageCircleQuestion,
+  PartyPopper,
   Settings2,
   Sparkles,
   Target,
@@ -48,6 +49,7 @@ const looks: Record<AgendaKind, { icon: LucideIcon; color: string; soft: string 
   encuentro: { icon: Coffee, color: '#8a6fa8', soft: '#f0e9f6' },
   cierre: { icon: ClipboardCheck, color: '#8a6fa8', soft: '#f0e9f6' },
   cumple: { icon: Cake, color: '#c47a1e', soft: '#fdf0d9' },
+  propio: { icon: PartyPopper, color: '#b0567a', soft: '#fbe8f0' },
   proyecto: { icon: Target, color: '#4d7b9d', soft: '#e3eef6' },
   episodio: { icon: Layers, color: '#3c9186', soft: '#dff2ef' },
   contacto: { icon: MessageCircle, color: '#5f8247', soft: '#eaf1e0' },
@@ -77,14 +79,14 @@ const whatsapp = (phone?: string) => {
  * posponerlas o descartarlas, y elegir qué tipos ver.
  */
 export function TodayAgenda({ title }: { title?: string } = {}) {
-  const { workspace, notify } = useApp();
+  const { workspace, notify, me } = useApp();
   const skip = useDismissed();
   const [prefs, setPrefs] = useState(loadPrefs);
   const [settings, setSettings] = useState(false);
   const feed = useBoardFeed();
   const items = useMemo(
-    () => agendaFor(workspace, prefs, skip, todayInputValue(), feed.cards),
-    [workspace, prefs, skip, feed.cards],
+    () => agendaFor(workspace, prefs, skip, todayInputValue(), feed.cards, me.profile),
+    [workspace, prefs, skip, feed.cards, me.profile],
   );
   useEffect(() => localStorage.setItem(STORAGE, JSON.stringify(prefs)), [prefs]);
 
@@ -210,7 +212,8 @@ function AgendaCard({
   onDiscard: () => void;
   today: string;
 }) {
-  const { toggleEntry, patchPerson, openBrief, go, editEntry, peekPerson, notify } = useApp();
+  const { toggleEntry, patchPerson, openBrief, go, editEntry, peekPerson, notify, openMe } =
+    useApp();
   const [menu, setMenu] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -294,6 +297,8 @@ function AgendaCard({
           : null;
       case 'recordar':
         return item.person ? { label: 'Recordar', run: () => peekPerson(item.person!) } : null;
+      case 'mi-ficha':
+        return { label: 'Ver mi ficha', run: openMe };
     }
   };
   const act = primary();

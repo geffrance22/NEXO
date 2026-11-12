@@ -384,6 +384,7 @@ Estilo:
 - "tableros" son solo los tableros que el usuario eligió compartir para este saludo (no todos los que tiene). Puedes mencionar una tarjeta concreta de "destacadas" (lo vencido, lo de hoy, lo prioritario o resaltado) por su título y su tablero, sin listar varias.
 - Consejos de vida cotidiana (descanso, foco, hidratación, moverse, orden, relaciones); nunca diagnósticos, dosis ni asesoría legal o financiera concreta.
 - Respeta el género del usuario si se indica (p. ej. "bienvenido" o "bienvenida"); si no, usa formas neutras.
+- Si usuario.yo.como_hablarme existe, ajusta el tono a lo que pidió y nunca saques los temas de temas_que_no_sacar (tampoco en titulares). La extensión máxima de arriba se mantiene.
 - Varía: no repitas el arranque, la idea ni la estructura de "saludos_recientes_a_evitar".
 
 Devuelve SOLO un JSON válido: {"kind":"…","title":"…","text":"…","actions":[{"id":"…","label":"…"}]}`;

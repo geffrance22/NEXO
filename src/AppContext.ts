@@ -150,6 +150,10 @@ export type AppContextValue = {
   me: MyRecord;
   /** Falta la migración de «Mi ficha»: no se puede guardar. */
   meMissing: boolean;
+  /** Tu ficha ya terminó de cargar (antes de eso no se puede editar ni guardar). */
+  meLoaded: boolean;
+  /** Tu ficha no se pudo cargar: guardar la reemplazaría por una vacía, así que no se permite. */
+  meFailed: boolean;
   /** Tus datos y tu ficha ya terminaron de cargar (lo que se arma con ambos debe esperar). */
   dataReady: boolean;
   /** La carga de tus datos ya terminó (bien o con error): se puede dejar de mostrar esqueletos. */
@@ -157,6 +161,8 @@ export type AppContextValue = {
   /** Abre «Mi ficha». */
   openMe: () => void;
   saveMe: (profile: MyProfile) => Promise<boolean>;
+  /** Cambia solo esos campos de tu ficha, encima de lo último guardado (`undefined` los borra). */
+  patchMe: (fields: Partial<MyProfile>) => Promise<boolean>;
   /** Guarda la lectura que hizo la IA (la descripción general de tu ficha). */
   saveMyReading: (reading: string, highlights: string[]) => Promise<boolean>;
   signOut: () => void;

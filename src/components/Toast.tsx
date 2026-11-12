@@ -1,25 +1,19 @@
 import { useLayoutEffect, useRef } from 'react';
 import { ArrowRight, Undo2, X } from 'lucide-react';
-import type { ToastAction } from '../hooks/useToast';
+import type { ToastItem } from '../hooks/useToast';
 
-/* El aviso vive en la capa superior del navegador (popover), así queda por
-   encima de cualquier z-index y también de los <dialog> modales. */
+/* La pila de avisos vive en la capa superior del navegador (popover), así queda
+   por encima de cualquier z-index y también de los <dialog> modales. */
 function raise(el: HTMLElement) {
   if (typeof el.showPopover !== 'function') return;
   if (el.matches(':popover-open')) el.hidePopover();
   el.showPopover();
 }
 
-export function Toast({
-  message,
-  action,
-  onClose,
-}: {
-  message: string;
-  action?: ToastAction;
-  onClose: () => void;
-}) {
+/** Pila de avisos: el más nuevo abajo; los anteriores se desplazan hacia arriba. */
+export function Toasts({ items, onClose }: { items: ToastItem[]; onClose: (id: number) => void }) {
   const ref = useRef<HTMLDivElement>(null);
+  const newest = items.length ? items[items.length - 1].id : 0;
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -31,27 +25,34 @@ export function Toast({
     });
     watcher.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
     return () => watcher.disconnect();
-  }, [message]);
+  }, [newest, items.length > 0]);
 
-  if (!message) return null;
+  if (!items.length) return null;
   return (
-    <div ref={ref} className="toast" role="status" popover="manual">
-      {message}
-      {action && (
-        <button
-          type="button"
-          className="toast-action"
-          onClick={() => {
-            onClose();
-            action.run();
-          }}
-        >
-          {action.icon === 'open' ? <ArrowRight size={14} /> : <Undo2 size={14} />} {action.label}
-        </button>
-      )}
-      <button onClick={onClose} aria-label="Cerrar">
-        <X size={15} />
-      </button>
+    <div ref={ref} className="toast-stack" popover="manual">
+      {items.map((t) => (
+        <div key={t.id} className={`toast-slot${t.leaving ? ' leaving' : ''}`}>
+          <div className="toast" role="status">
+            {t.message}
+            {t.action && (
+              <button
+                type="button"
+                className="toast-action"
+                onClick={() => {
+                  onClose(t.id);
+                  t.action!.run();
+                }}
+              >
+                {t.action.icon === 'open' ? <ArrowRight size={14} /> : <Undo2 size={14} />}{' '}
+                {t.action.label}
+              </button>
+            )}
+            <button onClick={() => onClose(t.id)} aria-label="Cerrar">
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

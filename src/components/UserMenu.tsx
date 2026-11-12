@@ -1,13 +1,13 @@
-import { useCallback, useRef, useState } from 'react';
-import { Download, IdCard, LogOut, Settings, Sparkles } from 'lucide-react';
-import { useApp } from '../AppContext';
-import { useDismiss } from '../hooks/useDismiss';
-import { downloadWorkspace } from '../lib/export';
-import { initials } from '../lib/format';
+import { useCallback, useRef, useState } from "react";
+import { Download, IdCard, LogOut, Settings, Sparkles } from "lucide-react";
+import { useApp } from "../AppContext";
+import { useDismiss } from "../hooks/useDismiss";
+import { downloadWorkspace } from "../lib/export";
+import { MyFace } from "../people/MyFace";
 
 /** Avatar del encabezado con el menú de la cuenta. */
 export function UserMenu() {
-  const { user, workspace, go, openChat, openMe, me, signOut } = useApp();
+  const { workspace, go, openChat, openMe, signOut } = useApp();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -29,7 +29,7 @@ export function UserMenu() {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        {initials(me.profile.name?.trim() || user.email || 'Yo').toUpperCase()}
+        <MyFace size={28} />
       </button>
       {open && (
         <div className="pp-dropdown right" role="menu">
@@ -37,17 +37,21 @@ export function UserMenu() {
             <IdCard size={15} /> Mi ficha
           </button>
           <span className="pp-dropdown-sep" role="separator" />
-          <button role="menuitem" onClick={run(signOut)}>
-            <LogOut size={15} /> Cerrar sesión
-          </button>
-          <button role="menuitem" onClick={run(() => go('Ajustes'))}>
+          <button role="menuitem" onClick={run(() => go("Ajustes"))}>
             <Settings size={15} /> Configuración
           </button>
-          <button role="menuitem" onClick={run(() => downloadWorkspace(workspace))}>
+          <button
+            role="menuitem"
+            onClick={run(() => downloadWorkspace(workspace))}
+          >
             <Download size={15} /> Exportar mis datos
           </button>
           <button role="menuitem" onClick={run(openChat)}>
             <Sparkles size={15} /> Preguntar a Nexo
+          </button>
+          <span className="pp-dropdown-sep" role="separator" />
+          <button role="menuitem" onClick={run(signOut)}>
+            <LogOut size={15} /> Cerrar sesión
           </button>
         </div>
       )}

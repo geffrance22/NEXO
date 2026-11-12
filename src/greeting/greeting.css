@@ -3,11 +3,16 @@
 main:has(.page-heading.greet) {
   --main-pt: 18px;
 }
+/* El saludo a la izquierda y, en el hueco de la derecha, la escena ambiental. */
 .page-heading.greet {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(260px, 36%, 480px);
+  column-gap: 28px;
+  align-items: stretch;
   margin-bottom: 20px;
 }
 .greet-body {
+  min-width: 0;
   animation: greet-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -137,6 +142,17 @@ main:has(.page-heading.greet) {
   }
 }
 
+@media (max-width: 1000px) {
+  /* Sin hueco a la derecha: la escena pasa debajo del saludo, como una franja baja. */
+  .page-heading.greet {
+    display: block;
+  }
+  .page-heading.greet .amb {
+    min-height: 0;
+    height: 128px;
+    margin-top: 8px;
+  }
+}
 @media (max-width: 720px) {
   .page-heading.greet h1 {
     max-width: none;

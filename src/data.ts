@@ -191,6 +191,41 @@ export type Person = {
   profile: PersonProfile;
 };
 
+/** Una meta tuya con estructura: plazo, avance y, si quieres, a qué está atada. */
+export type MyGoal = {
+  id: string;
+  text: string;
+  /** AAAA-MM-DD */
+  due?: string;
+  /** 0–100 */
+  progress?: number;
+  /** El episodio o el trabajo (recuerdo «Trabajo») con el que avanza. */
+  link?: { kind: "episodio" | "trabajo"; id: string };
+};
+
+/** Una fecha tuya que vuelve cada año (aniversario, tu santo…): aparece en la agenda de hoy. */
+export type MyDate = {
+  id: string;
+  label: string;
+  /** MM-DD */
+  md: string;
+  /** Año en que empezó (para contar cuántos se cumplen). */
+  year?: number;
+};
+
+export type NexoTone = "calido" | "directo" | "divertido" | "formal";
+export type NexoLength = "breve" | "normal" | "detallado";
+/** Cómo quieres que te hable Nexo (saludo, chat y lectura). */
+export type NexoVoice = {
+  tone?: NexoTone;
+  length?: NexoLength;
+  /** Temas que prefieres que no saque. */
+  avoid?: string[];
+};
+
+/** Partes que no entran en la lectura de la IA. */
+export type ReadingPart = "finanzas" | "animo" | "textos" | "pendientes" | "lugares";
+
 /** Tu propia ficha («Mi ficha»). Todo es opcional. */
 export type MyProfile = {
   /** Con tus apellidos: así Nexo reconoce a tu familia. */
@@ -200,16 +235,43 @@ export type MyProfile = {
   /** MM-DD */
   birthday?: string;
   birthYear?: number;
+  /** HH:MM, hora local en que naciste (opcional). */
+  birthTime?: string;
   city?: string;
+  /** De dónde eres (ciudad o región de origen). */
+  hometown?: string;
   occupation?: string;
   company?: string;
+  /** Dónde viviste, trabajaste o estudiaste antes, y hasta cuándo (igual que en las personas). */
+  history?: ProfileChange[];
+  /** Tus lugares de Nexo: id del lugar que es tu casa, tu trabajo o donde estudias. */
+  places?: { casa?: string; trabajo?: string; estudio?: string };
   interests?: string[];
   likes?: string[];
   dislikes?: string[];
-  /** En qué estás ahora: metas, proyectos, lo que aprendes. */
+  languages?: string[];
+  skills?: string[];
+  /** Datos libres: talla, alergias, grupo sanguíneo, signo… */
+  facts?: PersonFact[];
+  /** Aniversarios, tu santo y otras fechas que vuelven cada año. */
+  dates?: MyDate[];
+  /** En qué estás ahora: metas, proyectos, lo que aprendes. Se mantiene igual a `goalItems`. */
   goals?: string[];
+  /** Las mismas metas con plazo, avance y vínculo. */
+  goalItems?: MyGoal[];
+  nexoVoice?: NexoVoice;
+  /** Lo que no quieres que entre en la lectura de la IA. */
+  readingExclude?: ReadingPart[];
   /** Lo que quieras que Nexo sepa de ti, en tus palabras. */
   about?: string;
+  /** Tu foto (ImgBB): se ve en tu ficha, en el encabezado y en el nodo «Tú» de los mapas. */
+  photo?: StoredImage;
+  /** Rasgos de la lectura de la IA que fijaste: se conservan aunque la lectura cambie. */
+  traitsPinned?: string[];
+  /** Rasgos que no te representan: no se muestran. */
+  traitsHidden?: string[];
+  /** Lecturas anteriores de la IA, la más reciente primero (máximo 6). */
+  readingHistory?: PastReading[];
   /** Meta de lectura de cada año: cuántos libros quieres terminar («2026»: 24). */
   readingGoals?: Record<string, number>;
   /** Carpetas propias del diario (en el orden en que se muestran). */
@@ -217,6 +279,9 @@ export type MyProfile = {
   /** Cómo armaste «Mi espacio»: qué bloques ves, en qué orden y con qué ajustes. */
   home?: HomeLayout;
 };
+
+/** Una lectura de la IA que ya fue reemplazada por otra más nueva. */
+export type PastReading = { at: string; reading: string; highlights: string[] };
 
 /** Un bloque de «Mi espacio»: su tipo, si se ve y sus ajustes (cantidad, filtros, cuándo…). */
 export type HomeBlock = {

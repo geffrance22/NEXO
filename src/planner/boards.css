@@ -3478,27 +3478,45 @@ body:has(.nx-peek) .sheet-backdrop:has(> .sheet.bdm) {
 }
 
 /* ───────── Completadas abajo: grupo plegable al final de la columna ─────────
-   Prefijo `bd-dg`: `.bd-done` es el círculo de cada tarjeta y no se debe mezclar. */
-.bd-dg {
+   Prefijo `bd-dg`: `.bd-done` es el círculo de cada tarjeta y no se debe mezclar.
+
+   La cabecera vive fuera de la lista con scroll (`.bd-stack`), fija al pie de la columna y pegada
+   al «Añade una tarjeta». Al abrirla, las completadas suben en una hoja por encima de la lista,
+   con scroll propio: no empujan ni alargan nada, y debajo la lista sigue donde estaba. */
+.bd-body {
+  position: relative;
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
   flex-direction: column;
-  min-width: 0;
+  min-height: 0;
+  transition: min-height 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-/* Replegado, la cabecera queda siempre a la vista al pie de la columna, aunque haya scroll. */
-.bd-dg:not(.open) {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  margin: 0 -8px -6px;
-  padding: 0 8px 6px;
-  background: var(--bd-col);
+/* Una columna corta no da sitio a una hoja útil: mientras está abierta, gana el alto justo. */
+.bd-body:has(> .bd-dg.open) {
+  min-height: min(300px, 55dvh);
+}
+.bd-dg {
+  --dg-bar: 35px; /* alto de la cabecera */
+  --dg-gap: 0px; /* respiro bajo la cabecera cuando la columna no tiene pie */
+  --dg-peek: 44px; /* lo que se sigue viendo de la lista por encima de la hoja */
+  flex: none;
+  min-width: 0;
+  height: calc(var(--dg-bar) + var(--dg-gap));
+  margin-top: auto;
+  padding: 0 8px;
+}
+.bd-list:not(:has(> .bd-list-foot)) .bd-dg {
+  --dg-gap: 6px;
+}
+/* La cabecera va pegada al pie de la columna, sin espacio entre ambos. */
+.bd-body:has(> .bd-dg) + .bd-list-foot {
+  padding-top: 0;
 }
 .bd-dg-head {
   display: flex;
   align-items: center;
   gap: 2px;
-  min-height: 34px;
+  height: var(--dg-bar);
   padding-top: 4px;
   border-top: 1px solid var(--bd-line);
 }
@@ -3614,40 +3632,58 @@ body:has(.nx-peek) .sheet-backdrop:has(> .sheet.bdm) {
   background: #fbe9e7;
   color: var(--bd-danger);
 }
-/* El cuerpo se abre y se cierra con su alto real (0fr → 1fr), sin saltos. */
-.bd-dg-body {
-  display: grid;
-  grid-template-rows: 0fr;
-  min-width: 0;
-  opacity: 0;
-  transition:
-    grid-template-rows 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
-    opacity 0.18s ease;
+/* La capa cubre la lista (de arriba hasta la cabecera) y recorta la hoja justo en la cabecera:
+   así sube desde ahí, sin salirse de la columna ni estorbar los clics de la lista. */
+.bd-dg-layer {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  right: 0;
+  bottom: calc(var(--dg-bar) + var(--dg-gap));
+  left: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
-.bd-dg.open .bd-dg-body {
-  grid-template-rows: 1fr;
-  opacity: 1;
-}
-/* Las tarjetas, con el mismo ancho y separación que las de arriba. */
-.bd-dg-inner {
+/* La hoja: sube desde la cabecera hasta donde alcance su contenido (o hasta casi el tope de la
+   lista) y, si hay más, se desplaza ella sola. Las tarjetas, con el mismo ancho y separación que
+   las de la lista, para que queden alineadas con ellas. Solo se anima `transform`. */
+.bd-dg-sheet {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-width: 0;
-  min-height: 0;
-  /* Margen para que la sombra y el borde de foco no se recorten durante el pliegue. */
-  margin: 0 -3px;
-  padding: 0 3px;
-  overflow: hidden;
+  max-height: calc(100% - var(--dg-peek));
+  padding: 10px 8px 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(25, 40, 30, 0.25) transparent;
+  border-radius: 14px 14px 0 0;
+  background: var(--bd-col);
+  box-shadow:
+    0 -1px 0 var(--bd-line),
+    0 -14px 26px -16px rgba(20, 30, 25, 0.5);
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(100%);
+  transition:
+    transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0s linear 0.26s;
 }
-.bd-dg.open .bd-dg-inner {
-  padding-top: 6px;
-  padding-bottom: 3px;
-}
-.bd-dg.settled .bd-dg-inner {
-  overflow: visible;
+.bd-dg.open .bd-dg-sheet {
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition:
+    transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0s linear 0s;
 }
 .bd-dg-more {
+  flex: none;
   align-self: center;
   padding: 4px 12px;
   border: 0;
@@ -3664,7 +3700,9 @@ body:has(.nx-peek) .sheet-backdrop:has(> .sheet.bdm) {
   color: var(--bd-ink);
 }
 @media (prefers-reduced-motion: reduce) {
-  .bd-dg-body,
+  .bd-body,
+  .bd-dg-sheet,
+  .bd-dg.open .bd-dg-sheet,
   .bd-dg-chev,
   .bd-dg-actions {
     transition: none;

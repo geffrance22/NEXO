@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from "react";
 import {
   ArrowDownLeft,
   ArrowRight,
@@ -16,12 +16,17 @@ import {
   TreePine,
   Users,
   X,
-} from 'lucide-react';
-import { useApp } from '../AppContext';
-import type { Entry, Person, Place } from '../data';
-import { GraphCanvas } from '../components/GraphCanvas';
-import { placeKinds, placeStats } from '../lib/places';
-import { egoGraph, networkGraph, type GraphFilter } from './graphs';
+} from "lucide-react";
+import { useApp } from "../AppContext";
+import type { Entry, Person, Place } from "../data";
+import { GraphCanvas } from "../components/GraphCanvas";
+import { placeKinds, placeStats } from "../lib/places";
+import {
+  egoGraph,
+  networkGraph,
+  withMyPhoto,
+  type GraphFilter,
+} from "./graphs";
 import {
   inYear,
   relationMeta,
@@ -30,18 +35,18 @@ import {
   relativeDay,
   statsFor,
   yearsWithData,
-} from '../lib/people';
-import { Avatar } from '../people/Avatar';
-import { BondRing } from '../people/PersonPanel';
-import { RelationsView } from '../relations/RelationsView';
-import { CompareView } from '../people/CompareView';
-import { YearInReview } from '../people/YearInReview';
-import '../people/people.css';
+} from "../lib/people";
+import { Avatar } from "../people/Avatar";
+import { BondRing } from "../people/PersonPanel";
+import { RelationsView } from "../relations/RelationsView";
+import { CompareView } from "../people/CompareView";
+import { YearInReview } from "../people/YearInReview";
+import "../people/people.css";
 
 export type ConnectionsTab =
-  'social' | 'conexiones' | 'relaciones' | 'arbol' | 'comparar' | 'wrapped';
+  "social" | "conexiones" | "relaciones" | "arbol" | "comparar" | "wrapped";
 type Tab = ConnectionsTab;
-type Year = number | 'todo';
+type Year = number | "todo";
 
 /** Ficha flotante: no tapa el lienzo, se puede seguir navegando mientras está abierta. */
 export function FloatCard({
@@ -54,15 +59,22 @@ export function FloatCard({
   onClose: () => void;
 }) {
   const { go, openEntry, openTie, quickPerson, workspace } = useApp();
-  const stats = useMemo(() => statsFor(person, workspace.entries), [person, workspace.entries]);
+  const stats = useMemo(
+    () => statsFor(person, workspace.entries),
+    [person, workspace.entries],
+  );
   const meta = relationMeta[relationOf(person)];
   const inRange = entries.filter(
-    (e) => e.person_ids.includes(person.id) && e.kind !== 'Pendiente' && e.kind !== 'Movimiento',
+    (e) =>
+      e.person_ids.includes(person.id) &&
+      e.kind !== "Pendiente" &&
+      e.kind !== "Movimiento",
   );
   const companions = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of inRange)
-      for (const id of e.person_ids) if (id !== person.id) m.set(id, (m.get(id) ?? 0) + 1);
+      for (const id of e.person_ids)
+        if (id !== person.id) m.set(id, (m.get(id) ?? 0) + 1);
     return [...m.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
@@ -72,9 +84,20 @@ export function FloatCard({
   return (
     <aside
       className="gc-float"
-      style={{ '--accent': meta.color, '--soft': meta.soft, '--ink': meta.ink } as CSSProperties}
+      style={
+        {
+          "--accent": meta.color,
+          "--soft": meta.soft,
+          "--ink": meta.ink,
+        } as CSSProperties
+      }
     >
-      <button type="button" className="gc-float-x" aria-label="Cerrar" onClick={onClose}>
+      <button
+        type="button"
+        className="gc-float-x"
+        aria-label="Cerrar"
+        onClick={onClose}
+      >
         <X size={15} />
       </button>
       <div className="gc-float-head">
@@ -83,7 +106,7 @@ export function FloatCard({
           <strong>{person.name}</strong>
           <span>
             {meta.label}
-            {person.role ? ` · ${person.role}` : ''}
+            {person.role ? ` · ${person.role}` : ""}
           </span>
         </div>
       </div>
@@ -98,8 +121,10 @@ export function FloatCard({
           <span>última vez</span>
         </div>
       </div>
-      {stats.reciprocity.state !== 'sin-datos' && (
-        <p className={'gc-float-recip ' + stats.reciprocity.state}>{stats.reciprocity.label}</p>
+      {stats.reciprocity.state !== "sin-datos" && (
+        <p className={"gc-float-recip " + stats.reciprocity.state}>
+          {stats.reciprocity.label}
+        </p>
       )}
       {companions.length > 0 && (
         <div className="gc-float-with">
@@ -121,31 +146,47 @@ export function FloatCard({
         >
           <Feather size={15} />
         </button>
-        <button type="button" title="Nota rápida" onClick={() => quickPerson(person, 'nota')}>
+        <button
+          type="button"
+          title="Nota rápida"
+          onClick={() => quickPerson(person, "nota")}
+        >
           <StickyNote size={15} />
         </button>
         <button
           type="button"
           title="Recordarme"
-          onClick={() => openEntry('Pendiente', [person.id])}
+          onClick={() => openEntry("Pendiente", [person.id])}
         >
           <BellPlus size={15} />
         </button>
-        <button type="button" title="Algo que le di" onClick={() => quickPerson(person, 'dar')}>
+        <button
+          type="button"
+          title="Algo que le di"
+          onClick={() => quickPerson(person, "dar")}
+        >
           <ArrowUpRight size={15} />
         </button>
-        <button type="button" title="Vincular con alguien" onClick={() => openTie(person)}>
+        <button
+          type="button"
+          title="Vincular con alguien"
+          onClick={() => openTie(person)}
+        >
           <Link2 size={15} />
         </button>
         <button
           type="button"
           title="Algo que me dio"
-          onClick={() => quickPerson(person, 'recibir')}
+          onClick={() => quickPerson(person, "recibir")}
         >
           <ArrowDownLeft size={15} />
         </button>
       </div>
-      <button type="button" className="gc-float-link" onClick={() => go('Personas', person)}>
+      <button
+        type="button"
+        className="gc-float-link"
+        onClick={() => go("Personas", person)}
+      >
         Ver ficha completa <ArrowRight size={13} />
       </button>
     </aside>
@@ -177,16 +218,40 @@ function PlaceFloat({
   return (
     <aside
       className="gc-float"
-      style={{ '--accent': meta.color, '--soft': meta.soft, '--ink': '#27301f' } as CSSProperties}
+      style={
+        {
+          "--accent": meta.color,
+          "--soft": meta.soft,
+          "--ink": "#27301f",
+        } as CSSProperties
+      }
     >
-      <button type="button" className="gc-float-x" aria-label="Cerrar" onClick={onClose}>
+      <button
+        type="button"
+        className="gc-float-x"
+        aria-label="Cerrar"
+        onClick={onClose}
+      >
         <X size={15} />
       </button>
-      {cover && <img className="pl-float-cover" src={cover.medium ?? cover.url} alt="" />}
+      {cover && (
+        <img
+          className="pl-float-cover"
+          src={cover.medium ?? cover.url}
+          alt=""
+        />
+      )}
       <div className="gc-float-head">
         <span
           className="lf-place-tile"
-          style={{ '--c': meta.color, '--s': meta.soft, width: 44, height: 44 } as CSSProperties}
+          style={
+            {
+              "--c": meta.color,
+              "--s": meta.soft,
+              width: 44,
+              height: 44,
+            } as CSSProperties
+          }
         >
           <Icon size={20} />
         </span>
@@ -194,7 +259,7 @@ function PlaceFloat({
           <strong>{place.name}</strong>
           <span>
             {meta.label}
-            {place.city ? ` · ${place.city}` : ''}
+            {place.city ? ` · ${place.city}` : ""}
           </span>
         </div>
       </div>
@@ -224,12 +289,18 @@ function PlaceFloat({
         <button
           type="button"
           title="Registrar un encuentro aquí"
-          onClick={() => openEntry('Encuentro', [], { placeId: place.id, place: place.name })}
+          onClick={() =>
+            openEntry("Encuentro", [], { placeId: place.id, place: place.name })
+          }
         >
           <Feather size={15} /> <span>Registrar encuentro aquí</span>
         </button>
       </div>
-      <button type="button" className="gc-float-link" onClick={() => go('Lugares', place)}>
+      <button
+        type="button"
+        className="gc-float-link"
+        onClick={() => go("Lugares", place)}
+      >
         Ver lugar completo <ArrowRight size={13} />
       </button>
     </aside>
@@ -249,20 +320,30 @@ function Legend() {
   );
 }
 
-export function ConnectionsPage({ initialTab = 'social' }: { initialTab?: Tab }) {
-  const { workspace } = useApp();
+export function ConnectionsPage({
+  initialTab = "social",
+}: {
+  initialTab?: Tab;
+}) {
+  const { workspace, me } = useApp();
   const [tab, setTab] = useState<Tab>(initialTab);
-  const years = useMemo(() => yearsWithData(workspace.entries), [workspace.entries]);
-  const [year, setYear] = useState<Year>('todo');
+  const years = useMemo(
+    () => yearsWithData(workspace.entries),
+    [workspace.entries],
+  );
+  const [year, setYear] = useState<Year>("todo");
   const [selected, setSelected] = useState<string | null>(null);
-  const scoped = useMemo(() => inYear(workspace.entries, year), [workspace.entries, year]);
+  const scoped = useMemo(
+    () => inYear(workspace.entries, year),
+    [workspace.entries, year],
+  );
   // Qué se muestra en el mapa (se recuerda entre visitas).
   const [filter, setFilter] = useState<GraphFilter>(() => {
     try {
       return {
         people: true,
         places: true,
-        ...JSON.parse(localStorage.getItem('nexo-graph-filter') ?? '{}'),
+        ...JSON.parse(localStorage.getItem("nexo-graph-filter") ?? "{}"),
       };
     } catch {
       return { people: true, places: true };
@@ -272,7 +353,7 @@ export function ConnectionsPage({ initialTab = 'social' }: { initialTab?: Tab })
     const next = { ...filter, [key]: !filter[key] };
     setFilter(next);
     setSelected(null);
-    localStorage.setItem('nexo-graph-filter', JSON.stringify(next));
+    localStorage.setItem("nexo-graph-filter", JSON.stringify(next));
   };
   const ego = useMemo(
     () => egoGraph(workspace.people, workspace.places, scoped, filter),
@@ -282,37 +363,46 @@ export function ConnectionsPage({ initialTab = 'social' }: { initialTab?: Tab })
     () => networkGraph(workspace.people, workspace.places, scoped, filter),
     [workspace.people, workspace.places, scoped, filter],
   );
-  const graph = tab === 'social' ? ego : net;
+  const graph = tab === "social" ? ego : net;
+  const myPhoto = me.profile.photo;
+  const nodes = useMemo(
+    () => withMyPhoto(graph.nodes, myPhoto),
+    [graph.nodes, myPhoto],
+  );
   const person = workspace.people.find((p) => p.id === selected) ?? null;
   const place = workspace.places.find((p) => p.id === selected) ?? null;
-  const peopleShown = graph.nodes.filter((n) => !n.center && n.shape !== 'place').length;
-  const placesShown = graph.nodes.filter((n) => n.shape === 'place').length;
+  const peopleShown = graph.nodes.filter(
+    (n) => !n.center && n.shape !== "place",
+  ).length;
+  const placesShown = graph.nodes.filter((n) => n.shape === "place").length;
   // Relaciones y árbol no dependen del año: muestran la estructura completa.
-  const structural = tab === 'relaciones' || tab === 'arbol';
+  const structural = tab === "relaciones" || tab === "arbol";
 
   const tabs: { id: Tab; label: string; icon: typeof Orbit; hint: string }[] = [
     {
-      id: 'social',
-      label: 'Grafo social',
+      id: "social",
+      label: "Grafo social",
       icon: Orbit,
-      hint: 'Todas las personas con las que has interactuado, por cercanía',
+      hint: "Todas las personas con las que has interactuado, por cercanía",
     },
     {
-      id: 'conexiones',
-      label: 'Conexiones',
+      id: "conexiones",
+      label: "Conexiones",
       icon: Network,
-      hint: 'Solo quienes aparecen juntos en un mismo recuerdo',
+      hint: "Solo quienes aparecen juntos en un mismo recuerdo",
     },
-    { id: 'relaciones', label: 'Relaciones', icon: Share2, hint: '' },
-    { id: 'arbol', label: 'Árbol familiar', icon: TreePine, hint: '' },
-    { id: 'comparar', label: 'Comparar', icon: GitCompareArrows, hint: '' },
-    { id: 'wrapped', label: 'Tu año', icon: Sparkles, hint: '' },
+    { id: "relaciones", label: "Relaciones", icon: Share2, hint: "" },
+    { id: "arbol", label: "Árbol familiar", icon: TreePine, hint: "" },
+    { id: "comparar", label: "Comparar", icon: GitCompareArrows, hint: "" },
+    { id: "wrapped", label: "Tu año", icon: Sparkles, hint: "" },
   ];
 
   return (
     // Con mapa, el panel ocupa el alto disponible y la página no se desplaza; «Tu año» y
     // «Comparar» sí son largas.
-    <div className={'cx' + (tab === 'wrapped' || tab === 'comparar' ? '' : ' fit')}>
+    <div
+      className={"cx" + (tab === "wrapped" || tab === "comparar" ? "" : " fit")}
+    >
       <div className="cx-top">
         <nav className="cx-tabs" role="tablist">
           {tabs.map((t) => (
@@ -321,7 +411,7 @@ export function ConnectionsPage({ initialTab = 'social' }: { initialTab?: Tab })
               role="tab"
               aria-selected={tab === t.id}
               key={t.id}
-              className={tab === t.id ? 'on' : ''}
+              className={tab === t.id ? "on" : ""}
               onClick={() => {
                 setTab(t.id);
                 setSelected(null);
@@ -332,32 +422,32 @@ export function ConnectionsPage({ initialTab = 'social' }: { initialTab?: Tab })
           ))}
         </nav>
         <div
-          className={'cx-years' + (structural ? ' hidden' : '')}
+          className={"cx-years" + (structural ? " hidden" : "")}
           role="radiogroup"
           aria-label="Periodo"
         >
-          {(['todo', ...years] as Year[]).map((y) => (
+          {(["todo", ...years] as Year[]).map((y) => (
             <button
               type="button"
               role="radio"
               aria-checked={year === y}
               key={y}
-              className={year === y ? 'on' : ''}
+              className={year === y ? "on" : ""}
               onClick={() => {
                 setYear(y);
                 setSelected(null);
               }}
             >
-              {y === 'todo' ? 'Todo el tiempo' : y}
+              {y === "todo" ? "Todo el tiempo" : y}
             </button>
           ))}
         </div>
       </div>
       {structural ? (
-        <RelationsView mode={tab as 'relaciones' | 'arbol'} />
-      ) : tab === 'comparar' ? (
+        <RelationsView mode={tab as "relaciones" | "arbol"} />
+      ) : tab === "comparar" ? (
         <CompareView entries={scoped} />
-      ) : tab === 'wrapped' ? (
+      ) : tab === "wrapped" ? (
         <div className="cx-year">
           <YearInReview year={year} />
         </div>
@@ -365,20 +455,24 @@ export function ConnectionsPage({ initialTab = 'social' }: { initialTab?: Tab })
         <>
           <div className="cx-sub">
             <p className="cx-hint">{tabs.find((t) => t.id === tab)!.hint}</p>
-            <div className="cx-toggles" role="group" aria-label="Mostrar en el mapa">
+            <div
+              className="cx-toggles"
+              role="group"
+              aria-label="Mostrar en el mapa"
+            >
               <button
                 type="button"
                 aria-pressed={filter.people}
-                className={filter.people ? 'on' : ''}
-                onClick={() => setShown('people')}
+                className={filter.people ? "on" : ""}
+                onClick={() => setShown("people")}
               >
                 <Users size={14} /> Personas
               </button>
               <button
                 type="button"
                 aria-pressed={filter.places}
-                className={filter.places ? 'on' : ''}
-                onClick={() => setShown('places')}
+                className={filter.places ? "on" : ""}
+                onClick={() => setShown("places")}
               >
                 <MapPin size={14} /> Lugares
               </button>
@@ -389,17 +483,25 @@ export function ConnectionsPage({ initialTab = 'social' }: { initialTab?: Tab })
             <>
               <GraphCanvas
                 key={tab + String(year) + filter.people + filter.places}
-                nodes={graph.nodes}
+                nodes={nodes}
                 edges={graph.edges}
-                rings={tab === 'social' ? ego.rings : []}
+                rings={tab === "social" ? ego.rings : []}
                 selected={selected}
                 onSelect={setSelected}
                 height={600}
                 overlay={
                   person ? (
-                    <FloatCard person={person} entries={scoped} onClose={() => setSelected(null)} />
+                    <FloatCard
+                      person={person}
+                      entries={scoped}
+                      onClose={() => setSelected(null)}
+                    />
                   ) : place ? (
-                    <PlaceFloat place={place} entries={scoped} onClose={() => setSelected(null)} />
+                    <PlaceFloat
+                      place={place}
+                      entries={scoped}
+                      onClose={() => setSelected(null)}
+                    />
                   ) : null
                 }
               />
@@ -416,7 +518,7 @@ export function ConnectionsPage({ initialTab = 'social' }: { initialTab?: Tab })
                       <MapPin size={13} /> {placesShown} lugares
                     </>
                   )}
-                  {tab === 'social' &&
+                  {tab === "social" &&
                     ego.hidden > 0 &&
                     ` · ${ego.hidden} sin interacciones en este periodo`}
                 </span>
@@ -424,15 +526,18 @@ export function ConnectionsPage({ initialTab = 'social' }: { initialTab?: Tab })
             </>
           ) : (
             <div className="wr-empty">
-              {tab === 'social' ? <Orbit size={28} /> : <Network size={28} />}
+              {tab === "social" ? <Orbit size={28} /> : <Network size={28} />}
               <h3>
                 {!filter.people && !filter.places
-                  ? 'Activa personas o lugares para ver el mapa.'
-                  : tab === 'social'
-                    ? 'Aún no hay interacciones en este periodo.'
-                    : 'Nada aparece conectado todavía.'}
+                  ? "Activa personas o lugares para ver el mapa."
+                  : tab === "social"
+                    ? "Aún no hay interacciones en este periodo."
+                    : "Nada aparece conectado todavía."}
               </h3>
-              <p>Vincula personas y lugares a tus recuerdos y el mapa se irá dibujando solo.</p>
+              <p>
+                Vincula personas y lugares a tus recuerdos y el mapa se irá
+                dibujando solo.
+              </p>
             </div>
           )}
         </>

@@ -1381,6 +1381,38 @@ html[data-theme='dark'] .ipn-layer {
 .ipn-search button:hover {
   background: #e7e8ec !important;
 }
+/* «Solo con fotos»: un ícono al final de la búsqueda, tras una rayita; encendido, en violeta. */
+.ipn-search .ipn-media {
+  position: relative;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-left: 4px;
+  border-radius: 8px;
+  color: #9a9eaa !important;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.ipn-search .ipn-media::before {
+  content: '';
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: -5px;
+  width: 1px;
+  background: #e2e4ea;
+}
+.ipn-search .ipn-media:hover {
+  color: #22252e !important;
+}
+.ipn-search .ipn-media.on {
+  background: #ebe8fb !important;
+  color: #5a4fc8 !important;
+}
+.ipn-search .ipn-media.on:hover {
+  background: #e2defa !important;
+}
 /* Scroll del feed: moderno y delgado. */
 .ipn-scroll {
   flex: 1;

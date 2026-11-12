@@ -106,13 +106,8 @@ export function agoLabel(iso: string, now = Date.now()) {
   });
 }
 
-/** Contador corto: 950, 1k, 1.5k, 12k, 1.2M (sin redondear hacia arriba: 999 999 es 999k). */
-export function compactCount(n: number) {
-  if (n < 1000) return String(n);
-  const short = (v: number, unit: string) =>
-    (v < 10 ? Math.floor(v * 10) / 10 : Math.floor(v)).toString() + unit;
-  return n < 1_000_000 ? short(n / 1000, 'k') : short(n / 1_000_000, 'M');
-}
+/** Contador corto (vive en lib/format: también lo usa la barra lateral). */
+export { compactCount } from '../lib/format';
 
 /** Un trozo corto del texto (para chips, la búsqueda y el bloque de Mi espacio). */
 export const excerpt = (text: string, n = 90) => {

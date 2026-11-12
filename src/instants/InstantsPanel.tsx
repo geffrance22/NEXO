@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Feather, LoaderCircle, Puzzle, Search, X } from 'lucide-react';
+import { Feather, Images, LoaderCircle, Puzzle, Search, X } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { LoadMore, useInfinite } from '../components/LoadMore';
 import { Sheet } from '../components/Sheet';
@@ -28,6 +28,9 @@ const plainBody = (i: Instant) => {
   }
   return s;
 };
+
+/** Hilos con al menos una foto (en cualquiera de sus instantes). */
+const hasPhotos = (t: Thread) => t.items.some((i) => i.images.length > 0);
 
 /** Texto en el que se busca un hilo: lo escrito y los nombres de lo que tiene vinculado. */
 function useSearchable() {
@@ -60,17 +63,23 @@ export function InstantsPanel({ focus, onClose }: { focus?: string; onClose: () 
   const { list, missing, error, complete } = useInstants();
   const { jobs } = usePieceJobs();
   const [query, setQuery] = useState('');
+  /** Solo los hilos con fotos. */
+  const [photos, setPhotos] = useState(false);
   const [closing, setClosing] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const searchable = useSearchable();
 
   const threads = useMemo(() => threadsOf(list ?? []), [list]);
   const needle = normalizeText(query.trim());
-  const shown = useMemo(
-    () => (needle ? threads.filter((t) => searchable(t).includes(needle)) : threads),
-    [threads, needle, searchable],
+  const shown = useMemo(() => {
+    const base = photos ? threads.filter(hasPhotos) : threads;
+    return needle ? base.filter((t) => searchable(t).includes(needle)) : base;
+  }, [threads, needle, searchable, photos]);
+  const { visible, rest, loadMore, reach } = useInfinite(
+    shown,
+    PAGE,
+    (photos ? 'fotos:' : '') + needle,
   );
-  const { visible, rest, loadMore, reach } = useInfinite(shown, PAGE, needle);
   const focusThread = focus ? (list ?? []).find((i) => i.id === focus)?.thread_id : undefined;
   useEffect(() => {
     if (!focusThread) return;
@@ -164,7 +173,9 @@ export function InstantsPanel({ focus, onClose }: { focus?: string; onClose: () 
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar en tus instantes, personas, lugares…"
+            placeholder={
+              photos ? 'Buscar en los que tienen fotos…' : 'Buscar en tus instantes, personas, lugares…'
+            }
             aria-label="Buscar en tus instantes"
           />
           {query && (
@@ -172,6 +183,17 @@ export function InstantsPanel({ focus, onClose }: { focus?: string; onClose: () 
               <X size={13} />
             </button>
           )}
+          {/* Filtro dentro de la barra de búsqueda: no ocupa una fila propia. */}
+          <button
+            type="button"
+            className={'ipn-media' + (photos ? ' on' : '')}
+            aria-pressed={photos}
+            aria-label="Solo instantes con fotos"
+            title={photos ? 'Ver todos los instantes' : 'Solo instantes con fotos'}
+            onClick={() => setPhotos((p) => !p)}
+          >
+            <Images size={15} />
+          </button>
         </label>
 
         <div className="ipn-scroll" ref={scroller}>
@@ -201,7 +223,11 @@ export function InstantsPanel({ focus, onClose }: { focus?: string; onClose: () 
             <div className="ipn-empty">
               <Feather size={22} />
               {needle ? (
-                <p>Nada con «{query.trim()}».</p>
+                <p>
+                  Nada con «{query.trim()}»{photos ? ' entre los que tienen fotos' : ''}.
+                </p>
+              ) : photos ? (
+                <p>Aún no hay instantes con fotos.</p>
               ) : (
                 <>
                   <p>Aún no hay instantes.</p>

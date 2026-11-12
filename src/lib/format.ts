@@ -6,6 +6,14 @@ const copFormat = new Intl.NumberFormat('es-CO', {
 
 export const money = (n: number) => copFormat.format(n);
 
+/** Contador corto: 950, 1k, 1.5k, 12k, 1.2M (sin redondear hacia arriba: 999 999 es 999k). */
+export function compactCount(n: number) {
+  if (n < 1000) return String(n);
+  const short = (v: number, unit: string) =>
+    (v < 10 ? Math.floor(v * 10) / 10 : Math.floor(v)).toString() + unit;
+  return n < 1_000_000 ? short(n / 1000, 'k') : short(n / 1_000_000, 'M');
+}
+
 export const initials = (s: string) =>
   s
     .split(' ')

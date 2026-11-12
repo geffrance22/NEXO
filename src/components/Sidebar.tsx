@@ -14,7 +14,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { useApp } from '../AppContext';
-import { initials } from '../lib/format';
+import { compactCount, initials } from '../lib/format';
 
 const nav = [
   ['Mi espacio', BookOpen],
@@ -51,7 +51,12 @@ export function Sidebar({ mobileOpen }: { mobileOpen: boolean }) {
             <Icon size={19} />
             {label}
             {label === 'Mi espacio' && (
-              <span className="nav-count">{workspace.entries.length}</span>
+              <span
+                className="nav-count"
+                title={`${workspace.entries.length.toLocaleString('es-CO')} recuerdos`}
+              >
+                {compactCount(workspace.entries.length)}
+              </span>
             )}
           </button>
         ))}

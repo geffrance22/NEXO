@@ -20,9 +20,11 @@ import { useApp } from '../../AppContext';
 import { MoodIcon, moodOf } from '../../composer/controls';
 import { agoLabel, compactCount, excerpt, linkCount, threadsOf } from '../../instants/model';
 import { useInstants } from '../../instants/store';
-import { Masonry } from '../../components/Masonry';
+import { EpisodeTile } from '../../components/EpisodeTile';
+import { MasonryGrid } from '../../components/Masonry';
+import { NoteTile } from '../../components/NoteTile';
 import { kindMeta } from '../../composer/kinds';
-import type { Entry, Kind } from '../../data';
+import type { Entry, Episode, Kind } from '../../data';
 import { totals } from '../../finance/money';
 import {
   commitmentKinds,
@@ -48,24 +50,40 @@ import { RecentNotebooks } from '../../cuadernos/RecentNotebooks';
 import { useCuadernos } from '../../cuadernos/useCuadernos';
 import { bool, list, num, str, titleOf, type BlockProps } from '../types';
 
+/** Una tarjeta de «Recientes»: un recuerdo o un episodio. `at`: cuándo llegó (ordena la mezcla). */
+type RecentItem =
+  | { type: 'entry'; at: string; entry: Entry }
+  | { type: 'episode'; at: string; episode: Episode };
+const recentKey = (it: RecentItem) => (it.type === 'entry' ? it.entry.id : 'ep:' + it.episode.id);
+const recentTile = (it: RecentItem) =>
+  it.type === 'entry' ? <NoteTile entry={it.entry} /> : <EpisodeTile episode={it.episode} />;
+
 /** Los últimos recuerdos que añadiste (de cualquier tipo, o solo de los que elijas). */
 export function RecentBlock({ opts }: BlockProps) {
   const { workspace, openEntry, go } = useApp();
   const headId = useId();
   const max = num(opts, 'count', 12);
   const only = list(opts, 'kinds') as Kind[];
-  // Los cuadernos de Agenda entran cuando se ven todos los tipos (las notas libres tienen su bloque).
-  const withNotebooks = !only.length;
+  // Los cuadernos de Agenda y los episodios entran cuando se ven todos los tipos (las notas libres
+  // tienen su bloque).
+  const everything = !only.length;
   const notebooks = useCuadernos();
-  const hasNotebooks = withNotebooks && !notebooks.missing && Boolean(notebooks.list?.length);
+  const hasNotebooks = everything && !notebooks.missing && Boolean(notebooks.list?.length);
   const pool = useMemo(
     () => (only.length ? workspace.entries.filter((e) => only.includes(e.kind)) : workspace.entries),
     [workspace.entries, only.join()],
   );
-  const recent = useMemo(
-    () => [...pool].sort((a, b) => addedAt(b).localeCompare(addedAt(a))).slice(0, max),
-    [pool, max],
-  );
+  const total = pool.length + (everything ? workspace.episodes.length : 0);
+  const recent = useMemo(() => {
+    const items: RecentItem[] = pool.map((entry) => ({ type: 'entry', at: addedAt(entry), entry }));
+    if (everything)
+      for (const episode of workspace.episodes)
+        items.push({ type: 'episode', at: episode.created_at, episode });
+    // Por fecha real (las de la base de datos y las del navegador no se escriben igual).
+    return items
+      .sort((a, b) => (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0))
+      .slice(0, max);
+  }, [pool, workspace.episodes, everything, max]);
 
   return (
     <section className="nb" aria-labelledby={headId}>
@@ -74,7 +92,7 @@ export function RecentBlock({ opts }: BlockProps) {
           {titleOf(opts, only.length === 1 ? kindMeta[only[0]].label : 'Recientes')}
         </h2>
         <div className="nb-head-end">
-          {pool.length > recent.length && (
+          {total > recent.length && (
             <button type="button" className="nb-link" onClick={() => goLibroteca(go, 'inicio')}>
               Ver todo en Libroteca <ArrowUpRight size={13} />
             </button>
@@ -86,7 +104,7 @@ export function RecentBlock({ opts }: BlockProps) {
       </header>
       {hasNotebooks && <RecentNotebooks />}
       {recent.length > 0 ? (
-        <Masonry entries={recent} />
+        <MasonryGrid items={recent} itemKey={recentKey} render={recentTile} />
       ) : hasNotebooks ? null : (
         <div className="nb-empty">
           <Feather size={20} />

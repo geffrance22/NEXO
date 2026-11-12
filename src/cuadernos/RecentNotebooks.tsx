@@ -6,7 +6,8 @@ import { notebookVars } from './Cuadernos';
 import { useCuadernos } from './useCuadernos';
 import './cuadernos.css';
 
-const SHOWN = 8;
+/** Como mucho tres: los demás, en «Ver todos». */
+const SHOWN = 3;
 
 /**
  * Los cuadernos que tocaste hace poco (para «Recientes» en Mi espacio): una tira de una sola línea.

@@ -932,6 +932,55 @@
   max-height: 220px;
   overflow: auto;
 }
+/* Instantes del episodio: lo que escribiste, tal cual; cada uno abre su ventana. */
+.ep-panel-n {
+  margin-left: auto;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #f1f0f8;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b62b5;
+}
+.ep-instants {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.ep-instant {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 8px 10px 8px 12px;
+  border: 0;
+  border-left: 2px solid #d6d1ef;
+  border-radius: 4px 10px 10px 4px;
+  background: #faf9fd;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ep-instant:hover {
+  background: #f3f1fb;
+}
+.ep-instant span {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #33364a;
+  white-space: pre-line;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+.ep-instant small {
+  font-size: 11.5px;
+  color: #9a96b0;
+}
 .ep-picker {
   display: flex;
   flex-direction: column;

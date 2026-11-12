@@ -3,6 +3,7 @@ import {
   ArrowUp,
   ArrowUpRight,
   Calculator,
+  Feather,
   FileText,
   Layers,
   MapPin,
@@ -33,6 +34,7 @@ const sourceIcon = {
   episode: Layers,
   reading: Newspaper,
   note: StickyNote,
+  instant: Feather,
 };
 /** Lo que no cabe en la burbuja: las fuentes que se ven a la vista. */
 const VISIBLE_SOURCES = 4;
@@ -151,7 +153,7 @@ export function ChatPanel({
   className?: string;
 }) {
   const { messages, input, setInput, busy, send, retry, reset } = assistant;
-  const { workspace, go, viewEntry, peekPerson } = useApp();
+  const { workspace, go, viewEntry, peekPerson, openInstant } = useApp();
   const scroller = useRef<HTMLDivElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   const closeRef = useRef(onClose);
@@ -210,6 +212,8 @@ export function ChatPanel({
       go('Lecturas', { id: s.id });
     } else if (s.type === 'note') {
       go('Libroteca', { id: s.id });
+    } else if (s.type === 'instant') {
+      openInstant(s.id);
     } else {
       const ep = workspace.episodes.find((x) => x.id === s.id);
       if (ep) go('Episodios', ep);

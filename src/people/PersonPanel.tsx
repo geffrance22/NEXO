@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import type { Person, PersonUpdate } from '../data';
+import { useInstants } from '../instants/store';
 import { missedText, outcomeHint } from '../lib/commitments';
 import { updateKinds, updatesOf } from '../lib/updates';
 import { addDays, friendlyDate, normalizeText, shortDate, todayInputValue } from '../lib/format';
@@ -186,7 +187,9 @@ function ContactActions({ person }: { person: Person }) {
 
 /** Novedades de su vida (trabajo, salud, amor…), cada una con su fecha. */
 function Updates({ person, limit }: { person: Person; limit: number }) {
-  const { quickPerson, patchPerson, notify, workspace } = useApp();
+  const { quickPerson, patchPerson, notify, workspace, openInstant } = useApp();
+  const { list: instants } = useInstants();
+  const instantIds = useMemo(() => new Set((instants ?? []).map((i) => i.id)), [instants]);
   const [all, setAll] = useState(false);
   const list = updatesOf(person);
   const shown = all ? list : list.slice(0, limit);
@@ -253,6 +256,19 @@ function Updates({ person, limit }: { person: Person; limit: number }) {
                   {u.images?.length ? <PhotoThumbs images={u.images} /> : null}
                   <small title={friendlyDate(u.date)}>
                     {m.label} · {relativeDay(u.date)}
+                    {u.instantId && instantIds.has(u.instantId) && (
+                      <>
+                        {' · '}
+                        <button
+                          type="button"
+                          className="pp-update-instant"
+                          title="Abrir el instante en que lo contaste"
+                          onClick={() => openInstant(u.instantId!)}
+                        >
+                          <Feather size={11} /> Instante
+                        </button>
+                      </>
+                    )}
                     {ask && (
                       <>
                         {' · '}

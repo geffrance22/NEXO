@@ -380,6 +380,35 @@ html[data-theme='dark'] .sheet-backdrop:has(> .sheet.ev) {
 .ev-episode.ev-gone:hover {
   background: rgba(255, 255, 255, 0.75);
 }
+/* El instante del que nació: un trozo de lo que escribiste; abre su ventana. */
+.ev-instants {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.ev-episode.ev-instant {
+  max-width: 100%;
+  border-radius: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+.ev-instant svg {
+  flex: none;
+  color: #5b52a8;
+}
+.ev-instant span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ev-instant small {
+  flex: none;
+  font-size: 11.5px;
+  color: #8d9488;
+}
 .ev-tags span {
   padding: 3px 9px;
   border-radius: 999px;

@@ -4,18 +4,22 @@ import {
   ArrowUpRight,
   BookMarked,
   Check,
+  ChevronRight,
   Feather,
   ListChecks,
   Newspaper,
   Pencil,
+  Link2,
+  MessageCircle,
   Pin,
   Plus,
-  Sparkles,
   Tv,
   Users,
-  Wand2,
 } from 'lucide-react';
 import { useApp } from '../../AppContext';
+import { MoodIcon, moodOf } from '../../composer/controls';
+import { agoLabel, compactCount, excerpt, linkCount, threadsOf } from '../../instants/model';
+import { useInstants } from '../../instants/store';
 import { Masonry } from '../../components/Masonry';
 import { kindMeta } from '../../composer/kinds';
 import type { Entry, Kind } from '../../data';
@@ -174,32 +178,88 @@ export function FollowBlock({ opts }: BlockProps) {
   );
 }
 
+/**
+ * Instantes: escribir lo que pasa (tal cual, como una publicación o un hilo), el último que
+ * publicaste y el acceso a tu feed. Nexo arma sus piezas en segundo plano.
+ */
 export function CaptureBlock({ opts }: BlockProps) {
-  const { openCapture, openChat, openWeekly } = useApp();
+  const { openCapture, openInstants, openInstant, openWeekly } = useApp();
+  const { list } = useInstants();
+  const threads = useMemo(() => threadsOf(list ?? []), [list]);
+  const lastThread = threads[0];
+  const latest = lastThread?.items[lastThread.items.length - 1];
+  const links = lastThread ? lastThread.items.reduce((s, i) => s + linkCount(i), 0) : 0;
+  const mood = moodOf(latest?.mood);
+  const total = list?.length ?? 0;
   return (
     <section className="hc hcap">
-      <h3>
-        <Wand2 size={16} /> {titleOf(opts, '¿Qué pasó?')}
-      </h3>
+      <header className="hc-head">
+        <h3>
+          <Feather size={15} /> {titleOf(opts, 'Instantes')}
+        </h3>
+        {bool(opts, 'feed', true) && (
+          <button
+            type="button"
+            className="cap-all"
+            onClick={() => openInstants()}
+            title={total ? `Ver tus ${total.toLocaleString('es-CO')} instantes` : 'Ver tus instantes'}
+          >
+            Ver todos
+            {total > 0 && <span>{compactCount(total)}</span>}
+            <ChevronRight size={14} />
+          </button>
+        )}
+      </header>
       <button
         type="button"
         className="cap-launch"
         aria-haspopup="dialog"
-        aria-label="Escribir una experiencia"
+        aria-label="Escribir un instante"
+        aria-keyshortcuts="P"
         onClick={() => openCapture()}
       >
-        Cuéntalo en una o dos frases… <ArrowRight size={16} />
+        <span className="cap-ph">¿Qué está pasando?</span>
+        <kbd aria-hidden="true">P</kbd>
       </button>
-      <div className="cap-actions">
-        <button type="button" className="cap-go" onClick={() => openCapture()}>
-          Escribir
+      {bool(opts, 'last', true) && lastThread && latest ? (
+        <button
+          type="button"
+          className="cap-last"
+          onClick={() => openInstant(latest.id)}
+          title="Abrir tu último instante"
+        >
+          <span className="cap-last-meta">
+            <span>
+              Tu último instante <i aria-hidden="true">·</i> {agoLabel(latest.created_at)}
+            </span>
+            {mood && <MoodIcon mood={mood} size={16} solid className="cap-last-mood" />}
+          </span>
+          <span className="cap-last-body">
+            {excerpt(latest.body, 180) || (latest.images.length ? 'Una foto' : 'Instante')}
+          </span>
+          {(lastThread.items.length > 1 || links > 0) && (
+            <span className="cap-last-tags">
+              {lastThread.items.length > 1 && (
+                <span>
+                  <MessageCircle size={12} /> Hilo de {lastThread.items.length}
+                </span>
+              )}
+              {links > 0 && (
+                <span>
+                  <Link2 size={12} /> {links} {links === 1 ? 'vínculo' : 'vínculos'}
+                </span>
+              )}
+            </span>
+          )}
         </button>
-        {bool(opts, 'ask', true) && (
-          <button type="button" className="cap-ask" onClick={openChat}>
-            <Sparkles size={14} /> Consultar memoria
-          </button>
-        )}
-      </div>
+      ) : (
+        list !== null &&
+        !total && (
+          <p className="cap-hint">
+            Escribe lo que pasa, tal cual. Nexo lo guarda así y arma sus piezas en segundo plano.
+          </p>
+        )
+      )}
       {bool(opts, 'weekly', true) && (
         <button type="button" className="cap-week" onClick={openWeekly}>
           <Newspaper size={14} /> <span>Tu semana en un periódico</span> <ArrowRight size={13} />

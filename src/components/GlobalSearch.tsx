@@ -9,6 +9,7 @@ import {
 import {
   BookOpen,
   Columns3,
+  Feather,
   Highlighter,
   Images,
   Link2,
@@ -39,9 +40,18 @@ import {
 } from "../readings/search";
 import { useCaptureSearch, type ShotHit } from "../capturas/search";
 import { peekShot } from "../capturas/nav";
+import {
+  agoLabel,
+  excerpt,
+  linkCount,
+  searchInstants,
+  type Instant,
+} from "../instants/model";
+import { useInstants } from "../instants/store";
 
 type Look = { icon: LucideIcon; color: string; soft: string };
-type Hit = SearchHit | ReadingHit | NoteHit | ShotHit;
+type InstantHit = { type: "instant"; instant: Instant };
+type Hit = SearchHit | ReadingHit | NoteHit | ShotHit | InstantHit;
 
 const hostOf = (url: string) => {
   try {
@@ -56,6 +66,22 @@ const clip = (s: string, n: number) =>
 /** Ícono, colores y textos de una fila de resultado. */
 function describe(hit: Hit): { title: string; sub: string; look: Look | null } {
   switch (hit.type) {
+    case "instant": {
+      const { instant } = hit;
+      const n = linkCount(instant);
+      return {
+        title:
+          excerpt(instant.body, 90) ||
+          (instant.images.length ? "Instante con fotos" : "Instante"),
+        sub: [
+          "Instante · " + agoLabel(instant.created_at),
+          n ? `${n} ${n === 1 ? "vínculo" : "vínculos"}` : "",
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        look: { icon: Feather, color: "#5b52a8", soft: "#efedfb" },
+      };
+    }
     case "shot": {
       const { shot } = hit;
       const note = shot.note.replace(/\s+/g, " ").trim();
@@ -174,9 +200,11 @@ function describe(hit: Hit): { title: string; sub: string; look: Look | null } {
   }
 }
 
-/** Campo de búsqueda del encabezado: personas, recuerdos, notas, tarjetas, lugares, vínculos, grupos, lecturas y capturas. */
+/** Campo de búsqueda del encabezado: personas, recuerdos, instantes, notas, tarjetas, lugares, vínculos, grupos, lecturas y capturas. */
 export function GlobalSearch() {
-  const { workspace, go, viewEntry, openTie, openGroup } = useApp();
+  const { workspace, go, viewEntry, openTie, openGroup, openInstant } =
+    useApp();
+  const { list: instants } = useInstants();
   const feed = useBoardFeed();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -191,17 +219,27 @@ export function GlobalSearch() {
     () => searchWorkspace(workspace, query, feed.cards),
     [workspace, query, feed.cards],
   );
+  // Lo que escribiste tal cual: va junto a lo de tu espacio (también es local).
+  const said = useMemo<InstantHit[]>(
+    () =>
+      searchInstants(instants, query, 5).map((instant) => ({
+        type: "instant",
+        instant,
+      })),
+    [instants, query],
+  );
   // Notas, lecturas y capturas llegan un instante después: van al final para no mover lo que ya ves.
   const groups = useMemo<{ label: string; hits: Hit[] }[]>(
     () =>
       [
         ...local,
+        { label: "Instantes", hits: said },
         { label: "Notas", hits: notes },
         { label: "Lecturas", hits: reading.readings },
         { label: "Resaltados", hits: reading.marks },
         { label: "Capturas", hits: captures },
       ].filter((g) => g.hits.length > 0),
-    [local, notes, reading.readings, reading.marks, captures],
+    [local, said, notes, reading.readings, reading.marks, captures],
   );
   const flat = useMemo(() => groups.flatMap((g) => g.hits), [groups]);
   const shown = open && query.trim() !== "";
@@ -215,6 +253,8 @@ export function GlobalSearch() {
     setOpen(false);
     setQuery("");
     switch (hit.type) {
+      case "instant":
+        return openInstant(hit.instant.id);
       case "shot":
         return peekShot(hit.shot.id);
       case "note":

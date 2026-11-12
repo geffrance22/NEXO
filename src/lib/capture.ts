@@ -249,6 +249,11 @@ export type CapturePlan = {
   /** Parentescos del texto («mi mamá», «mi tío Carlos») por resolver o guardar como vínculo. */
   kinLinks: KinLink[];
   episode: { on: boolean; title: string; kind: EpisodeKind };
+  /**
+   * Episodio que ya existe (el que elegiste al escribir el instante): con `episode.on`, las piezas
+   * se suman a él en vez de crear uno nuevo.
+   */
+  episodeExisting?: string;
   /** Cómo te sentiste (valor de `moods`): va en el encuentro, la visita y la nota. */
   mood: number | null;
 };
@@ -1270,7 +1275,8 @@ function episodeKindFor(n: string, encounter: boolean): EpisodeKind {
   return encounter ? "encuentro" : "otro";
 }
 
-function guessPlaceKind(name: string, activity?: string): PlaceKind {
+/** El tipo de un lugar nuevo, por su nombre («Café Norte» → café) o por lo que hiciste ahí. */
+export function guessPlaceKind(name: string, activity?: string): PlaceKind {
   const n = normalizeText(name);
   if (/\b(cafe|coffee|tienda de cafe)\b/.test(n) || activity === "Café")
     return "cafe";

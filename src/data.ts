@@ -123,6 +123,8 @@ export type PersonUpdate = {
   /** De dónde salió: el episodio y el recuerdo en que lo contaste. */
   episodeId?: string;
   entryId?: string;
+  /** El instante en que lo escribiste. */
+  instantId?: string;
 };
 
 /** Un dato que cambió con el tiempo: «Trabajó en Rappi hasta junio». */

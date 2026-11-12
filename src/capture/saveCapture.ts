@@ -153,16 +153,37 @@ export const newShared = (): CaptureShared => ({
   latest: new Map(),
 });
 
+export type CaptureOpts = {
+  /** El instante del que salió: las novedades lo citan y las fichas no copian el texto. */
+  instantId?: string;
+  /**
+   * Copiar el texto completo en el encuentro, el lugar visitado y el episodio (como antes de los
+   * instantes). Por defecto sí; con un instante guardado, no: cada pieza lleva solo su frase.
+   */
+  keepText?: boolean;
+};
+
+/** Lo que nació al guardar: para vincularlo al instante. */
+export type CaptureLinks = {
+  entry_ids: string[];
+  episode_ids: string[];
+  person_ids: string[];
+  place_ids: string[];
+};
+
 /**
- * Guarda una experiencia capturada: personas y lugar nuevos, el episodio que la reúne y cada pieza
- * (encuentro, movimiento, compromisos, novedades, conexiones…), todas enlazadas entre sí y al
- * texto original. Devuelve el episodio (si se creó) y cuántas piezas se guardaron.
+ * Guarda una experiencia capturada: personas y lugar nuevos, el episodio que la reúne (o el que ya
+ * elegiste) y cada pieza (encuentro, movimiento, compromisos, novedades, conexiones…), todas
+ * enlazadas entre sí. Devuelve el episodio, cuántas piezas se guardaron y lo que nació (`links`).
  */
 export async function saveCapture(
   plan: CapturePlan,
   app: AppContextValue,
   shared: CaptureShared = newShared(),
+  opts: CaptureOpts = {},
 ) {
+  const keepText = opts.keepText ?? true;
+  const fromInstant = opts.instantId ? { instantId: opts.instantId } : {};
   // 1. Personas nuevas: se crean todas las que dejaste marcadas. Si alguna no quedó en ninguna
   //    pieza, se suma al encuentro o al compromiso cuya frase la nombra.
   const fresh = plan.newPeople.filter((n) => n.on && n.name.trim());
@@ -263,10 +284,31 @@ export async function saveCapture(
   const placeName = encPlace.name;
   const mood = plan.mood ?? undefined;
 
-  // 3. El episodio que lo reúne todo, con el texto original como evidencia.
+  // 3. El episodio que lo reúne todo: el que elegiste al escribir o uno nuevo (que, sin instante,
+  //    guarda el texto original como evidencia).
   const everyone = realIds([...used]);
   let episode: Episode | null = null;
-  if (plan.episode.on && !app.experiencesMissing) {
+  let episodeMade = false;
+  const existing = plan.episodeExisting
+    ? app.workspace.episodes.find((e) => e.id === plan.episodeExisting)
+    : undefined;
+  if (plan.episode.on && existing) {
+    episode = existing;
+    const morePeople = everyone.filter((id) => !existing.person_ids.includes(id));
+    const morePlaces = [encPlace.id, visitPlace.id].filter(
+      (id): id is string => Boolean(id) && !existing.place_ids.includes(id!),
+    );
+    if (morePeople.length || morePlaces.length)
+      await app.updateEpisode(
+        existing,
+        {
+          person_ids: [...existing.person_ids, ...morePeople],
+          place_ids: [...new Set([...existing.place_ids, ...morePlaces])],
+        },
+        true,
+      );
+  } else if (plan.episode.on && !app.experiencesMissing) {
+    episodeMade = true;
     episode = await app.saveEpisode(
       {
         title: plan.episode.title.trim() || "Experiencia",
@@ -276,7 +318,8 @@ export async function saveCapture(
         starts_on: plan.date,
         ends_on: plan.episode.kind === "encuentro" ? plan.date : null,
         summary: "",
-        source: plan.text.slice(0, 4000),
+        // Con un instante, el texto vive en él (el episodio lo muestra desde ahí).
+        source: keepText ? plan.text.slice(0, 4000) : "",
         person_ids: everyone,
         place_ids: placeId ? [placeId] : [],
         budget: null,
@@ -288,8 +331,12 @@ export async function saveCapture(
   const episodeId = episode?.id ?? null;
   let count = 0;
   let ties = 0;
+  const madeEntries: string[] = [];
   const keep = (e: Entry | null) => {
-    if (e) count++;
+    if (e) {
+      count++;
+      madeEntries.push(e.id);
+    }
     return e;
   };
 
@@ -308,7 +355,7 @@ export async function saveCapture(
         base({
           kind: "Encuentro",
           title: enc.title,
-          body: plan.text,
+          body: keepText ? plan.text : enc.evidence,
           personIds: realIds(enc.personIds),
           date: enc.date,
           details,
@@ -472,6 +519,7 @@ export async function saveCapture(
           created_at: new Date().toISOString(),
           ...(episodeId && { episodeId }),
           ...(origin && { entryId: origin.id }),
+          ...fromInstant,
         });
         break;
       }
@@ -562,6 +610,7 @@ export async function saveCapture(
             created_at: new Date().toISOString(),
             entryId: saved.id,
             ...(episodeId && { episodeId }),
+            ...fromInstant,
           });
         break;
       }
@@ -655,7 +704,7 @@ export async function saveCapture(
             base({
               kind: "Nota",
               title: p.title,
-              body: plan.text,
+              body: keepText ? plan.text : p.evidence,
               tags: ["lugar"],
               date: p.date,
               details,
@@ -702,7 +751,9 @@ export async function saveCapture(
     const person = created.get(n.id);
     if (!person) continue;
     const said = sentences(plan.text).filter((s) => says(s, n.name));
-    const body = (said.length ? said.join(" ") : plan.text).slice(0, 4000);
+    const body = (
+      said.length ? said.join(" ") : keepText ? plan.text : ""
+    ).slice(0, 4000);
     keep(
       await app.createEntry(
         base({
@@ -816,7 +867,19 @@ export async function saveCapture(
     ties = saved.length;
   }
 
-  return { episode, count, people: madeNow, ties };
+  const links: CaptureLinks = {
+    entry_ids: [...new Set([...madeEntries, ...toLink])],
+    episode_ids: episode ? [episode.id] : [],
+    person_ids: [
+      ...new Set([...everyone, ...encounterPeople, ...realIds([...adds.keys()])]),
+    ],
+    place_ids: [
+      ...new Set(
+        [encPlace.id, visitPlace.id].filter((x): x is string => Boolean(x)),
+      ),
+    ],
+  };
+  return { episode, episodeMade, count, people: madeNow, ties, links };
 }
 
 /** Frases del texto (para saber qué se dijo de cada persona). */

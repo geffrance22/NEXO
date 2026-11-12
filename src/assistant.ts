@@ -8,7 +8,7 @@ const FALLBACK =
 /** Una fuente que la respuesta cita como [r3]: se puede abrir desde el chat. */
 export type AssistantSource = {
   ref: string;
-  type: 'entry' | 'person' | 'place' | 'episode' | 'reading' | 'note';
+  type: 'entry' | 'person' | 'place' | 'episode' | 'reading' | 'note' | 'instant';
   id: string;
   title: string;
   date?: string;

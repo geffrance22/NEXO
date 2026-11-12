@@ -132,8 +132,17 @@ export type AppContextValue = {
   openWeekly: () => void;
   /** Episodio abierto en la página Episodios. */
   selectedEpisode: Episode | null;
-  /** Captura de una experiencia en texto libre; Nexo propone sus piezas. */
+  /**
+   * Escribir un instante (lo que pasó, tal cual; también un hilo). Al publicarlo, Nexo busca sus
+   * piezas en segundo plano. `people` arrancan nombradas (p. ej. desde la ficha de alguien).
+   */
   openCapture: (text?: string, people?: string[]) => void;
+  /** El feed de tus instantes (panel a la derecha); con `focus`, lleva a ese instante. */
+  openInstants: (focus?: string) => void;
+  /** Un instante (con su hilo) en su ventana: desde las fichas que nacieron de él. */
+  openInstant: (id: string) => void;
+  /** Revisar las piezas que Nexo encontró en tus instantes. */
+  reviewPieces: () => void;
   /** Antes de ver a alguien (ficha breve) o después (cierre de 30 segundos). */
   openBrief: (person: Person, mode: 'antes' | 'despues', entry?: Entry) => void;
   /** Falta la migración 008 (episodios, fecha de registro…). */

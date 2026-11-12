@@ -101,16 +101,30 @@ export function Stage({
     let last = 0;
     let t = 0;
     let visible = true;
+    // Escena nueva (p. ej. al cambiar «movimiento reducido»): se mide y se ajusta de cero.
+    size.current = { w: 0, h: 0 };
 
+    const paint = () => {
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, size.current.w, size.current.h);
+      scene.draw(g, t);
+    };
     const fit = () => {
       const r = box.getBoundingClientRect();
       const w = Math.max(1, Math.round(r.width));
       const h = Math.max(1, Math.round(r.height));
-      dpr = Math.min(2, window.devicePixelRatio || 1);
+      const ratio = Math.min(2, window.devicePixelRatio || 1);
+      // Mismo tamaño: no se toca el lienzo (asignarle el ancho, aunque sea igual, lo borra).
+      if (w === size.current.w && h === size.current.h && ratio === dpr) return;
+      dpr = ratio;
       size.current = { w, h };
       c.width = Math.round(w * dpr);
       c.height = Math.round(h * dpr);
       scene.resize(w, h);
+      // Cambiar el tamaño deja el lienzo en blanco: se pinta ya, sin esperar al siguiente cuadro.
+      // Si no, parpadea cada vez que una ventana se abre o se cierra (quita o devuelve la barra de
+      // desplazamiento de la página y el encabezado cambia de ancho).
+      if (t > 0) paint();
       wake();
     };
     const running = () => visible && document.visibilityState === 'visible';
@@ -156,9 +170,7 @@ export function Stage({
         p.vy *= k;
       }
       scene.update(dt, t, p);
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.clearRect(0, 0, size.current.w, size.current.h);
-      scene.draw(g, t);
+      paint();
       trackHint();
       schedule();
     };

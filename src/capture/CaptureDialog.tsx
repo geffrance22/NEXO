@@ -1,42 +1,22 @@
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
-  useDeferredValue,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
-import {
-  ArrowLeft,
-  ArrowRight,
   Check,
   ChevronDown,
   CircleHelp,
-  Copy,
-  Info,
-  Layers,
+  Feather,
   LoaderCircle,
   Network,
-  Quote,
-  Sparkles,
+  Trash2,
   UserPlus,
   X,
 } from "lucide-react";
 import { useApp } from "../AppContext";
-import { captureWithAssistant } from "../assistant";
 import { Sheet } from "../components/Sheet";
 import type { CommitmentKind, Episode, EpisodeKind, UpdateKind } from "../data";
 import {
   adoptExisting,
   captureLessons,
-  paragraphs,
-  planFromAi,
-  planNotes,
   pieceName,
-  proposeBatch,
-  splitExperiences,
   swapPerson,
   type CapturePlan,
   type KinLink,
@@ -44,18 +24,32 @@ import {
 } from "../lib/capture";
 import { learnFromCapture } from "../lib/captureMemory";
 import { exchangeKinds } from "../lib/people";
-import { MoodPicker, Stars, moods } from "../composer/controls";
+import { MoodPicker, Stars } from "../composer/controls";
 import type { ExchangeKind } from "../data";
 import { cueOptions } from "../lib/recognize";
-import { genderOf } from "../lib/gender";
-import { ME, kinCall, tiesOf } from "../lib/relations";
 import { commitmentKindList, commitmentKinds } from "../lib/commitments";
-import { episodeKindList, episodeKinds } from "../lib/episodes";
-import { errorMessage, thousands, todayInputValue } from "../lib/format";
-import { selfContext } from "../lib/myself";
+import {
+  episodeKindList,
+  episodeKindOf,
+  episodeKinds,
+} from "../lib/episodes";
+import {
+  errorMessage,
+  normalizeText,
+  thousands,
+  todayInputValue,
+} from "../lib/format";
 import { updateKindList, updateKinds } from "../lib/updates";
 import { expenseCategories, incomeCategories } from "../composer/logic";
 import { Avatar } from "../people/Avatar";
+import {
+  planCount,
+  removeJobs,
+  updateJob,
+  type PieceJob,
+} from "../instants/analysis";
+import { excerpt } from "../instants/model";
+import { linkInstant } from "../instants/store";
 import { CaptureHelp } from "./CaptureHelp";
 import { metaOf } from "./meta";
 import {
@@ -107,167 +101,88 @@ const activities = [
   "Trabajo",
   "Deporte",
 ];
-/** Avisos visibles antes de «Ver más». */
-const NOTES_SHOWN = 3;
+/** Un plan en la revisión: de qué búsqueda y de qué instante salió. */
+type ReviewRow = {
+  jobId: string;
+  index: number;
+  instantId: string;
+  keepText: boolean;
+};
 
 /**
- * Captura una experiencia en texto libre y deja que Nexo proponga sus piezas: el encuentro, el
- * gasto, la novedad, el compromiso, la conexión… Antes de guardar puedes corregir o excluir cada
- * una. Todas quedan enlazadas entre sí (en un episodio) y al texto original. Si el texto cuenta
- * varias experiencias (separadas por «---», párrafos con su fecha o una lista), se proponen y se
- * guardan por separado.
+ * Junta lo que encontraron varias búsquedas en una sola revisión. La misma persona nueva en dos
+ * instantes («conocí a Mariana» y luego «Mariana me escribió») queda como una sola.
  */
-export function CaptureDialog({
-  initialText = "",
-  people: preset = [],
+function combine(jobs: PieceJob[]) {
+  const rows: ReviewRow[] = [];
+  const plans: CapturePlan[] = [];
+  const initial: (CapturePlan | undefined)[] = [];
+  const seen = new Map<string, string>();
+  for (const j of jobs)
+    j.plans.forEach((p, i) => {
+      let plan = p;
+      for (const n of p.newPeople) {
+        const key = normalizeText(n.name.trim());
+        const prev = seen.get(key);
+        if (!prev) {
+          seen.set(key, n.id);
+          continue;
+        }
+        if (prev === n.id) continue;
+        plan = swapPerson(plan, n.id, prev, "");
+        plan = {
+          ...plan,
+          newPeople: plan.newPeople.map((x) =>
+            x.id === n.id ? { ...x, id: prev } : x,
+          ),
+          kinLinks: plan.kinLinks.map((k) =>
+            k.personId === n.id ? { ...k, personId: prev } : k,
+          ),
+        };
+      }
+      rows.push({
+        jobId: j.id,
+        index: i,
+        instantId: j.planInstants[i] ?? "",
+        keepText: j.keepText,
+      });
+      plans.push(plan);
+      initial.push(j.initial[i]);
+    });
+  return { rows, plans, initial };
+}
+
+/**
+ * Revisión de las piezas que Nexo encontró en segundo plano en tus instantes: el encuentro, el
+ * gasto, la novedad, el compromiso, la conexión… Puedes corregir o excluir cada una. Al guardar,
+ * cada pieza queda vinculada a su instante (no copia el texto). Si cierras sin guardar, siguen
+ * esperando en la barra.
+ */
+export function PiecesReview({
+  jobs: initialJobs,
   onClose,
 }: {
-  initialText?: string;
-  people?: string[];
+  jobs: PieceJob[];
   onClose: () => void;
 }) {
   const app = useApp();
   const { workspace, confirm, notify, go } = app;
-  const [text, setText] = useState(initialText);
-  const [plans, setPlans] = useState<CapturePlan[] | null>(null);
+  // Lo que había al abrir: si mientras revisas termina otra búsqueda, espera en la barra.
+  const [jobs] = useState(initialJobs);
+  const [start] = useState(() => combine(jobs));
+  const { rows, initial } = start;
+  const [plans, setPlans] = useState<CapturePlan[]>(start.plans);
   const [at, setAt] = useState(0);
-  const [busy, setBusy] = useState<"ai" | "save" | null>(null);
+  const [busy, setBusy] = useState(false);
   const [showSource, setShowSource] = useState(false);
   const [help, setHelp] = useState(false);
-  /** Experiencias ya afinadas con IA (para no gastar otra consulta sin querer). */
-  const [refined, setRefined] = useState<Set<number>>(new Set());
-  /** Separar en varias experiencias: null = lo decide Nexo. */
-  const [split, setSplit] = useState<boolean | null>(null);
-  const [allNotes, setAllNotes] = useState(false);
-  /** Lo que Nexo propuso al principio (para aprender de lo que corriges). */
-  const initial = useRef<CapturePlan[]>([]);
-  const area = useRef<HTMLTextAreaElement>(null);
-  const plan = plans?.[Math.min(at, plans.length - 1)] ?? null;
-
-  useEffect(() => {
-    if (plans) return;
-    const t = window.setTimeout(() => {
-      const el = area.current;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(el.value.length, el.value.length);
-    }, 60);
-    return () => window.clearTimeout(t);
-  }, [plans]);
-
-  // El campo crece con el texto (hasta un tope; luego hace scroll).
-  useLayoutEffect(() => {
-    const el = area.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const max = 280;
-    el.style.height = `${Math.min(el.scrollHeight + 2, max)}px`;
-    el.style.overflowY = el.scrollHeight + 2 > max ? "auto" : "hidden";
-  }, [text, plans]);
-
-  const partsOf = (t: string) => {
-    if (split === false) return [t.trim()];
-    const auto = splitExperiences(t);
-    if (split === true) return auto.length > 1 ? auto : paragraphs(t);
-    return auto;
-  };
-
-  // Vista previa en vivo (con un respiro mientras escribes): piezas, avisos y ánimo.
-  const deferred = useDeferredValue(text);
-  const autoParts = useMemo(() => splitExperiences(deferred), [deferred]);
-  const canSplit = autoParts.length > 1 || paragraphs(deferred).length > 1;
-  const drafts = useMemo(
-    () =>
-      deferred.trim().length > 8
-        ? proposeBatch(partsOf(deferred), workspace)
-        : [],
-    // partsOf solo depende de `split`.
-    [deferred, workspace, split],
-  );
-  const preview = drafts.flatMap((d) => d.pieces);
-  const notes = drafts.flatMap((d, i) =>
-    planNotes(d, workspace).map((n) => ({
-      ...n,
-      text: drafts.length > 1 ? `${i + 1}. ${n.text}` : n.text,
-    })),
-  );
-  const previewMood =
-    drafts.length === 1 && drafts[0].mood
-      ? moods.find((m) => m.value === drafts[0].mood)
-      : undefined;
-
-  const buildPlans = () => {
-    const next = proposeBatch(partsOf(text), workspace);
-    // Las personas desde las que se abrió la captura van en el encuentro.
-    if (preset.length)
-      for (const p of next) {
-        const enc = p.pieces.find((x) => x.kind === "encuentro");
-        if (enc) enc.personIds = [...new Set([...preset, ...enc.personIds])];
-      }
-    initial.current = next;
-    return next;
-  };
-  const propose = () => {
-    if (!text.trim()) return;
-    setPlans(buildPlans());
-    setRefined(new Set());
-    setAt(0);
-  };
+  const plan = plans[Math.min(at, plans.length - 1)] ?? null;
+  const row = rows[Math.min(at, rows.length - 1)];
+  const many = new Set(rows.map((r) => r.instantId || r.jobId)).size > 1;
 
   /** Cambia la experiencia que estás revisando. */
   const setPlan = (fn: (p: CapturePlan | null) => CapturePlan | null) =>
-    setPlans((ps) => ps && ps.map((p, i) => (i === at ? (fn(p) ?? p) : p)));
-
-  /** «tu mamá», «tu jefe»… de cada persona vinculada contigo. */
-  const myKin = useMemo(() => {
-    const byId = new Map(workspace.people.map((p) => [p.id, p]));
-    return new Map(
-      tiesOf(ME, workspace.ties)
-        .filter((v) => v.other !== ME && byId.has(v.other))
-        .map((v) => [
-          v.other,
-          `tu ${kinCall(v.kind, genderOf(byId.get(v.other)))}`,
-        ]),
-    );
-  }, [workspace.people, workspace.ties]);
-
-  const refine = async () => {
-    if (!text.trim() || busy) return;
-    let list = plans;
-    let index = at;
-    if (!list) {
-      list = buildPlans();
-      index = 0;
-      setPlans(list);
-      setAt(0);
-      setRefined(new Set());
-    }
-    const base = list[index];
-    setBusy("ai");
-    try {
-      const raw = await captureWithAssistant(base.text, {
-        today: todayInputValue(),
-        people: workspace.people.slice(0, 400).map((p) => ({
-          id: p.id,
-          name: p.name,
-          ...(p.profile.alias && { alias: p.profile.alias }),
-          // Para que entienda «mi mamá», «mi tío»…: lo que es para ti.
-          ...(myKin.get(p.id) && { kin: myKin.get(p.id) }),
-        })),
-        places: workspace.places
-          .slice(0, 200)
-          .map((p) => ({ id: p.id, name: p.name })),
-        me: selfContext(app.me.profile, workspace.places),
-      });
-      const next = planFromAi(raw, base, workspace);
-      setPlans((ps) => (ps ?? list).map((p, i) => (i === index ? next : p)));
-      setRefined((s) => new Set(s).add(index));
-    } catch (e) {
-      notify(errorMessage(e));
-    } finally {
-      setBusy(null);
-    }
-  };
+    setPlans((ps) => ps.map((p, i) => (i === at ? (fn(p) ?? p) : p)));
 
   const setPiece = (id: string, patch: Partial<Piece>) =>
     setPlan((p) =>
@@ -280,75 +195,102 @@ export function CaptureDialog({
           }
         : p,
     );
-  const toSave = (plans ?? []).filter(
-    (p) => !p.off && p.pieces.some((x) => x.on),
-  );
-  const totalOn = toSave.reduce(
-    (s, p) => s + p.pieces.filter((x) => x.on).length,
-    0,
-  );
+  const toSave = plans.filter((p) => planCount(p) > 0);
+  const totalOn = toSave.reduce((s, p) => s + planCount(p), 0);
+
+  /** Lo que cambiaste queda guardado en la barra (por si cierras y vuelves luego). */
+  const keepEdits = () => {
+    for (const j of jobs) {
+      const mine = rows
+        .map((r, i) => (r.jobId === j.id ? plans[i] : null))
+        .filter((p): p is CapturePlan => p !== null);
+      if (mine.length === j.plans.length) updateJob(j.id, { plans: mine });
+    }
+  };
 
   const save = async () => {
-    if (!plans || !toSave.length || busy) return;
-    setBusy("save");
+    if (!toSave.length || busy) return;
+    setBusy(true);
     const shared = newShared();
     let count = 0;
     let people = 0;
     let ties = 0;
     const episodes: Episode[] = [];
+    const linked = new Set<string>();
+    const saved = new Set<number>();
     try {
-      for (const p of toSave) {
+      for (let i = 0; i < plans.length; i++) {
+        const p = plans[i];
+        if (!planCount(p)) continue;
+        const r = rows[i];
         // Aprende de lo que corregiste (solo en este navegador, con tope de tamaño).
-        learnFromCapture(captureLessons(initial.current[plans.indexOf(p)], p));
-        const r = await saveCapture(p, app, shared);
-        count += r.count;
-        people += r.people;
-        ties += r.ties;
-        if (r.episode) episodes.push(r.episode);
+        learnFromCapture(captureLessons(initial[i], p));
+        const done = await saveCapture(p, app, shared, {
+          instantId: r.instantId || undefined,
+          keepText: r.keepText || !r.instantId,
+        });
+        saved.add(i);
+        count += done.count;
+        people += done.people;
+        ties += done.ties;
+        if (done.episode && done.episodeMade) episodes.push(done.episode);
+        if (r.instantId) {
+          await linkInstant(r.instantId, done.links);
+          linked.add(r.instantId);
+        }
       }
     } catch (e) {
+      // Lo que ya se guardó no se vuelve a guardar si lo intentas otra vez.
+      setPlans((ps) => ps.map((p, i) => (saved.has(i) ? { ...p, off: true } : p)));
+      setBusy(false);
       notify(errorMessage(e));
       return;
-    } finally {
-      setBusy(null);
     }
-    if (!count && !episodes.length && !people && !ties) return;
+    setBusy(false);
+    removeJobs(jobs.map((j) => j.id));
     const fresh = people
       ? ` · ${people} ${people === 1 ? "persona nueva" : "personas nuevas"}`
       : "";
-    const linked = ties
-      ? ` · ${ties} ${ties === 1 ? "vínculo" : "vínculos"}`
+    const tied = ties ? ` · ${ties} ${ties === 1 ? "vínculo" : "vínculos"}` : "";
+    const pieces = `${count} ${count === 1 ? "pieza guardada" : "piezas guardadas"}`;
+    const where = linked.size
+      ? linked.size === 1
+        ? " y vinculadas a tu instante"
+        : ` y vinculadas a ${linked.size} instantes`
       : "";
-    const pieces = `${count} ${count === 1 ? "pieza" : "piezas"}`;
+    const one = linked.size === 1 ? [...linked][0] : "";
     notify(
-      toSave.length > 1
-        ? `${toSave.length} experiencias guardadas: ${pieces}${episodes.length ? ` en ${episodes.length} ${episodes.length === 1 ? "episodio" : "episodios"}` : ""}${fresh}${linked}.`
-        : `Experiencia guardada: ${pieces}${episodes[0] ? ` en «${episodes[0].title}»` : ""}${fresh}${linked}.`,
-      episodes.length === 1
-        ? {
-            label: "Ver episodio",
-            icon: "open",
-            run: () => go("Episodios", episodes[0]),
-          }
-        : episodes.length > 1
-          ? { label: "Ver episodios", icon: "open", run: () => go("Episodios") }
+      `${pieces}${count ? where : ""}${fresh}${tied}.`,
+      one
+        ? { label: "Ver instante", icon: "open", run: () => app.openInstant(one) }
+        : episodes.length === 1
+          ? {
+              label: "Ver episodio",
+              icon: "open",
+              run: () => go("Episodios", episodes[0]),
+            }
           : undefined,
     );
     onClose();
   };
 
-  const requestClose = async () => {
-    if (text.trim() && text !== initialText) {
-      const ok = await confirm({
-        title: "¿Descartar lo que escribiste?",
-        message: "Nada de esta experiencia se ha guardado todavía.",
-        confirmLabel: "Descartar",
-        cancelLabel: "Seguir",
-        danger: true,
-        icon: "warning",
-      });
-      if (!ok) return;
-    }
+  const requestClose = () => {
+    keepEdits();
+    onClose();
+  };
+
+  const discard = async () => {
+    const ok = await confirm({
+      title: `¿Descartar ${totalOn === 1 ? "esta pieza" : `estas ${totalOn} piezas`}?`,
+      message:
+        "Tus instantes quedan tal cual; solo se descarta lo que Nexo propuso a partir de ellos.",
+      confirmLabel: "Descartar",
+      cancelLabel: "Seguir revisando",
+      danger: true,
+      icon: "warning",
+    });
+    if (!ok) return;
+    removeJobs(jobs.map((j) => j.id));
     onClose();
   };
 
@@ -381,6 +323,10 @@ export function CaptureDialog({
     [workspace.entries],
   );
   const items = useMemo(() => personItems(options, counts), [options, counts]);
+  const preset = useMemo(
+    () => jobs.find((j) => j.id === row?.jobId)?.people ?? [],
+    [jobs, row?.jobId],
+  );
   const inText = useMemo(
     () =>
       plan
@@ -410,7 +356,6 @@ export function CaptureDialog({
   const nameOf = (id: string | null) =>
     options.find((o) => o.id === id)?.name ?? "";
   const personOf = (id: string) => workspace.people.find((p) => p.id === id);
-  const shownNotes = allNotes ? notes : notes.slice(0, NOTES_SHOWN);
   const showMood =
     plan?.pieces.some(
       (p) =>
@@ -421,11 +366,11 @@ export function CaptureDialog({
     (plan?.ambiguous.length ?? 0) +
     (plan?.kinLinks.length ?? 0) +
     (plan?.newPeople.length ?? 0);
-  const aiDone = plan ? refined.has(at) : false;
 
+  if (!plan) return null;
   return (
     <Sheet
-      label="Capturar una experiencia"
+      label="Piezas de tus instantes"
       size="lg"
       className="xp-sheet"
       yieldTo=".xp-help-backdrop, .xp-pk-backdrop"
@@ -437,24 +382,18 @@ export function CaptureDialog({
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
               e.preventDefault();
-              if (plans) void save();
-              else propose();
+              void save();
             }
           }}
         >
           <header className="xp-head">
-            {plans ? (
-              <button
-                type="button"
-                className="xp-icon"
-                aria-label="Volver al texto"
-                title="Volver al texto"
-                onClick={() => setPlans(null)}
-              >
-                <ArrowLeft size={18} />
-              </button>
-            ) : null}
-            <h2>{plans ? "Revisa y guarda" : "Nueva experiencia"}</h2>
+            <h2>
+              {many ? "Piezas de tus instantes" : "Piezas de tu instante"}
+              <small>
+                Corrige o apaga lo que no va. Cada pieza queda vinculada a su
+                instante.
+              </small>
+            </h2>
             <button
               type="button"
               className="xp-icon"
@@ -467,221 +406,120 @@ export function CaptureDialog({
             <button
               type="button"
               className="xp-icon"
-              aria-label="Cerrar"
+              aria-label="Cerrar (siguen esperando en la barra)"
+              title="Cerrar · siguen esperando en la barra"
               onClick={requestClose}
             >
               <X size={18} />
             </button>
           </header>
 
-          {!plan ? (
-            <div className="xp-write">
-              <textarea
-                ref={area}
-                className="xp-area"
-                rows={2}
-                maxLength={12000}
-                value={text}
-                placeholder="¿Qué pasó? Cuéntalo como te salga…"
-                aria-label="Qué pasó"
-                onChange={(e) => setText(e.target.value)}
-              />
-              <div className="xp-detected" aria-live="polite">
-                {preview.map((p) => {
-                  const m = metaOf(p);
-                  return (
-                    <i
-                      key={p.id}
-                      className={p.on ? "" : "off"}
-                      title={p.dup?.text ?? p.hint ?? p.evidence}
-                      style={{ "--c": m.color, "--s": m.soft } as CSSProperties}
-                    >
-                      <m.icon size={12} /> {pieceName(p)}
-                    </i>
-                  );
-                })}
-                {previewMood && (
-                  <i
-                    style={
-                      { "--c": "#a8721d", "--s": "#fbf1dc" } as CSSProperties
-                    }
+          <div className="xp-review">
+            {plans.length > 1 && (
+              <nav className="xp-batch" aria-label="Experiencias">
+                {plans.map((p, i) => (
+                  <button
+                    type="button"
+                    key={i}
+                    className={(i === at ? "on" : "") + (p.off ? " skip" : "")}
+                    onClick={() => setAt(i)}
+                    title={p.text}
                   >
-                    {previewMood.emoji} {previewMood.label}
-                  </i>
-                )}
-              </div>
-              {canSplit && deferred.trim().length > 8 && (
-                <label className="xp-split">
+                    <b>{i + 1}</b>
+                    <span>{p.episode.title || excerpt(p.text, 40)}</span>
+                    <small>{p.off ? "Omitida" : planCount(p)}</small>
+                  </button>
+                ))}
+                <label className="xp-check xp-batch-skip">
                   <input
                     type="checkbox"
-                    checked={drafts.length > 1}
-                    onChange={(e) => setSplit(e.target.checked)}
-                  />
-                  <Layers size={14} />
-                  {drafts.length > 1
-                    ? `${drafts.length} experiencias, se guardan por separado`
-                    : "Separar en varias experiencias"}
-                </label>
-              )}
-              {notes.length > 0 && (
-                <ul className="xp-feedback" aria-live="polite">
-                  {shownNotes.map((n, i) => (
-                    <li key={i} className={n.tone}>
-                      {n.tone === "dup" ? (
-                        <Copy size={13} />
-                      ) : n.tone === "warn" ? (
-                        <CircleHelp size={13} />
-                      ) : (
-                        <Info size={13} />
-                      )}
-                      <span>{n.text}</span>
-                    </li>
-                  ))}
-                  {notes.length > NOTES_SHOWN && (
-                    <li className="more">
-                      <button
-                        type="button"
-                        onClick={() => setAllNotes((v) => !v)}
-                      >
-                        {allNotes
-                          ? "Ver menos"
-                          : `${notes.length - NOTES_SHOWN} más`}
-                      </button>
-                    </li>
-                  )}
-                </ul>
-              )}
-            </div>
-          ) : (
-            <div className="xp-review">
-              {plans && plans.length > 1 && (
-                <nav className="xp-batch" aria-label="Experiencias">
-                  {plans.map((p, i) => (
-                    <button
-                      type="button"
-                      key={i}
-                      className={
-                        (i === at ? "on" : "") + (p.off ? " skip" : "")
-                      }
-                      onClick={() => setAt(i)}
-                      title={p.text}
-                    >
-                      <b>{i + 1}</b>
-                      <span>{p.episode.title || p.text.slice(0, 40)}</span>
-                      <small>
-                        {p.off
-                          ? "Omitida"
-                          : p.pieces.filter((x) => x.on).length}
-                      </small>
-                    </button>
-                  ))}
-                  <label className="xp-check xp-batch-skip">
-                    <input
-                      type="checkbox"
-                      checked={!plan.off}
-                      onChange={(e) =>
-                        setPlan((p) => p && { ...p, off: !e.target.checked })
-                      }
-                    />
-                    Guardar esta
-                  </label>
-                </nav>
-              )}
-
-              <EpisodeToggle
-                plan={plan}
-                setPlan={setPlan}
-                disabled={app.experiencesMissing}
-              />
-
-              {showMood && (
-                <div className="xp-mood">
-                  <MoodPicker
-                    value={plan.mood ?? undefined}
-                    onChange={(m) =>
-                      setPlan((p) => p && { ...p, mood: m ?? null })
+                    checked={!plan.off}
+                    onChange={(e) =>
+                      setPlan((p) => p && { ...p, off: !e.target.checked })
                     }
-                    label="Cómo te sentiste"
                   />
-                </div>
-              )}
+                  Guardar esta
+                </label>
+              </nav>
+            )}
 
-              {asks > 0 && (
-                <div className="xp-asks">
-                  {plan.ambiguous.map((a) => (
-                    <div className="xp-ask" key={a.name}>
-                      <span className="xp-ask-text">
-                        ¿Qué <b>{a.name}</b>?
-                      </span>
-                      <div className="xp-ask-opts">
-                        {a.ids.map((id) => {
-                          const p = personOf(id);
-                          if (!p) return null;
-                          return (
-                            <button
-                              type="button"
-                              key={id}
-                              className={
-                                "xp-opt" + (a.chosen === id ? " on" : "")
-                              }
-                              onClick={() =>
-                                a.chosen !== id &&
-                                setPlan(
-                                  (pl) =>
-                                    pl && swapPerson(pl, a.chosen, id, a.name),
-                                )
-                              }
-                            >
-                              <Avatar person={p} size={20} /> {p.name}
-                            </button>
-                          );
-                        })}
-                      </div>
+            <button
+              type="button"
+              className="xp-source-toggle"
+              aria-expanded={showSource}
+              onClick={() => setShowSource((v) => !v)}
+            >
+              <Feather size={13} />
+              <span>{excerpt(plan.text, showSource ? 40 : 110)}</span>
+              <ChevronDown size={14} className={showSource ? "open" : ""} />
+            </button>
+            {showSource && (
+              <blockquote className="xp-source">{plan.text}</blockquote>
+            )}
+
+            <EpisodeToggle
+              plan={plan}
+              setPlan={setPlan}
+              disabled={app.experiencesMissing && !plan.episodeExisting}
+            />
+
+            {showMood && (
+              <div className="xp-mood">
+                <MoodPicker
+                  value={plan.mood ?? undefined}
+                  onChange={(m) =>
+                    setPlan((p) => p && { ...p, mood: m ?? null })
+                  }
+                  label="Cómo te sentiste"
+                />
+              </div>
+            )}
+
+            {asks > 0 && (
+              <div className="xp-asks">
+                {plan.ambiguous.map((a) => (
+                  <div className="xp-ask" key={a.name}>
+                    <span className="xp-ask-text">
+                      ¿Qué <b>{a.name}</b>?
+                    </span>
+                    <div className="xp-ask-opts">
+                      {a.ids.map((id) => {
+                        const p = personOf(id);
+                        if (!p) return null;
+                        return (
+                          <button
+                            type="button"
+                            key={id}
+                            className={"xp-opt" + (a.chosen === id ? " on" : "")}
+                            onClick={() =>
+                              a.chosen !== id &&
+                              setPlan(
+                                (pl) =>
+                                  pl && swapPerson(pl, a.chosen, id, a.name),
+                              )
+                            }
+                          >
+                            <Avatar person={p} size={20} /> {p.name}
+                          </button>
+                        );
+                      })}
                     </div>
-                  ))}
+                  </div>
+                ))}
 
-                  {plan.kinLinks.map((k) => (
-                    <KinLinkRow
-                      key={k.id}
-                      link={k}
-                      plan={plan}
-                      setPlan={setPlan}
-                    />
-                  ))}
+                {plan.kinLinks.map((k) => (
+                  <KinLinkRow key={k.id} link={k} plan={plan} setPlan={setPlan} />
+                ))}
 
-                  {plan.newPeople.map((n) => (
-                    <div
-                      key={n.id}
-                      className={"xp-ask" + (n.on ? "" : " muted")}
+                {plan.newPeople.map((n) => (
+                  <div key={n.id} className={"xp-ask" + (n.on ? "" : " muted")}>
+                    <label
+                      className="xp-check"
+                      title={n.on ? "Se creará" : "No se creará"}
                     >
-                      <label
-                        className="xp-check"
-                        title={n.on ? "Se creará" : "No se creará"}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={n.on}
-                          onChange={(e) =>
-                            setPlan(
-                              (p) =>
-                                p && {
-                                  ...p,
-                                  newPeople: p.newPeople.map((x) =>
-                                    x.id === n.id
-                                      ? { ...x, on: e.target.checked }
-                                      : x,
-                                  ),
-                                },
-                            )
-                          }
-                        />
-                      </label>
-                      <UserPlus size={15} className="xp-ask-icon" />
                       <input
-                        className="xp-inline"
-                        value={n.name}
-                        maxLength={120}
-                        aria-label="Nombre de la persona nueva"
+                        type="checkbox"
+                        checked={n.on}
                         onChange={(e) =>
                           setPlan(
                             (p) =>
@@ -689,111 +527,100 @@ export function CaptureDialog({
                                 ...p,
                                 newPeople: p.newPeople.map((x) =>
                                   x.id === n.id
-                                    ? { ...x, name: e.target.value }
+                                    ? { ...x, on: e.target.checked }
                                     : x,
                                 ),
                               },
                           )
                         }
                       />
-                      <small className="xp-tag">Nueva</small>
-                      {n.like && personOf(n.like) && (
-                        <button
-                          type="button"
-                          className="xp-opt"
-                          title="Usar la ficha que ya tienes"
-                          onClick={() =>
-                            setPlan((p) => p && adoptExisting(p, n.id, n.like!))
-                          }
-                        >
-                          <Avatar person={personOf(n.like)!} size={20} /> ¿Es{" "}
-                          {personOf(n.like)!.name}?
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="xp-pieces">
-                {plan.pieces.map((p) => (
-                  <PieceCard
-                    key={p.id}
-                    piece={p}
-                    onToggle={(on) => setPiece(p.id, { on })}
-                  >
-                    <PieceFields
-                      piece={p}
-                      set={(patch) => setPiece(p.id, patch)}
-                      nameOf={nameOf}
+                    </label>
+                    <UserPlus size={15} className="xp-ask-icon" />
+                    <input
+                      className="xp-inline"
+                      value={n.name}
+                      maxLength={120}
+                      aria-label="Nombre de la persona nueva"
+                      onChange={(e) =>
+                        setPlan(
+                          (p) =>
+                            p && {
+                              ...p,
+                              newPeople: p.newPeople.map((x) =>
+                                x.id === n.id ? { ...x, name: e.target.value } : x,
+                              ),
+                            },
+                        )
+                      }
                     />
-                  </PieceCard>
+                    <small className="xp-tag">Nueva</small>
+                    {n.like && personOf(n.like) && (
+                      <button
+                        type="button"
+                        className="xp-opt"
+                        title="Usar la ficha que ya tienes"
+                        onClick={() =>
+                          setPlan((p) => p && adoptExisting(p, n.id, n.like!))
+                        }
+                      >
+                        <Avatar person={personOf(n.like)!} size={20} /> ¿Es{" "}
+                        {personOf(n.like)!.name}?
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
+            )}
 
-              <button
-                type="button"
-                className="xp-source-toggle"
-                aria-expanded={showSource}
-                onClick={() => setShowSource((v) => !v)}
-              >
-                <Quote size={13} /> Texto original
-                <ChevronDown size={14} className={showSource ? "open" : ""} />
-              </button>
-              {showSource && (
-                <blockquote className="xp-source">{plan.text}</blockquote>
+            <div className="xp-pieces">
+              {plan.pieces.map((p) => (
+                <PieceCard
+                  key={p.id}
+                  piece={p}
+                  onToggle={(on) => setPiece(p.id, { on })}
+                >
+                  <PieceFields
+                    piece={p}
+                    set={(patch) => setPiece(p.id, patch)}
+                    nameOf={nameOf}
+                  />
+                </PieceCard>
+              ))}
+              {!plan.pieces.length && (
+                <p className="xp-none">
+                  Aquí no hay piezas; solo personas o vínculos por guardar.
+                </p>
               )}
             </div>
-          )}
+          </div>
 
           <footer className="xp-foot">
+            <button
+              type="button"
+              className="cp-btn ghost xp-discard"
+              disabled={busy}
+              onClick={() => void discard()}
+            >
+              <Trash2 size={15} /> Descartar
+            </button>
             <span className="xp-keys" aria-hidden="true">
               <kbd>Ctrl</kbd>
               <kbd>Enter</kbd>
             </span>
             <button
               type="button"
-              className={
-                "xp-ai" +
-                (busy === "ai" ? " busy" : "") +
-                (aiDone ? " done" : "")
-              }
-              disabled={!text.trim() || Boolean(busy)}
-              onClick={() => void refine()}
-              aria-label="Afinar con IA"
-              data-tip={aiDone ? "Afinado con IA · otra vez" : "Afinar con IA"}
+              className="cp-btn cta"
+              disabled={!totalOn || busy}
+              onClick={() => void save()}
             >
-              {busy === "ai" ? (
-                <LoaderCircle className="spin" size={18} />
+              {busy ? (
+                <LoaderCircle className="spin" size={16} />
               ) : (
-                <Sparkles size={18} />
+                <Check size={16} />
               )}
+              Guardar{" "}
+              {totalOn > 0 && <span className="xp-count">{totalOn}</span>}
             </button>
-            {plans ? (
-              <button
-                type="button"
-                className="cp-btn cta"
-                disabled={!totalOn || Boolean(busy)}
-                onClick={() => void save()}
-              >
-                {busy === "save" ? (
-                  <LoaderCircle className="spin" size={16} />
-                ) : (
-                  <Check size={16} />
-                )}
-                Guardar{" "}
-                {totalOn > 0 && <span className="xp-count">{totalOn}</span>}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="cp-btn cta"
-                disabled={!text.trim() || Boolean(busy)}
-                onClick={propose}
-              >
-                Continuar <ArrowRight size={16} />
-              </button>
-            )}
           </footer>
         </div>
       </CapturePeople.Provider>
@@ -962,8 +789,13 @@ function EpisodeToggle({
   setPlan: (fn: (p: CapturePlan | null) => CapturePlan | null) => void;
   disabled: boolean;
 }) {
+  const { workspace } = useApp();
   const ep = plan.episode;
-  const m = episodeKinds[ep.kind];
+  // El episodio que elegiste al escribir: las piezas se suman a él.
+  const existing = plan.episodeExisting
+    ? workspace.episodes.find((e) => e.id === plan.episodeExisting)
+    : undefined;
+  const m = existing ? episodeKindOf(existing.kind) : episodeKinds[ep.kind];
   const on = ep.on && !disabled;
   const set = (patch: Partial<CapturePlan["episode"]>) =>
     setPlan((p) => p && { ...p, episode: { ...p.episode, ...patch } });
@@ -992,7 +824,11 @@ function EpisodeToggle({
           />
           <i />
         </label>
-        {on ? (
+        {on && existing ? (
+          <span className="xp-title xp-title-fixed" title="Se suman a este episodio">
+            <m.icon size={14} /> {existing.title}
+          </span>
+        ) : on ? (
           <input
             className="xp-title"
             value={ep.title}
@@ -1034,7 +870,7 @@ function EpisodeToggle({
           title="Cuándo pasó"
         />
       </div>
-      {on && (
+      {on && !existing && (
         <div
           className="xp-kinds"
           role="radiogroup"

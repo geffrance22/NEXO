@@ -2926,6 +2926,21 @@ main:has(.pp-page:not(.full)) {
 .pp-update-ask:hover {
   background: #f8e2b8;
 }
+/* La novedad salió de un instante: abre su ventana. */
+.pp-update-instant {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #f1f0f8;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: #5b52a8;
+}
+.pp-update-instant:hover {
+  background: #e6e3f5;
+}
 .pp-update-x {
   display: grid;
   flex: none;

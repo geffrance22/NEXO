@@ -7,6 +7,7 @@ import { voiceOf } from '../lib/myself';
 import { ageOf, closenessOf, daysBetween, daysToBirthday, relativeDay } from '../lib/people';
 import { isActive, progressOf } from '../library/progress';
 import type { FeedCard } from '../planner/boardFeed';
+import { dayOfInstant, type Instant } from '../instants/model';
 import { plainMarks } from '../planner/cardMarks';
 import type { LocalFacts } from './greeting';
 
@@ -70,6 +71,8 @@ export function buildGreetingInput(
   now = new Date(),
   /** Tarjetas de los tableros que activaron «En el saludo de Mi espacio» (no de todos). */
   cards: readonly FeedCard[] = [],
+  /** Tus instantes (el más reciente primero): lo último que escribiste tal cual. */
+  instants: readonly Instant[] = [],
 ): GreetingInput {
   const today = todayInputValue(now);
   const p = me.profile;
@@ -166,11 +169,15 @@ export function buildGreetingInput(
     .map((e) => moodTone(e.details.mood))
     .filter((m): m is number => typeof m === 'number');
   const openTasks = ws.entries.filter(isOpenTask);
+  const recentInstants = instants
+    .filter((i) => i.body.trim() && dayOfInstant(i) >= weekAgo)
+    .slice(0, 3);
+  const lastInstant = instants[0] ? dayOf(instants[0].created_at) : null;
   const dueIn = (e: Entry) => (e.details.due ? daysBetween(today, e.details.due) : null);
 
   // Accesos directos que la IA puede elegir (la app solo acepta estos).
   const choices = [
-    { id: 'capture', que: 'Escribir un recuerdo o contar qué pasó' },
+    { id: 'capture', que: 'Escribir un instante (lo que pasa, tal cual) o contar qué pasó' },
     { id: 'chat', que: 'Preguntarle algo a Nexo sobre su memoria' },
     ...(weekly ? [{ id: 'weekly', que: 'Abrir su periódico de la semana' }] : []),
     { id: 'go:Libroteca', que: 'Ir a su Libroteca (libros, series y citas)' },
@@ -265,9 +272,16 @@ export function buildGreetingInput(
       recuerdos_esta_semana: lately.filter(
         (e) => e.kind !== 'Movimiento' && dayOf(e.created_at) >= weekAgo,
       ).length,
-      dias_sin_escribir: memories[0]
-        ? Math.max(0, daysBetween(dayOf(added(memories[0])), today))
-        : undefined,
+      dias_sin_escribir:
+        memories[0] || lastInstant
+          ? Math.max(
+              0,
+              Math.min(
+                memories[0] ? daysBetween(dayOf(added(memories[0])), today) : Infinity,
+                lastInstant ? daysBetween(lastInstant, today) : Infinity,
+              ),
+            )
+          : undefined,
       ultimos: memories.slice(0, 5).map((e) => ({
         tipo: e.kind,
         titulo: clip(e.title, 70),
@@ -280,6 +294,13 @@ export function buildGreetingInput(
       vencen_hoy: openTasks.filter((e) => dueIn(e) === 0).length,
       vencidos: openTasks.filter((e) => (dueIn(e) ?? 0) < 0).length,
     },
+    // Lo último que escribió tal cual (publicaciones breves o hilos), en sus palabras.
+    instantes_recientes: recentInstants.length
+      ? recentInstants.map((i) => ({
+          cuando: relativeDay(dayOfInstant(i), today).toLowerCase(),
+          texto: clip(i.body, 160),
+        }))
+      : undefined,
     tableros: tableros.length ? tableros : undefined,
     episodios_activos: ws.episodes
       .filter((ep) => ep.status === 'activo')

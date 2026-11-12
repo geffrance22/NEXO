@@ -1,11 +1,12 @@
 import { entryImages } from "../lib/moviePosters";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   BookMarked,
   Brain,
   Check,
   Clapperboard,
   ClipboardCheck,
+  Feather,
   GraduationCap,
   Layers,
   MapPin,
@@ -40,6 +41,8 @@ import { daysBetween } from "../lib/people";
 import { placeOf } from "../lib/places";
 import { Avatar } from "../people/Avatar";
 import { AddToNotebook } from "../cuadernos/AddToNotebook";
+import { agoLabel, excerpt } from "../instants/model";
+import { instantsWith, useInstants } from "../instants/store";
 import { RichText } from "./RichText";
 import { Sheet } from "./Sheet";
 import "./entry-viewer.css";
@@ -59,6 +62,12 @@ export function EntryViewer({
   const { workspace } = app;
   // Películas y series sin póster o sin sinopsis: se completan con TMDB al abrir la ficha.
   useMediaEnrich(entry);
+  // Los instantes de los que nació (o a los que lo vinculaste): el texto vive allí.
+  const { list: instants } = useInstants();
+  const born = useMemo(
+    () => instantsWith(instants, "entry_ids", entry.id),
+    [instants, entry.id],
+  );
   const close = useRef(onClose);
   close.current = onClose;
   useEffect(() => {
@@ -381,12 +390,36 @@ export function EntryViewer({
           )}
 
           {(people.length > 0 ||
+            born.length > 0 ||
             episode ||
             origin ||
             readingId ||
             entry.tags.length > 0 ||
             entry.file_path) && (
             <div className="ev-links">
+              {born.length > 0 && (
+                <div className="ev-row">
+                  <span className="ev-label">Nació de</span>
+                  <div className="ev-instants">
+                    {born.slice(0, 4).map((i) => (
+                      <button
+                        type="button"
+                        key={i.id}
+                        className="ev-episode ev-instant"
+                        title="Abrir el instante"
+                        onClick={() => app.openInstant(i.id)}
+                      >
+                        <Feather size={13} />
+                        <span>
+                          {excerpt(i.body, 70) ||
+                            (i.images.length ? "Una foto" : "Instante")}
+                        </span>
+                        <small>{agoLabel(i.created_at)}</small>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {readingId && !origin && (
                 <div className="ev-row">
                   <span className="ev-label">Viene de</span>

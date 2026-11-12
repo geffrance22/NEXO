@@ -9,7 +9,6 @@ import {
   Cake,
   ClipboardCheck,
   NotebookPen,
-  Wand2,
   Feather,
   IdCard,
   Link2,
@@ -154,7 +153,7 @@ export function PersonMenu({
               <ClipboardCheck size={15} /> Cerrar encuentro (30 s)
             </button>
             <button role="menuitem" onClick={run(() => app.openCapture('', [person.id]))}>
-              <Wand2 size={15} /> Contar una experiencia
+              <Feather size={15} /> Escribir un instante
             </button>
             <span className="pp-dropdown-sep" />
             <span className="pp-dropdown-label">Añadir rápido</span>

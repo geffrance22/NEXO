@@ -9,6 +9,7 @@ import {
   Check,
   CircleAlert,
   CircleCheck,
+  Feather,
   History,
   Layers,
   Link2,
@@ -26,7 +27,6 @@ import {
   TrendingUp,
   Unlink,
   Users,
-  Wand2,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -50,6 +50,8 @@ import { friendlyDate, money, normalizeText, shortDate, todayInputValue } from '
 import { daysBetween } from '../lib/people';
 import { updateKinds } from '../lib/updates';
 import { Avatar } from '../people/Avatar';
+import { agoLabel, excerpt } from '../instants/model';
+import { instantsWith, useInstants } from '../instants/store';
 import { EpisodeGallery, EpisodeLog, RelatedEpisodes } from './EpisodeParts';
 import './episodes.css';
 
@@ -267,7 +269,7 @@ function EpisodesList() {
         </p>
         <div className="ep-empty-actions">
           <button type="button" className="pp-btn" onClick={() => openCapture()}>
-            <Wand2 size={15} /> Capturar una experiencia
+            <Feather size={15} /> Escribir un instante
           </button>
           <button type="button" className="pp-btn dark" onClick={() => openEpisode()}>
             <Plus size={15} /> Nuevo episodio
@@ -360,7 +362,7 @@ function EpisodesList() {
             </select>
           </label>
           <button type="button" className="pp-btn" onClick={() => openCapture()}>
-            <Wand2 size={15} /> Capturar
+            <Feather size={15} /> Escribir
           </button>
           <button type="button" className="pp-btn dark" onClick={() => openEpisode()}>
             <Plus size={15} /> Nuevo episodio
@@ -601,6 +603,9 @@ export function EpisodeDetail({
     () => episodeSummary(ep, workspace.entries, workspace.people, workspace.places),
     [ep, workspace],
   );
+  // Lo que escribiste de este episodio, tal cual (el más reciente primero).
+  const { list: instants } = useInstants();
+  const told = useMemo(() => instantsWith(instants, 'episode_ids', ep.id), [instants, ep.id]);
   const m = episodeKindOf(ep.kind);
   const [adding, setAdding] = useState(false);
   const [outcome, setOutcome] = useState(ep.outcome);
@@ -895,13 +900,52 @@ export function EpisodeDetail({
             />
           </section>
 
-          {ep.source && (
+          {told.length > 0 ? (
             <section className="ep-panel">
               <h3>
-                <Quote size={14} /> Texto original
+                <Feather size={14} /> Instantes
+                <small className="ep-panel-n">{told.length}</small>
               </h3>
-              <blockquote className="xp-source ep-source">{ep.source}</blockquote>
+              <div className="ep-instants">
+                {told.slice(0, 8).map((i) => (
+                  <button
+                    type="button"
+                    key={i.id}
+                    className="ep-instant"
+                    title="Abrir el instante"
+                    onClick={() => app.openInstant(i.id)}
+                  >
+                    <span>
+                      {excerpt(i.body, 180) || (i.images.length ? 'Una foto' : 'Instante')}
+                    </span>
+                    <small>
+                      {agoLabel(i.created_at)}
+                      {i.entry_ids.length > 0 &&
+                        ` · ${i.entry_ids.length} ${i.entry_ids.length === 1 ? 'pieza' : 'piezas'}`}
+                    </small>
+                  </button>
+                ))}
+              </div>
+              {told.length > 8 && (
+                <button
+                  type="button"
+                  className="pp-text-btn"
+                  onClick={() => app.openInstants(told[8].id)}
+                >
+                  Ver {told.length - 8} más en tus instantes
+                </button>
+              )}
             </section>
+          ) : (
+            // Episodios capturados antes de los instantes: guardaban el texto aquí.
+            ep.source && (
+              <section className="ep-panel">
+                <h3>
+                  <Quote size={14} /> Texto original
+                </h3>
+                <blockquote className="xp-source ep-source">{ep.source}</blockquote>
+              </section>
+            )
           )}
         </aside>
       </div>

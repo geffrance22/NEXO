@@ -20,7 +20,7 @@ const kinds: [PieceMeta, string][] = [
   [pieceIcons.enlace, 'Enlaces'],
 ];
 
-/** Ventana translúcida con lo que hace la captura. */
+/** Ventana translúcida con lo que hace Nexo con tus instantes. */
 export function CaptureHelp({ onClose }: { onClose: () => void }) {
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -61,15 +61,20 @@ export function CaptureHelp({ onClose }: { onClose: () => void }) {
         <ol className="xp-help-steps">
           <li>
             <b>1</b>
-            <span>Escribe lo que pasó, como te salga.</span>
+            <span>Escribe un instante (o un hilo) como te salga. Se guarda tal cual.</span>
           </li>
           <li>
             <b>2</b>
-            <span>Nexo lo separa en piezas y las enlaza con tu gente y tus lugares.</span>
+            <span>
+              En segundo plano, Nexo lo separa en piezas y las enlaza con tu gente y tus lugares.
+            </span>
           </li>
           <li>
             <b>3</b>
-            <span>Revisas, corriges y guardas. Nexo aprende de tus correcciones.</span>
+            <span>
+              Revisas, corriges y guardas: cada pieza queda vinculada a su instante. Nexo aprende
+              de tus correcciones.
+            </span>
           </li>
         </ol>
 
@@ -86,18 +91,18 @@ export function CaptureHelp({ onClose }: { onClose: () => void }) {
           <li>
             <Layers size={15} />
             <span>
-              Varias experiencias a la vez: sepáralas con <code>---</code> o en párrafos con su
-              fecha.
+              Varias experiencias en un instante: sepáralas con <code>---</code> o en párrafos con
+              su fecha. Cada parte de un hilo se lee por separado.
             </span>
           </li>
           <li>
             <Sparkles size={15} />
-            <span>La IA entiende mejor los textos largos o enredados. Usa una consulta.</span>
+            <span>La IA afina sola las primeras experiencias de cada publicación.</span>
           </li>
           <li>
             <kbd>Ctrl</kbd>
             <kbd>Enter</kbd>
-            <span>Continúa sin tocar el ratón.</span>
+            <span>Guarda sin tocar el ratón.</span>
           </li>
         </ul>
       </div>

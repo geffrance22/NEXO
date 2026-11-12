@@ -8,6 +8,7 @@ import {
   CalendarRange,
   Clapperboard,
   Columns3,
+  Feather,
   Flame,
   GraduationCap,
   HandCoins,
@@ -34,7 +35,6 @@ import {
   UserPlus,
   Users,
   Wallet,
-  Wand2,
   Zap,
 } from 'lucide-react';
 import { TodayAgenda } from '../agenda/TodayAgenda';
@@ -125,14 +125,16 @@ export const blockDefs: BlockDef[] = [
     Component: ({ opts }) => <TodayAgenda title={titleOf(opts, '')} />,
   },
   {
+    // El tipo sigue siendo «capture» para que los espacios ya guardados conserven el bloque.
     type: 'capture',
-    label: '¿Qué pasó?',
-    desc: 'Cuenta algo en una o dos frases y Nexo arma sus piezas. Con acceso a tu memoria y a tu semana.',
-    icon: Wand2,
+    label: 'Instantes',
+    desc: 'Escribe lo que pasa, tal cual (también en hilos). Nexo lo guarda así y arma sus piezas en segundo plano. Con tu feed y tu semana a un clic.',
+    icon: Feather,
     group: 'dia',
     zones: [...both],
     opts: [
-      { key: 'ask', label: 'Botón «Consultar memoria»', type: 'toggle', def: true },
+      { key: 'last', label: 'Mostrar el último instante', type: 'toggle', def: true },
+      { key: 'feed', label: 'Acceso «Ver todos» a tu feed', type: 'toggle', def: true },
       { key: 'weekly', label: 'Enlace a tu periódico semanal', type: 'toggle', def: true },
     ],
     Component: CaptureBlock,

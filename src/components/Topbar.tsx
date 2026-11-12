@@ -16,19 +16,25 @@ const busy = (target: EventTarget | null) =>
   );
 
 export function Topbar({ onToggleMenu }: { onToggleMenu: () => void }) {
-  const { page, openEntry } = useApp();
+  const { page, openEntry, openCapture } = useApp();
   const { dark, toggle } = useTheme();
   const themeLabel = dark ? 'Desactivar modo oscuro' : 'Activar modo oscuro';
 
-  // Atajo: «N» abre «¿Qué quieres guardar?» desde cualquier sección.
+  // Atajos desde cualquier sección: «N» abre «¿Qué quieres guardar?»; «P» (o «W») escribe un
+  // instante.
   const open = useRef(openEntry);
   open.current = openEntry;
+  const write = useRef(openCapture);
+  write.current = openCapture;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== 'n' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      const key = e.key.toLowerCase();
+      if (key !== 'n' && key !== 'p' && key !== 'w') return;
       if (busy(e.target)) return;
       e.preventDefault();
-      open.current();
+      if (key === 'n') open.current();
+      else write.current();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);

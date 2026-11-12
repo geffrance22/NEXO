@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import {
   BookOpen,
   Columns3,
+  Feather,
   Images,
   Layers,
   Library,
@@ -10,7 +11,6 @@ import {
   Sparkles,
   UserPlus,
   Wallet,
-  Wand2,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
@@ -38,7 +38,7 @@ export const actions: Record<string, Action> = {
   pelicula: kindAction('Película', 'Película o serie'),
   aprendizaje: kindAction('Aprendizaje'),
   trabajo: kindAction('Trabajo'),
-  capturar: { label: 'Contar qué pasó', icon: Wand2, color: '#6b62b5', soft: '#eeebfa' },
+  capturar: { label: 'Escribir un instante', icon: Feather, color: '#6b62b5', soft: '#eeebfa' },
   persona: { label: 'Persona', icon: UserPlus, color: '#4f6bb5', soft: '#e7ecf7' },
   lugar: { label: 'Lugar', icon: MapPin, color: '#c0674a', soft: '#f9e9e2' },
   episodio: { label: 'Episodio', icon: Layers, color: '#3c9186', soft: '#dff2ef' },

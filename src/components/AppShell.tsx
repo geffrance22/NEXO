@@ -31,7 +31,11 @@ import {
   withTastes,
   type Tastes,
 } from "../lib/tastes";
-import { CaptureDialog } from "../capture/CaptureDialog";
+import { InstantComposer } from "../instants/InstantComposer";
+import { InstantSheet, InstantsPanel } from "../instants/InstantsPanel";
+import { PiecesBar } from "../instants/PiecesBar";
+import { setPiecesReview } from "../instants/analysis";
+import { loadInstants } from "../instants/store";
 import { EpisodeSheet } from "../episodes/EpisodeSheet";
 import { EpisodesPage } from "../episodes/EpisodesPage";
 import { MeetingBrief } from "../people/MeetingBrief";
@@ -91,7 +95,6 @@ type ModalState =
       init?: Partial<EpisodeInput>;
       from?: EpisodeOrigin;
     }
-  | { type: "capture"; text?: string; people?: string[] }
   | {
       type: "brief";
       personId: string;
@@ -190,6 +193,22 @@ export function AppShell({ user }: { user: AppUser }) {
     personId: string;
     otherId?: string;
   } | null>(null);
+  // Instantes: escribir uno (o un hilo), el feed a la derecha y uno abierto en su ventana.
+  const [writing, setWriting] = useState<{
+    text?: string;
+    people?: string[];
+    nonce: number;
+  } | null>(null);
+  const [instantsOpen, setInstantsOpen] = useState<{ focus?: string } | null>(
+    null,
+  );
+  const [instantId, setInstantId] = useState<string | null>(null);
+  const closeInstants = useCallback(() => setInstantsOpen(null), []);
+  const closeInstant = useCallback(() => setInstantId(null), []);
+  // Se cargan desde el principio: el saludo, la búsqueda y las fichas los citan.
+  useEffect(() => {
+    void loadInstants();
+  }, []);
   // Una entrada del diario recién guardada que la IA está leyendo.
   const [diaryJob, setDiaryJob] = useState<DiaryJob | null>(null);
   const closeDiaryJob = useCallback(() => setDiaryJob(null), []);
@@ -396,6 +415,8 @@ export function AppShell({ user }: { user: AppUser }) {
     }
     setMobile(false);
     setWeekly(false);
+    setInstantsOpen(null);
+    setInstantId(null);
   }
 
   const context: AppContextValue = {
@@ -503,7 +524,12 @@ export function AppShell({ user }: { user: AppUser }) {
     episodeExtrasMissing: data.episodeExtrasMissing,
     peekPerson: (person) => setPeek(person.id),
     openWeekly: () => setWeekly(true),
-    openCapture: (text, people) => setModal({ type: "capture", text, people }),
+    // Si ya estás escribiendo uno, se queda abierto (no se pierde lo escrito).
+    openCapture: (text, people) =>
+      setWriting((w) => w ?? { text, people, nonce: Date.now() }),
+    openInstants: (focus) => setInstantsOpen({ focus }),
+    openInstant: (id) => setInstantId(id),
+    reviewPieces: () => setPiecesReview(true),
     openBrief: (person, mode, entry) =>
       setModal({ type: "brief", personId: person.id, mode, entry }),
     experiencesMissing: data.experiencesMissing,
@@ -830,13 +856,7 @@ export function AppShell({ user }: { user: AppUser }) {
             onClose={closeModal}
           />
         )}
-        {modal?.type === "capture" && (
-          <CaptureDialog
-            initialText={modal.text}
-            people={modal.people}
-            onClose={closeModal}
-          />
-        )}
+
         {modal?.type === "brief" &&
           workspace.people.some((p) => p.id === modal.personId) && (
             <MeetingBrief
@@ -884,6 +904,25 @@ export function AppShell({ user }: { user: AppUser }) {
         {chat && (
           <ChatPanel assistant={assistant} onClose={() => setChat(false)} />
         )}
+        {instantsOpen && (
+          <InstantsPanel
+            key={instantsOpen.focus ?? "feed"}
+            focus={instantsOpen.focus}
+            onClose={closeInstants}
+          />
+        )}
+        {instantId && (
+          <InstantSheet key={instantId} id={instantId} onClose={closeInstant} />
+        )}
+        {writing && (
+          <InstantComposer
+            key={writing.nonce}
+            text={writing.text}
+            people={writing.people}
+            onClose={() => setWriting(null)}
+          />
+        )}
+        <PiecesBar />
         {meOpen && <MyProfileSheet onClose={() => setMeOpen(false)} />}
         {mergeTarget && merge && (
           <MergeDialog

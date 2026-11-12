@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../AppContext';
 import type { MyRecord, Workspace } from '../data';
+import { instantsState } from '../instants/store';
 import { todayInputValue } from '../lib/format';
 import { greetingCards, useBoardFeed, type FeedCard } from '../planner/boardFeed';
 import { useDismissed } from '../relations/dismissed';
@@ -83,7 +84,14 @@ function generate(uid: string, read: () => Source): Promise<Stored | null> {
     if (pausedUntil() > Date.now()) return null;
 
     const { workspace, me, skip, cards } = read();
-    const input = buildGreetingInput(workspace, me, skip, when, cards);
+    const input = buildGreetingInput(
+      workspace,
+      me,
+      skip,
+      when,
+      cards,
+      instantsState().list ?? [],
+    );
     const res = await askGreeting({
       digest: input.digest,
       ahora: {

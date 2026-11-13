@@ -114,7 +114,7 @@ export function Inicio({
     const season = e.details.seasonAt ?? 1;
     const episode = (e.details.episodeAt ?? 0) + 1;
     const ok = await patchEntry(e, {
-      details: withEpisode(e, season, episode),
+      details: withEpisode(e, season, episode, 'por-ver'),
     });
     if (ok) notify(`${e.title}: vas en la T${season} · E${episode}.`);
   };

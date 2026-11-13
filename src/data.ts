@@ -370,6 +370,31 @@ export type Ritual = {
   learningId?: string;
 };
 
+/**
+ * Un episodio de una serie que calificaste o reseñaste. Lo de TMDB (título, emisión, duración)
+ * se copia al guardarlo: así la ficha lo muestra sin volver a consultar.
+ */
+export type EpisodeNote = {
+  /** Temporada y episodio. */
+  s: number;
+  e: number;
+  /** De 1 a 5. */
+  rating?: number;
+  review?: string;
+  /** Título original del episodio (el de TMDB); vacío si no se conoce. */
+  name?: string;
+  /** Título en español, si es otro. */
+  es?: string;
+  /** AAAA-MM-DD: cuándo se emitió. */
+  aired?: string;
+  /** Minutos. */
+  runtime?: number;
+  /** AAAA-MM-DD: cuándo lo calificaste o reseñaste por última vez. */
+  at: string;
+};
+/** El episodio en el que vas: aún sin empezar o a medias. */
+export type EpisodeState = "por-ver" | "viendo";
+
 /** Detalles propios de cada tipo de recuerdo (se guardan en la columna `details`). */
 export type EntryDetails = {
   /** Ánimo del 1 (mal) al 5 (genial): notas y encuentros. */
@@ -426,6 +451,10 @@ export type EntryDetails = {
   seasonAt?: number;
   /** Episodio de esa temporada en el que vas (series). */
   episodeAt?: number;
+  /** Si ese episodio está por ver o lo estás viendo (series). Sin valor: no lo dijiste. */
+  episodeState?: EpisodeState;
+  /** Los episodios que calificaste o reseñaste (series). Los demás no se guardan. */
+  episodeNotes?: EpisodeNote[];
   /** Anclado en «Mi espacio» para seguir su progreso (libros que lees, series que ves). */
   follow?: boolean;
   bookEdition?: {

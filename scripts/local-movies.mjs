@@ -44,9 +44,10 @@ export function localMovies(env) {
       } catch {
         return reply(400, { error: 'Consulta inválida.' });
       }
-      const { query, year, id, type } = fields || {};
+      const { query, year, id, type, season } = fields || {};
       const detail = Number.isSafeInteger(id) && id > 0;
       const only = type === 'tv' || type === 'movie' ? type : null;
+      const seasonNo = Number.isSafeInteger(season) && season >= 0 && season <= 500 ? season : null;
       if (!detail && (typeof query !== 'string' || query.trim().length < 2 || query.length > 180))
         return reply(400, { error: 'Título inválido.' });
       if (!env.TMDB_READ_TOKEN && !apiKey)
@@ -63,7 +64,42 @@ export function localMovies(env) {
         return upstream.json();
       };
 
+      // Igual que en la función: «Episodio 9» es el relleno de TMDB, no un título.
+      const generic = (s) =>
+        /^(episodio|episode|cap[ií]tulo|chapter|ep\.?)\s*\d+$/i.test(String(s).trim());
+
       try {
+        if (detail && only === 'tv' && seasonNo !== null) {
+          const [es, show] = await Promise.all([
+            tmdb(`tv/${id}/season/${seasonNo}`, {}),
+            tmdb(`tv/${id}`, {}).catch(() => null),
+          ]);
+          const lang = typeof show?.original_language === 'string' ? show.original_language : 'es';
+          const orig =
+            lang && lang !== 'es'
+              ? await tmdb(`tv/${id}/season/${seasonNo}`, { language: lang }).catch(() => null)
+              : null;
+          const originals = new Map(
+            (orig?.episodes || []).map((x) => [x.episode_number, x.name || '']),
+          );
+          const episodes = (es.episodes || [])
+            .filter((x) => Number.isSafeInteger(x.episode_number) && x.episode_number > 0)
+            .map((x) => {
+              const esName = (x.name || '').trim();
+              const original = (originals.get(x.episode_number) || '').trim();
+              const name =
+                original && !generic(original) ? original : esName && !generic(esName) ? esName : '';
+              return {
+                n: x.episode_number,
+                name: name.slice(0, 200),
+                es: esName && !generic(esName) && esName !== name ? esName.slice(0, 200) : undefined,
+                aired: typeof x.air_date === 'string' ? x.air_date.slice(0, 10) : undefined,
+                runtime: x.runtime > 0 ? x.runtime : undefined,
+              };
+            })
+            .slice(0, 400);
+          return reply(200, { season: { n: seasonNo, episodes } });
+        }
         if (detail) {
           const tv = only === 'tv';
           const m = await tmdb((tv ? 'tv/' : 'movie/') + id, { append_to_response: 'credits' });

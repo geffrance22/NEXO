@@ -14,6 +14,8 @@ export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
     "series",
     "seasonAt",
     "episodeAt",
+    "episodeState",
+    "episodeNotes",
     "follow",
     "ritual",
   ],
@@ -124,7 +126,10 @@ export function cleanDetails(kind: Kind, details: EntryDetails): EntryDetails {
     if (!series || out.watch !== "viendo") {
       delete out.seasonAt;
       delete out.episodeAt;
+      delete out.episodeState;
     }
+    // Las calificaciones de episodios se quedan aunque la termines; en una película, no aplican.
+    if (!series) delete out.episodeNotes;
   }
   if (kind === "Libro") {
     // «Solo en mi estantería»: es tuyo, en papel, y aún no dices si lo leerás.

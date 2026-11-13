@@ -535,15 +535,13 @@ button.bd-list-title:hover {
   outline: none;
   box-shadow: 0 0 0 2px var(--bd-accent);
 }
-.bd-card.tinted::before {
-  content: "";
-  position: absolute;
-  top: 9px;
-  bottom: 9px;
-  left: 0;
-  width: 3.5px;
-  border-radius: 0 4px 4px 0;
-  background: var(--cc);
+/* Tarjeta con color: toda la tarjeta en un pastel de su color (no una rayita al lado). Las
+   pospuestas conservan su rayado; las completadas, más suaves. */
+.bd-card.tinted:not(.snoozed) {
+  background: color-mix(in srgb, var(--cc) 28%, #fff);
+}
+.bd-card.tinted.done:not(.snoozed) {
+  background: color-mix(in srgb, var(--cc) 13%, #fff);
 }
 .bd-card-row {
   display: flex;

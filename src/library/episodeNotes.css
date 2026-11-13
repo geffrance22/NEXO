@@ -1,0 +1,161 @@
+/* ════════ Tus episodios (ficha de una serie) ════════
+   Compacto: una línea por episodio calificado; la reseña, en dos líneas que se abren al tocarla. */
+.ev-eps {
+  margin-top: 16px;
+}
+.ev-eps-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.ev-eps-head b {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--k);
+}
+.ev-eps-head span {
+  overflow: hidden;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #8a937f;
+}
+.ev-eps-seasons {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.ev-eps-seasons::-webkit-scrollbar {
+  display: none;
+}
+.ev-eps-seasons button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 650;
+  color: #7b8573;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.ev-eps-seasons button:hover {
+  background: rgba(40, 55, 30, 0.05);
+}
+.ev-eps-seasons button.on {
+  background: var(--s);
+  color: var(--k);
+}
+.ev-eps-seasons i {
+  font-size: 10.5px;
+  font-style: normal;
+  opacity: 0.7;
+}
+.ev-eps-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ev-eps-list li {
+  padding: 7px 0;
+}
+.ev-eps-list li + li {
+  border-top: 1px solid rgba(40, 55, 30, 0.07);
+}
+.ev-ep-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ev-ep-n {
+  flex: none;
+  min-width: 30px;
+  padding: 2px 0;
+  border-radius: 6px;
+  background: var(--s);
+  font-size: 11px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--k);
+}
+.ev-ep-main {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.ev-ep-main strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #2b3326;
+}
+.ev-ep-main small {
+  flex: none;
+  font-size: 11px;
+  color: #9aa391;
+}
+.ev-ep-stars {
+  display: inline-flex;
+  flex: none;
+  gap: 1px;
+  color: #dfe3d6;
+}
+.ev-ep-stars .on {
+  color: #f0b429;
+  fill: currentColor;
+}
+.ev-ep-review {
+  display: -webkit-box;
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 0 0 0 40px;
+  overflow: hidden;
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-align: left;
+  white-space: pre-line;
+  color: #5d6655;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.ev-ep-review.open {
+  display: block;
+}
+.ev-ep-review:hover {
+  color: #3a4433;
+}
+.ev-eps-more {
+  margin-top: 4px;
+  padding: 4px 0;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--k);
+}
+.ev-eps-more:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (max-width: 520px) {
+  .ev-ep-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+  }
+}

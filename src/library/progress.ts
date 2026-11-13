@@ -1,7 +1,8 @@
-import type { Entry, EntryDetails } from '../data';
+import type { Entry, EntryDetails, EpisodeNote, EpisodeState } from '../data';
 import { cleanDetails } from '../composer/logic';
 import { bookPace, etaLabel, isSeries } from '../lib/entries';
 import { todayInputValue } from '../lib/format';
+import type { TvEpisode } from '../lib/moviePosters';
 
 /** Un libro que estás leyendo o una serie que estás viendo. */
 export const isActive = (e: Entry) =>
@@ -32,9 +33,10 @@ export function progressOf(e: Entry, today = todayInputValue()) {
   const total = seasonsOf(e);
   const s = e.details.seasonAt;
   const ep = e.details.episodeAt;
+  const state = e.details.episodeState;
   const where = [
     s ? `Temporada ${s}${total ? ` de ${total}` : ''}` : '',
-    ep ? `episodio ${ep}` : '',
+    ep ? `episodio ${ep}${state ? (state === 'por-ver' ? ' por ver' : ', viéndolo') : ''}` : '',
   ]
     .filter(Boolean)
     .join(' · ');
@@ -66,8 +68,17 @@ export function withPage(e: Entry, page: number, total?: number): EntryDetails {
   });
 }
 
-/** Detalles de la serie en la temporada y el episodio indicados. */
-export function withEpisode(e: Entry, season?: number, episode?: number): EntryDetails {
+/**
+ * Detalles de la serie en la temporada y el episodio indicados. `state`: si ese episodio está por
+ * ver o lo estás viendo (sin valor, no se dice). «+1 episodio» lo deja «por ver»: el anterior ya
+ * lo viste.
+ */
+export function withEpisode(
+  e: Entry,
+  season?: number,
+  episode?: number,
+  state?: EpisodeState,
+): EntryDetails {
   return cleanDetails('Película', {
     ...e.details,
     // Fija que es serie (si solo lo decía una etiqueta, «viendo» se perdería).
@@ -75,7 +86,64 @@ export function withEpisode(e: Entry, season?: number, episode?: number): EntryD
     watch: 'viendo',
     seasonAt: season && season > 0 ? season : undefined,
     episodeAt: episode && episode > 0 ? episode : undefined,
+    episodeState: state,
   });
+}
+
+/** El id de TMDB de la serie (para pedir sus episodios), si se conoce. */
+export function tvIdOf(e: Entry) {
+  const d = e.details;
+  if (d.movieInfo?.type === 'tv') return d.movieInfo.id;
+  if (d.tmdbPoster?.type === 'tv' && d.tmdbPoster.id) return d.tmdbPoster.id;
+  return undefined;
+}
+
+export const noteKey = (s: number, e: number) => `${s}:${e}`;
+/** «12 jun 2025» de un AAAA-MM-DD (a mediodía: así no cambia de día por la zona horaria). */
+export const airLabel = (d: string, year = true) =>
+  new Date(d + 'T12:00').toLocaleDateString('es-CO', {
+    day: 'numeric',
+    month: 'short',
+    ...(year && { year: 'numeric' }),
+  });
+/** Lo que escribes de un episodio en «Actualizar progreso». */
+export type EpisodeDraft = { rating: number; review: string };
+
+/**
+ * Las calificaciones y reseñas con lo que cambiaste (`edits`, por `noteKey`). Un episodio sin
+ * calificación ni reseña sale de la lista; lo de TMDB (`meta`) se copia en cada uno. En orden.
+ */
+export function mergeEpisodeNotes(
+  current: EpisodeNote[] | undefined,
+  edits: Record<string, EpisodeDraft>,
+  meta: (s: number, e: number) => TvEpisode | undefined,
+): EpisodeNote[] {
+  const today = todayInputValue();
+  const byKey = new Map((current ?? []).map((n) => [noteKey(n.s, n.e), n]));
+  for (const [key, draft] of Object.entries(edits)) {
+    const [s, e] = key.split(':').map(Number);
+    const before = byKey.get(key);
+    const rating = Math.max(0, Math.min(5, Math.round(draft.rating)));
+    const review = draft.review.trim().slice(0, 2000);
+    if (!rating && !review) {
+      byKey.delete(key);
+      continue;
+    }
+    if (before && (before.rating ?? 0) === rating && (before.review ?? '') === review) continue;
+    const info = meta(s, e);
+    byKey.set(key, {
+      s,
+      e,
+      rating: rating || undefined,
+      review: review || undefined,
+      name: info?.name || before?.name || undefined,
+      es: info?.es || before?.es || undefined,
+      aired: info?.aired || before?.aired || undefined,
+      runtime: info?.runtime || before?.runtime || undefined,
+      at: today,
+    });
+  }
+  return [...byKey.values()].sort((a, b) => a.s - b.s || a.e - b.e);
 }
 
 /** Terminado: el libro leído o la serie vista, con su calificación. Deja de seguirse. */

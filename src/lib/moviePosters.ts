@@ -106,7 +106,9 @@ export async function findMediaHit(
 }
 
 async function request(
-  body: { id: number; type?: MediaType } | { query: string; year: string; type?: MediaType },
+  body:
+    | { id: number; type?: MediaType; season?: number }
+    | { query: string; year: string; type?: MediaType },
 ) {
   if (import.meta.env.DEV && ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) {
     const res = await fetch('/api/nexo/movie-search', {
@@ -134,6 +136,36 @@ async function request(
   }
   return data;
 }
+/** Un episodio de TMDB: título original (y en español si es otro), emisión y duración. */
+export type TvEpisode = {
+  n: number;
+  /** Vacío si TMDB no le conoce título. */
+  name: string;
+  es?: string;
+  /** AAAA-MM-DD */
+  aired?: string;
+  /** Minutos. */
+  runtime?: number;
+};
+const seasonCache = new Map<string, Promise<TvEpisode[] | null>>();
+/**
+ * Los episodios de una temporada de una serie de TMDB. null: la función desplegada aún no los
+ * da (o TMDB no conoce esa temporada).
+ */
+export function seasonEpisodes(id: number, season: number) {
+  const key = id + ':' + season;
+  const found = seasonCache.get(key);
+  if (found) return found;
+  const promise = request({ id, type: 'tv', season }).then((data) => {
+    const list = data?.season?.episodes;
+    return Array.isArray(list) ? (list as TvEpisode[]) : null;
+  });
+  if (seasonCache.size >= 40) seasonCache.delete(seasonCache.keys().next().value!);
+  seasonCache.set(key, promise);
+  promise.catch(() => seasonCache.delete(key));
+  return promise;
+}
+
 type MovieInfo = NonNullable<Entry['details']['movieInfo']>;
 const infoCache = new Map<string, Promise<MovieInfo>>();
 /** Ficha de TMDB de una película o una serie. */

@@ -10,6 +10,7 @@ import {
   BookMarked,
   Check,
   Minus,
+  PenLine,
   Pin,
   PinOff,
   Plus,
@@ -19,12 +20,23 @@ import {
 } from "lucide-react";
 import { useApp } from "../AppContext";
 import { Sheet } from "../components/Sheet";
-import type { Entry, EntryDetails } from "../data";
+import type { Entry, EntryDetails, EpisodeState } from "../data";
 import { Stars } from "../composer/controls";
 import { cleanDetails } from "../composer/logic";
 import { bookPace, etaLabel } from "../lib/entries";
-import { entryImages } from "../lib/moviePosters";
-import { finishedDetails, seasonsOf, withEpisode, withPage } from "./progress";
+import { todayInputValue } from "../lib/format";
+import { entryImages, seasonEpisodes, type TvEpisode } from "../lib/moviePosters";
+import {
+  airLabel,
+  finishedDetails,
+  mergeEpisodeNotes,
+  noteKey,
+  seasonsOf,
+  tvIdOf,
+  withEpisode,
+  withPage,
+  type EpisodeDraft,
+} from "./progress";
 import { QuoteDialog } from "./QuoteDialog";
 import { captionOf, toneOf } from "./shelf";
 import "./progress.css";
@@ -101,6 +113,30 @@ export function ProgressSheet({
   const [total, setTotal] = useState(d.pagesTotal ?? 0);
   const [season, setSeason] = useState(d.seasonAt ?? 1);
   const [episode, setEpisode] = useState(d.episodeAt ?? 1);
+  // Series: si el episodio en el que vas está por ver o lo estás viendo, y lo que calificas o
+  // reseñas de cada episodio (por `noteKey`), que se guarda con «Guardar».
+  const [epState, setEpState] = useState<EpisodeState | undefined>(
+    d.episodeState,
+  );
+  const [edits, setEdits] = useState<Record<string, EpisodeDraft>>({});
+  const [reviewing, setReviewing] = useState<string | null>(null);
+  // Episodios de cada temporada según TMDB (undefined: cargando; null: no se pudo).
+  const tvId = book ? undefined : tvIdOf(entry);
+  const [tvSeasons, setTvSeasons] = useState<Record<number, TvEpisode[] | null>>(
+    {},
+  );
+  useEffect(() => {
+    if (!tvId || tvSeasons[season] !== undefined) return;
+    let live = true;
+    seasonEpisodes(tvId, season).then(
+      (list) => live && setTvSeasons((m) => ({ ...m, [season]: list })),
+      () => live && setTvSeasons((m) => ({ ...m, [season]: null })),
+    );
+    return () => {
+      live = false;
+    };
+    // Una vez por temporada (lo ya pedido queda en `tvSeasons`).
+  }, [tvId, season]);
   const [finishing, setFinishing] = useState(false);
   const [rating, setRating] = useState(d.rating ?? 0);
   const [busy, setBusy] = useState(false);
@@ -133,11 +169,56 @@ export function ProgressSheet({
     : null;
   const pageDirty =
     book && (shownPage !== (d.pagesRead ?? 0) || total !== (d.pagesTotal ?? 0));
+
+  // El episodio que ves en los contadores: lo de TMDB y lo que le pusiste.
+  const tvList = tvSeasons[season];
+  const epCount = tvList?.length || undefined;
+  const epInfo = tvList?.find((x) => x.n === episode);
+  const key = noteKey(season, episode);
+  const savedNote = (k: string) =>
+    (d.episodeNotes ?? []).find((n) => noteKey(n.s, n.e) === k);
+  const current = savedNote(key);
+  const draft: EpisodeDraft = edits[key] ?? {
+    rating: current?.rating ?? 0,
+    review: current?.review ?? "",
+  };
+  const setDraft = (patch: Partial<EpisodeDraft>) =>
+    setEdits((m) => ({ ...m, [key]: { ...draft, ...patch } }));
+  const changedNotes = Object.entries(edits).filter(([k, v]) => {
+    const s = savedNote(k);
+    return (s?.rating ?? 0) !== v.rating || (s?.review ?? "") !== v.review.trim();
+  });
+  const showReview = reviewing === key || Boolean(draft.review);
+  const today = todayInputValue();
+
   const dirty = book
     ? pageDirty || quotes.length > 0
     : season !== (d.seasonAt ?? 1) ||
       episode !== (d.episodeAt ?? 1) ||
-      !d.seasonAt;
+      !d.seasonAt ||
+      epState !== d.episodeState ||
+      changedNotes.length > 0;
+  /** Los detalles con las calificaciones y reseñas de episodios que cambiaste. */
+  const withNotes = (details: EntryDetails): EntryDetails =>
+    changedNotes.length
+      ? cleanDetails("Película", {
+          ...details,
+          episodeNotes: mergeEpisodeNotes(
+            d.episodeNotes,
+            Object.fromEntries(changedNotes),
+            (s, e) => tvSeasons[s]?.find((x) => x.n === e),
+          ),
+        })
+      : details;
+  const notesNote = !changedNotes.length
+    ? ""
+    : changedNotes.length > 1
+      ? `${changedNotes.length} episodios calificados.`
+      : changedNotes[0][1].review.trim()
+        ? "Reseña guardada."
+        : changedNotes[0][1].rating
+          ? "Episodio calificado."
+          : "Quitaste la calificación.";
   // Las citas nuevas van detrás de las que ya tenía el libro.
   const withQuotes = (details: EntryDetails): EntryDetails =>
     quotes.length
@@ -178,23 +259,37 @@ export function ProgressSheet({
           .join(" "),
       );
     } else {
+      const moved =
+        season !== (d.seasonAt ?? 1) ||
+        episode !== (d.episodeAt ?? 1) ||
+        !d.seasonAt ||
+        epState !== d.episodeState;
       void save(
-        withEpisode(entry, season, episode),
-        `Vas en la T${season} · E${episode}.`,
+        withNotes(withEpisode(entry, season, episode, epState)),
+        [
+          moved || !notesNote
+            ? `Vas en la T${season} · E${episode}${epState === "por-ver" ? " (por ver)" : ""}.`
+            : "",
+          notesNote,
+        ]
+          .filter(Boolean)
+          .join(" "),
       );
     }
   };
   const finish = () =>
     void save(
-      withQuotes(
-        finishedDetails(
-          book && total
-            ? { ...entry, details: { ...d, pagesTotal: total } }
-            : entry,
-          rating,
+      withNotes(
+        withQuotes(
+          finishedDetails(
+            book && total
+              ? { ...entry, details: { ...d, pagesTotal: total } }
+              : entry,
+            rating,
+          ),
         ),
       ),
-      [book ? "Libro terminado. ¡Bien!" : "Serie terminada.", quotesNote]
+      [book ? "Libro terminado. ¡Bien!" : "Serie terminada.", quotesNote, notesNote]
         .filter(Boolean)
         .join(" "),
       // Recién terminado: el ritual de cierre (si aún no lo hiciste).
@@ -405,10 +500,108 @@ export function ProgressSheet({
                   setSeason(n);
                 }}
               />
-              <Stepper label="Episodio" value={episode} onChange={setEpisode} />
+              <Stepper
+                label="Episodio"
+                value={episode}
+                max={epCount}
+                hint={epCount ? `de ${epCount}` : undefined}
+                onChange={setEpisode}
+              />
             </div>
+
+            {/* El episodio de los contadores: cómo se llama, si está por ver o lo estás viendo, y
+                tu calificación y reseña (opcionales: los episodios sin nada no se guardan). */}
+            <div className="pg-ep">
+              <div className="pg-ep-head">
+                <div className="pg-ep-name">
+                  {tvId && tvList === undefined ? (
+                    <span className="pg-ep-sk" aria-label="Cargando el episodio" />
+                  ) : (
+                    <strong
+                      title={epInfo?.es ? `En español: ${epInfo.es}` : undefined}
+                    >
+                      {epInfo?.name || epInfo?.es || `Episodio ${episode}`}
+                    </strong>
+                  )}
+                  {(epInfo?.aired || epInfo?.runtime) && (
+                    <small>
+                      {[
+                        epInfo.aired &&
+                          (epInfo.aired > today
+                            ? `Se estrena el ${airLabel(epInfo.aired, false)}`
+                            : airLabel(epInfo.aired)),
+                        epInfo.runtime && `${epInfo.runtime} min`,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </small>
+                  )}
+                </div>
+                <div
+                  className="pg-ep-state"
+                  role="radiogroup"
+                  aria-label="Este episodio"
+                >
+                  {(["por-ver", "viendo"] as const).map((s) => (
+                    <button
+                      type="button"
+                      key={s}
+                      role="radio"
+                      aria-checked={epState === s}
+                      className={epState === s ? "on" : ""}
+                      onClick={() => setEpState(epState === s ? undefined : s)}
+                    >
+                      {s === "por-ver" ? "Por ver" : "Viendo"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="pg-ep-rate">
+                <Stars
+                  label={`Tu calificación del episodio ${episode}`}
+                  value={draft.rating}
+                  onChange={(r) => setDraft({ rating: r })}
+                  size={18}
+                />
+                {!showReview && (
+                  <button
+                    type="button"
+                    className="pg-ep-rev"
+                    onClick={() => setReviewing(key)}
+                  >
+                    <PenLine size={13} /> Reseña
+                  </button>
+                )}
+              </div>
+              {showReview && (
+                <textarea
+                  className="pg-ep-text"
+                  aria-label={`Tu reseña del episodio ${episode}`}
+                  placeholder="¿Qué te pareció este episodio?"
+                  maxLength={2000}
+                  rows={2}
+                  autoFocus={reviewing === key && !draft.review}
+                  value={draft.review}
+                  onChange={(e) => setDraft({ review: e.target.value })}
+                />
+              )}
+            </div>
+
             <div className="pg-quick">
-              <button type="button" onClick={() => setEpisode((n) => n + 1)}>
+              <button
+                type="button"
+                disabled={Boolean(
+                  epCount && episode >= epCount && seasons && season >= seasons,
+                )}
+                onClick={() => {
+                  // Al final de la temporada, pasa al primero de la siguiente.
+                  if (epCount && episode >= epCount && (!seasons || season < seasons)) {
+                    setSeason((s) => s + 1);
+                    setEpisode(1);
+                  } else setEpisode((n) => n + 1);
+                  setEpState("por-ver");
+                }}
+              >
                 +1 episodio
               </button>
               <button
@@ -417,6 +610,7 @@ export function ProgressSheet({
                 onClick={() => {
                   setSeason((s) => s + 1);
                   setEpisode(1);
+                  setEpState("por-ver");
                 }}
               >
                 Siguiente temporada

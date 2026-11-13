@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { useMediaEnrich } from "../library/enrich";
+import { EpisodeNotes } from "../library/EpisodeNotes";
 import { isActive } from "../library/progress";
 import { isFinished } from "../ritual/learning";
 import "../ritual/ritual.css";
@@ -313,6 +314,7 @@ export function EntryViewer({
                 : `Próximo repaso: ${friendlyDate(d.review.due).toLowerCase()}.`}
             </p>
           )}
+          {series && <EpisodeNotes key={entry.id} entry={entry} />}
           {quotes.map((q, i) => (
             <blockquote className="ev-quote" key={i}>
               “{q}”

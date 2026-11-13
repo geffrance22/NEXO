@@ -134,7 +134,7 @@ export function FollowBlock({ opts }: BlockProps) {
   const nextEpisode = async (e: Entry) => {
     const season = e.details.seasonAt ?? 1;
     const episode = (e.details.episodeAt ?? 0) + 1;
-    if (await patchEntry(e, { details: withEpisode(e, season, episode) }))
+    if (await patchEntry(e, { details: withEpisode(e, season, episode, 'por-ver') }))
       notify(`${e.title}: T${season} · E${episode}.`);
   };
 

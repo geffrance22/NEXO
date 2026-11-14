@@ -6,6 +6,8 @@ import {
   CornerDownLeft,
   Frown,
   History,
+  Layers,
+  Plus,
   Receipt,
   Repeat,
   ShieldCheck,
@@ -15,7 +17,7 @@ import {
 import { useApp } from '../../AppContext';
 import type { MoneyFlow } from '../../data';
 import { currencies, rateToCop, type Currency } from '../../finance/fx';
-import { defaultAccounts, itemsOf } from '../../finance/model';
+import { cardMethod, chargeStats, defaultAccounts, isOpenCharge, itemsOf } from '../../finance/model';
 import {
   categoryAverage,
   dayOf,
@@ -42,6 +44,43 @@ const quick = [5000, 10000, 20000, 50000, 100000];
 const MAX_AMOUNT = 999_999_999_999;
 const otherFlows: MoneyFlow[] = ['ahorro', 'transferencia', 'prestamo', 'reembolso'];
 
+/** Un monto pequeño del formulario (acepta «5k», «2 millones» o una cuenta). */
+function AmountBox({
+  label,
+  value,
+  onChange,
+  placeholder = '0',
+}: {
+  label: string;
+  value: number;
+  onChange: (n: number) => void;
+  placeholder?: string;
+}) {
+  const [raw, setRaw] = useState<string | null>(null);
+  const shown = raw ?? (value ? thousands(value) : '');
+  return (
+    <label className="fm-box">
+      <span>{label}</span>
+      <span className="fm-box-in">
+        <b>$</b>
+        <input
+          inputMode="decimal"
+          value={shown}
+          placeholder={placeholder}
+          aria-label={label}
+          onFocus={() => setRaw(shown)}
+          onBlur={() => setRaw(null)}
+          onChange={(e) => {
+            setRaw(e.target.value);
+            const n = evalAmount(e.target.value);
+            onChange(n && n > 0 ? Math.min(n, MAX_AMOUNT) : 0);
+          }}
+        />
+      </span>
+    </label>
+  );
+}
+
 /** Movimiento: el monto manda; lo demás se llena solo o con un toque. */
 export function MoneyView({ c }: ViewProps) {
   const { workspace } = useApp();
@@ -58,11 +97,17 @@ export function MoneyView({ c }: ViewProps) {
 
   const accountNames = useMemo(() => {
     const base = (settings.accounts.length ? settings.accounts : defaultAccounts).map((a) => a.name);
+    // Tus tarjetas también son medios de pago (con el nombre con que se registran).
+    const cards = itemsOf(fin.items, 'tarjeta')
+      .filter((t) => !t.archived)
+      .map(cardMethod)
+      .filter((m) => !base.some((b) => b.toLowerCase() === m.toLowerCase()));
+    const known = [...base, ...cards];
     const extra = [c.details.method, c.details.toMethod].filter(
-      (m): m is string => Boolean(m) && !base.includes(m!),
+      (m): m is string => Boolean(m) && !known.includes(m!),
     );
-    return [...base, ...extra];
-  }, [settings.accounts, c.details.method, c.details.toMethod]);
+    return [...known, ...extra];
+  }, [settings.accounts, fin.items, c.details.method, c.details.toMethod]);
 
   const categories = useMemo(() => {
     switch (flow) {
@@ -219,6 +264,54 @@ export function MoneyView({ c }: ViewProps) {
 
   // ── Metas (para el ahorro).
   const goals = itemsOf(fin.items, 'meta').filter((g) => !g.archived);
+
+  // ── Bolsillos: el ahorro y los ingresos los llenan; un gasto puede salir de uno.
+  const pockets = itemsOf(fin.items, 'bolsillo').filter((p) => !p.archived || p.id === c.details.pocketId);
+  const showPockets = pockets.length > 0 && (flow === 'gasto' || flow === 'ingreso' || flow === 'ahorro' || flow === 'reembolso');
+  const pickPocket = (id: string | undefined) => {
+    c.setDetail('pocketId', id);
+    const account = id ? pockets.find((p) => p.id === id)?.data.account : undefined;
+    if (account && !c.details.method) c.setDetail('method', account);
+  };
+  const pocketLabel =
+    flow === 'gasto'
+      ? '¿Sale de un bolsillo?'
+      : flow === 'ahorro'
+        ? c.direction === 'egreso'
+          ? '¿A qué bolsillo?'
+          : '¿De qué bolsillo?'
+        : '¿Entra a un bolsillo?';
+
+  // ── Abono de un total mayor (cobro por partes).
+  const charges = itemsOf(fin.items, 'cobro').filter((x) => isOpenCharge(x) || x.id === c.details.chargeId);
+  const linked = c.details.chargeId ? charges.find((x) => x.id === c.details.chargeId) : undefined;
+  const linkedStats = linked ? chargeStats(linked, entries.filter((e) => e.id !== c.entry?.id)) : null;
+  const draft = c.details.chargeNew;
+  const [abono, setAbono] = useState(Boolean(c.details.chargeId || draft));
+  const abonoOn = flow === 'ingreso' && abono;
+  const toggleAbono = (on: boolean) => {
+    setAbono(on);
+    if (!on) {
+      c.setDetail('chargeId', undefined);
+      c.setDetail('chargeNew', undefined);
+    } else if (!charges.length) c.setDetail('chargeNew', { total: 0 });
+  };
+  const chooseCharge = (id: string | undefined) => {
+    if (id === 'new' || !id) {
+      c.setDetail('chargeId', undefined);
+      c.setDetail('chargeNew', id ? { total: 0 } : undefined);
+      return;
+    }
+    c.setDetail('chargeNew', undefined);
+    c.setDetail('chargeId', id);
+    const ch = charges.find((x) => x.id === id);
+    if (ch?.data.episodeId && !c.episodeId) c.setEpisodeId(ch.data.episodeId);
+    if (ch?.data.category && !c.category) c.setCategory(ch.data.category);
+    if (ch?.data.method && !c.details.method) c.setDetail('method', ch.data.method);
+  };
+  const setDraft = (patch: Partial<NonNullable<typeof draft>>) =>
+    c.setDetail('chargeNew', { total: 0, ...draft, ...patch });
+  const draftLeft = draft ? Math.max(0, draft.total - c.amount) : 0;
 
   // ── Más detalles: abierto si ya hay algo ahí.
   const hasMore = Boolean(
@@ -487,6 +580,19 @@ export function MoneyView({ c }: ViewProps) {
         </>
       )}
 
+      {showPockets && (
+        <>
+          <Label hint="Opcional">{pocketLabel}</Label>
+          <ChoiceChips
+            label="Bolsillo"
+            clearable
+            options={pockets.map((p) => ({ value: p.id, label: `${p.data.emoji ? p.data.emoji + ' ' : ''}${p.title}` }))}
+            value={c.details.pocketId}
+            onChange={pickPocket}
+          />
+        </>
+      )}
+
       {flow === 'prestamo' && (
         <>
           <Label>¿Quién a quién?</Label>
@@ -570,6 +676,92 @@ export function MoneyView({ c }: ViewProps) {
           />
           {pending && (
             <small>No cuenta en tus totales hasta que lo marques {income ? 'cobrado' : 'pagado'}.</small>
+          )}
+        </div>
+      )}
+
+      {flow === 'ingreso' && (
+        <label className={'fm-toggle' + (abonoOn ? ' on' : '')}>
+          <input type="checkbox" checked={abonoOn} onChange={(e) => toggleAbono(e.target.checked)} />
+          <span className="fm-switch" aria-hidden="true" />
+          <span>
+            <b>
+              <Layers size={13} /> Es un abono de un total mayor
+            </b>
+            <small>
+              {linked && linkedStats
+                ? `Con este llevas ${money(linkedStats.received + (pending ? 0 : c.amount))} de ${money(linked.data.total)} · faltan ${money(Math.max(0, linkedStats.left - (pending ? 0 : c.amount)))}.`
+                : draft && draft.total > 0
+                  ? draft.total > c.amount
+                    ? `Faltarán ${money(draftLeft)} de ${money(draft.total)}: queda en Cobros por partes.`
+                    : 'El total debe ser mayor que este abono.'
+                  : 'Un proyecto, una venta o un sueldo que te pagan en partes: define el total y cuándo llega lo demás.'}
+            </small>
+          </span>
+        </label>
+      )}
+      {abonoOn && (
+        <div className="fm-charge">
+          {charges.length > 0 && (
+            <ChoiceChips
+              label="¿De qué cobro?"
+              options={[
+                ...charges.map((x) => {
+                  const s = chargeStats(x, entries.filter((e) => e.id !== c.entry?.id));
+                  return { value: x.id, label: `${x.title} · faltan ${money(s.left)}` };
+                }),
+                { value: 'new', label: 'Nuevo total', icon: <Plus size={13} /> },
+              ]}
+              value={c.details.chargeId ?? (draft ? 'new' : undefined)}
+              onChange={chooseCharge}
+            />
+          )}
+          {linked && linkedStats?.next && (
+            <p className="fm-charge-note">
+              Esperabas {money(linkedStats.next.amount)} {friendlyDate(linkedStats.next.due).toLowerCase()}
+              {Math.abs(linkedStats.next.amount - c.amount) <= linkedStats.next.amount * 0.15
+                ? ': este abono la cumple.'
+                : '.'}
+            </p>
+          )}
+          {draft && (
+            <>
+              <div className="fm-charge-grid">
+                <AmountBox label="Total acordado" value={draft.total} onChange={(total) => setDraft({ total })} />
+                <label className="fm-box">
+                  <span>¿Cuándo llega lo demás?</span>
+                  <input
+                    type="date"
+                    className="fm-box-date"
+                    min={c.date}
+                    value={draft.nextOn ?? ''}
+                    onChange={(e) => setDraft({ nextOn: e.target.value || undefined, task: draft.task ?? Boolean(e.target.value) })}
+                  />
+                </label>
+                {draft.nextOn && (
+                  <AmountBox
+                    label="¿Cuánto ese día?"
+                    value={draft.nextAmount ?? 0}
+                    onChange={(nextAmount) => setDraft({ nextAmount: nextAmount || undefined })}
+                    placeholder={draftLeft ? thousands(draftLeft) : '0'}
+                  />
+                )}
+              </div>
+              <input
+                className="cp-ghost-input fm-charge-title"
+                value={draft.title ?? ''}
+                maxLength={120}
+                placeholder={`Nombre del cobro (opcional): ${c.title || 'Proyecto web, venta del carro…'}`}
+                onChange={(e) => setDraft({ title: e.target.value || undefined })}
+                aria-label="Nombre del cobro"
+              />
+              {draft.nextOn && (
+                <label className="fm-check">
+                  <input type="checkbox" checked={draft.task !== false} onChange={(e) => setDraft({ task: e.target.checked })} />
+                  Crear un pendiente para no olvidar cobrarlo
+                </label>
+              )}
+            </>
           )}
         </div>
       )}

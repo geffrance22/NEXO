@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Database, Download, Landmark, PiggyBank, Plus, Scale, Tags, Trash2, Upload, X } from 'lucide-react';
+import { ChevronDown, Database, Download, Landmark, PiggyBank, Plus, Scale, Tags, Trash2, Upload, X } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { Segmented } from '../composer/controls';
 import { expenseCategories, incomeCategories } from '../composer/logic';
@@ -10,6 +10,8 @@ import { defaultAccounts, itemsOf, type Settings } from './model';
 import { accountBalances, byCategory, categoryOf, dayOf, flowMeta, flowOf, isMoney, monthBounds, monthKey, shiftMonth } from './money';
 import { saveSettings, settingsOf, useFinance } from './store';
 import { download, Field, FinSheet, MoneyField, moneyInput } from './ui';
+
+const BUDGET_FOLD = 'nexo-fin-budget-open';
 
 export function SettingsTab() {
   const fin = useFinance();
@@ -34,6 +36,13 @@ function SettingsForm({ initial }: { initial: Settings }) {
   const lastSpend = new Map(byCategory(moves.filter((e) => dayOf(e) >= from && dayOf(e) <= to)).map((c) => [c.name, c.total]));
   const outCats = [...expenseCategories.filter((c) => c !== 'Ahorro'), ...s.extraOut];
   const budgetSum = Object.values(s.budgets).reduce((a, b) => a + b, 0);
+  const budgetCats = Object.keys(s.budgets).length;
+  const thisMonthOwn = itemsOf(fin.items, 'proyeccion').find((l) => l.data.month === monthKey(todayInputValue()))?.data.budget;
+  const [budgetOpen, setBudgetOpen] = useState(() => localStorage.getItem(BUDGET_FOLD) !== '0');
+  const toggleBudget = (open: boolean) => {
+    localStorage.setItem(BUDGET_FOLD, open ? '1' : '0');
+    setBudgetOpen(open);
+  };
 
   const save = async () => {
     const r = await saveSettings(s);
@@ -134,40 +143,67 @@ function SettingsForm({ initial }: { initial: Settings }) {
         </div>
       </section>
 
-      <section className="fz-block">
+      <section className={'fz-block fz-fold' + (budgetOpen ? ' open' : '')}>
         <header className="fz-block-head">
-          <h3>
-            <PiggyBank size={16} /> Presupuesto del mes
-          </h3>
-          <small>Te avisa al 80 % y al 100 %, en Resumen y al registrar un gasto.</small>
+          <button type="button" className="fz-fold-toggle" aria-expanded={budgetOpen} onClick={() => toggleBudget(!budgetOpen)}>
+            <h3>
+              <PiggyBank size={16} /> Presupuesto del mes
+            </h3>
+            <ChevronDown size={17} className="fz-fold-chev" />
+          </button>
+          {budgetOpen ? (
+            <small>
+              Es tu presupuesto general: aplica a todos los meses. Para un mes puntual, defínelo en su Carta del mes. Te avisa al 80 % y al 100 %.
+            </small>
+          ) : (
+            <button type="button" className="fz-fold-sum" onClick={() => toggleBudget(true)}>
+              {s.monthBudget ? (
+                <>
+                  <b>{money(s.monthBudget)}</b> al mes
+                </>
+              ) : (
+                <span>Sin total definido</span>
+              )}
+              {budgetCats > 0 && (
+                <em>
+                  · {budgetCats} {budgetCats === 1 ? 'categoría' : 'categorías'} con tope ({money(budgetSum)})
+                </em>
+              )}
+              {thisMonthOwn ? <em className="fz-chip">Este mes: {money(thisMonthOwn)} (carta)</em> : null}
+            </button>
+          )}
         </header>
-        <div className="fz-form">
-          <Field label="Total del mes" hint={budgetSum ? `Por categoría suman ${money(budgetSum)}` : 'Opcional'}>
-            <MoneyField value={s.monthBudget} onChange={(v) => setS({ ...s, monthBudget: v })} />
-          </Field>
-        </div>
-        <ul className="fz-budget-edit">
-          {outCats.map((c) => (
-            <li key={c}>
-              <span>
-                <i style={{ background: catColor(c) }} />
-                {c}
-              </span>
-              <MoneyField
-                value={s.budgets[c] ?? 0}
-                onChange={(v) => {
-                  const budgets = { ...s.budgets };
-                  if (v) budgets[c] = v;
-                  else delete budgets[c];
-                  setS({ ...s, budgets });
-                }}
-                placeholder="Sin tope"
-                ariaLabel={`Presupuesto de ${c}`}
-              />
-              <small>{lastSpend.get(c) ? `El mes pasado: ${money(lastSpend.get(c)!)}` : ''}</small>
-            </li>
-          ))}
-        </ul>
+        {budgetOpen && (
+          <div className="fz-fold-body">
+            <div className="fz-form">
+              <Field label="Total del mes" hint={budgetSum ? `Por categoría suman ${money(budgetSum)}` : 'Opcional'}>
+                <MoneyField value={s.monthBudget} onChange={(v) => setS({ ...s, monthBudget: v })} />
+              </Field>
+            </div>
+            <ul className="fz-budget-edit">
+              {outCats.map((c) => (
+                <li key={c}>
+                  <span>
+                    <i style={{ background: catColor(c) }} />
+                    {c}
+                  </span>
+                  <MoneyField
+                    value={s.budgets[c] ?? 0}
+                    onChange={(v) => {
+                      const budgets = { ...s.budgets };
+                      if (v) budgets[c] = v;
+                      else delete budgets[c];
+                      setS({ ...s, budgets });
+                    }}
+                    placeholder="Sin tope"
+                    ariaLabel={`Presupuesto de ${c}`}
+                  />
+                  <small>{lastSpend.get(c) ? `El mes pasado: ${money(lastSpend.get(c)!)}` : ''}</small>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
 
       <section className="fz-block">

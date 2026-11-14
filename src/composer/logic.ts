@@ -71,6 +71,9 @@ export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
     "recurringId",
     "goalId",
     "debtId",
+    "pocketId",
+    "chargeId",
+    "chargeNew",
   ],
   Pendiente: [
     "priority",
@@ -165,6 +168,16 @@ export function cleanDetails(kind: Kind, details: EntryDetails): EntryDetails {
     } else delete out.paidOn;
     if (out.flow !== "transferencia") delete out.toMethod;
     if (out.flow !== "ahorro") delete out.goalId;
+    // Bolsillos: los llena el ahorro o un ingreso; los vacía un gasto (no aplica a lo demás).
+    if (out.flow === "transferencia" || out.flow === "prestamo") delete out.pocketId;
+    // Abonos de un cobro por partes: solo los ingresos.
+    if (out.flow && out.flow !== "ingreso") {
+      delete out.chargeId;
+      delete out.chargeNew;
+    }
+    if (out.chargeId) delete out.chargeNew;
+    const draft = out.chargeNew as EntryDetails["chargeNew"];
+    if (draft && !(draft.total > 0)) delete out.chargeNew;
     if (!out.currency || out.currency === "COP") {
       delete out.currency;
       delete out.original;

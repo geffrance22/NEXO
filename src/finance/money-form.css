@@ -483,3 +483,85 @@
     font-size: 28px;
   }
 }
+
+/* Abono de un total mayor (cobro por partes) */
+.fm-charge {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 8px 0 0 14px;
+  padding: 12px 14px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 35%, #fff);
+  border-radius: 0 12px 12px 0;
+  background: #fbfcf9;
+  animation: cp-swap 0.22s ease-out;
+}
+.fm-charge .fm-check {
+  margin-top: 0;
+}
+.fm-charge-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: #5f6a55;
+}
+.fm-charge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.fm-charge-title {
+  font-size: 13.5px;
+}
+.fm-box {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.fm-box > span:first-child {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #7b8573;
+}
+.fm-box-in {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  border: 1px solid #e2e7da;
+  border-radius: 10px;
+  background: #fff;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.fm-box-in:focus-within,
+.fm-box-date:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--soft);
+}
+.fm-box-in b {
+  font-weight: 700;
+  color: #a2aa98;
+}
+.fm-box-in input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 2px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #27301f;
+}
+.fm-box-date {
+  padding: 7px 10px;
+  border: 1px solid #e2e7da;
+  border-radius: 10px;
+  outline: 0;
+  background: #fff;
+  font-size: 13.5px;
+  color: #2f382b;
+}

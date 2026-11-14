@@ -7,6 +7,7 @@ import {
   finKinds,
   fixData,
   itemsOf,
+  newKinds,
   type FinData,
   type FinItem,
   type FinKind,
@@ -17,13 +18,22 @@ const TABLE = 'finance_items';
 const COLUMNS = 'id,kind,title,data,archived,created_at,updated_at';
 export const FINANCE_MIGRATION = 'supabase/migrations/202611110001_finance.sql';
 
-type State = { items: FinItem[] | null; missing: boolean; error: string };
+export const FINANCE_MORE_MIGRATION = 'supabase/migrations/202611130002_finance_cards.sql';
+
+type State = {
+  items: FinItem[] | null;
+  missing: boolean;
+  /** La base aún no acepta bolsillos, apuntes ni cobros por partes (falta la migración 2). */
+  upgrade: boolean;
+  error: string;
+};
 
 /**
- * Lo propio de Finanzas (deudas, inversiones, cartas del mes, fijos, metas, deseos y ajustes):
- * una sola copia en memoria para la página, el formulario y la agenda.
+ * Lo propio de Finanzas (deudas, inversiones, cartas del mes, fijos, metas, deseos, bolsillos,
+ * apuntes, cobros por partes y ajustes): una sola copia en memoria para la página, el formulario
+ * y la agenda.
  */
-let state: State = { items: null, missing: false, error: '' };
+let state: State = { items: null, missing: false, upgrade: false, error: '' };
 const subs = new Set<() => void>();
 let loading: Promise<void> | null = null;
 
@@ -48,7 +58,7 @@ supabase.auth.onAuthStateChange((event, session) => {
   const next = session?.user.id ?? null;
   if (event === 'SIGNED_OUT' || (owner && next && next !== owner)) {
     loading = null;
-    set({ items: null, missing: false, error: '' });
+    set({ items: null, missing: false, upgrade: false, error: '' });
     if (next && subs.size) void loadFinance();
   }
   owner = next;
@@ -100,6 +110,13 @@ export function loadFinance(force = false) {
 }
 
 const missingText = `Falta preparar Finanzas: ejecuta ${FINANCE_MIGRATION} en el SQL Editor de Supabase.`;
+const upgradeText = `Para bolsillos, tarjetas, apuntes y cobros por partes ejecuta ${FINANCE_MORE_MIGRATION} en el SQL Editor de Supabase.`;
+
+/** La base rechazó el tipo: es de los nuevos y falta la migración que los permite. */
+function isOldKinds(e: unknown, kind: FinKind) {
+  const { code = '', message = '' } = (e ?? {}) as { code?: string; message?: string };
+  return newKinds.includes(kind) && (code === '23514' || /kind_check|violates check constraint/i.test(message));
+}
 
 export async function createItem<K extends FinKind>(
   kind: K,
@@ -127,6 +144,10 @@ export async function createItem<K extends FinKind>(
     if (isMissingTable(error)) {
       set({ missing: true });
       return missingText;
+    }
+    if (isOldKinds(error, kind)) {
+      set({ upgrade: true });
+      return upgradeText;
     }
     return errorMessage(error);
   }

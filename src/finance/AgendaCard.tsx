@@ -3,8 +3,20 @@ import { ArrowRight, Wallet, X } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { addDays, money, todayInputValue } from '../lib/format';
 import { dismiss, useDismissed } from '../relations/dismissed';
-import { doneNow, invStats, isOpenDebt, itemsOf, periodKeyOf, recurringStatus, remainingOf } from './model';
-import { dayOf, forgottenSpends, isMoney, monthKey, monthName, shiftMonth } from './money';
+import { receiveCharge, waitingParts } from './chargeActions';
+import {
+  cardMethod,
+  cardStats,
+  doneNow,
+  invStats,
+  isOpenDebt,
+  itemsOf,
+  periodKeyOf,
+  PLAN_LOCK_DAY,
+  recurringStatus,
+  remainingOf,
+} from './model';
+import { daysBetween, dayOf, forgottenSpends, isMoney, monthKey, monthName, shiftMonth } from './money';
 import { updateItem, useFinance } from './store';
 import { moneyInput, noonISO, openFinanceTab, relDays, type FinTab } from './ui';
 
@@ -15,7 +27,7 @@ type Line = { key: string; text: ReactNode; action?: { label: string; run: () =>
  * deseos listos para decidir, inversiones sin actualizar y la carta del mes.
  */
 export function FinanceAgendaCard() {
-  const { workspace, go, createEntry, patchEntry, notify, openEntry } = useApp();
+  const { workspace, go, createEntry, patchEntry, notify, openEntry, resolveTask } = useApp();
   const fin = useFinance();
   const skip = useDismissed();
   const today = todayInputValue();
@@ -79,6 +91,45 @@ export function FinanceAgendaCard() {
         },
       });
     }
+    for (const { charge, part } of waitingParts(fin.items)) {
+      if (part.due > soon) continue;
+      const n = daysBetween(today, part.due);
+      out.push({
+        key: 'part' + part.id,
+        text: (
+          <>
+            Esperas <b>{money(part.amount)}</b> de «{charge.title}»
+            {charge.data.who ? ` (${charge.data.who.split(' ')[0]})` : ''} · {n < 0 ? `debía llegar ${relDays(n)}` : n === 0 ? 'hoy' : relDays(n)}
+          </>
+        ),
+        action: {
+          label: 'Llegó',
+          run: () =>
+            void receiveCharge({ workspace, createEntry, patchEntry, resolveTask, notify }, charge, part, {
+              amount: part.amount,
+              date: today,
+            }),
+        },
+      });
+    }
+    for (const c of itemsOf(fin.items, 'tarjeta')) {
+      if (c.archived || c.data.type !== 'credito' || !c.data.payDay) continue;
+      const s = cardStats(c, workspace.entries, today);
+      if (!s.nextPay || s.owed <= 0 || s.nextPay > addDays(today, 3)) continue;
+      out.push({
+        key: 'card' + c.id,
+        text: (
+          <>
+            Paga tu tarjeta <b>{c.title}</b>: {money(Math.round(s.owed))} · {s.nextPay === today ? 'hoy' : relDays(daysBetween(today, s.nextPay))}
+          </>
+        ),
+        action: {
+          label: 'Pagar',
+          run: () =>
+            openEntry('Movimiento', [], { flow: 'transferencia', toMethod: cardMethod(c) }, { title: `Pago ${c.title}`.slice(0, 180), amount: Math.round(s.owed), direction: 'egreso' }),
+        },
+      });
+    }
     for (const d of itemsOf(fin.items, 'deuda'))
       if (isOpenDebt(d.data) && d.data.due && d.data.due <= soon)
         out.push({
@@ -127,6 +178,27 @@ export function FinanceAgendaCard() {
           </>
         ),
         action: { label: 'Escribir', run: () => open('proyeccion') },
+      });
+    const nowLetter = letters.find((l) => l.data.month === monthKey(today));
+    if (day <= PLAN_LOCK_DAY && !nowLetter)
+      out.push({
+        key: 'letter-now',
+        text: (
+          <>
+            Aún puedes escribir tu carta de <b>{monthName(monthKey(today))}</b> (hasta el {PLAN_LOCK_DAY})
+          </>
+        ),
+        action: { label: 'Escribir', run: () => open('proyeccion') },
+      });
+    else if (day >= PLAN_LOCK_DAY - 1 && day <= PLAN_LOCK_DAY && nowLetter)
+      out.push({
+        key: 'letter-lock',
+        text: (
+          <>
+            {day === PLAN_LOCK_DAY ? 'Hoy es el último día' : 'Mañana es el último día'} para ajustar tu carta de <b>{monthName(monthKey(today))}</b>
+          </>
+        ),
+        action: { label: 'Ajustar', run: () => open('proyeccion') },
       });
     const prevLetter = letters.find((l) => l.data.month === prev);
     if (day <= 5 && prevLetter && !prevLetter.data.closedOn)

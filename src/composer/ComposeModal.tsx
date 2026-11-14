@@ -133,6 +133,9 @@ export function ComposeModal({
     patchPerson,
     readDiary,
     me,
+    createEntry,
+    patchEntry,
+    resolveTask,
   } = useApp();
   const c = useComposer(
     {
@@ -420,9 +423,12 @@ export function ComposeModal({
     if (picked && !capsule) void fileInNotebooks(savedId, picked);
     // Deudas del reparto o del préstamo y el fijo de «se repite».
     if (input.kind === "Movimiento")
-      void afterMoneySaved(input, savedId, workspace.people).then(
-        (msg) => msg && notify(msg),
-      );
+      void afterMoneySaved(input, savedId, workspace.people, {
+        entries: workspace.entries,
+        createEntry,
+        patchEntry,
+        resolveTask,
+      }).then((msg) => msg && notify(msg));
     if (again && onAgain) onAgain();
     else onClose();
   }

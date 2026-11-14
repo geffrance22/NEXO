@@ -1,13 +1,15 @@
 import { useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { Sheet } from '../components/Sheet';
-import type { EntryInput, Page, Person } from '../data';
+import type { EntryInput, Episode, Page, Person } from '../data';
 import { normalizeText, thousands, todayInputValue } from '../lib/format';
 import { evalAmount } from './parse';
 
 export type FinTab =
   | 'resumen'
   | 'movimientos'
+  | 'apuntes'
+  | 'bolsillos'
   | 'proyeccion'
   | 'deudas'
   | 'inversiones'
@@ -16,7 +18,18 @@ export type FinTab =
   | 'ajustes';
 
 const TAB_KEY = 'nexo-fin-tab';
-const tabs: FinTab[] = ['resumen', 'movimientos', 'proyeccion', 'deudas', 'inversiones', 'fijos', 'metas', 'ajustes'];
+const tabs: FinTab[] = [
+  'resumen',
+  'movimientos',
+  'apuntes',
+  'bolsillos',
+  'proyeccion',
+  'deudas',
+  'inversiones',
+  'fijos',
+  'metas',
+  'ajustes',
+];
 
 export function readTab(): FinTab {
   const t = sessionStorage.getItem(TAB_KEY) as FinTab | null;
@@ -58,6 +71,8 @@ export function FinSheet({
   children,
   footer,
   wide = false,
+  className = '',
+  icon,
 }: {
   title: string;
   sub?: ReactNode;
@@ -65,10 +80,14 @@ export function FinSheet({
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  className?: string;
+  /** Ícono junto al título. */
+  icon?: ReactNode;
 }) {
   return (
-    <Sheet label={title} className={'fz-sheet' + (wide ? ' wide' : '')} onRequestClose={onClose}>
+    <Sheet label={title} className={'fz-sheet' + (wide ? ' wide' : '') + (className ? ' ' + className : '')} onRequestClose={onClose}>
       <header className="fz-sheet-head">
+        {icon && <span className="fz-sheet-icon">{icon}</span>}
         <div>
           <h3>{title}</h3>
           {sub && <p>{sub}</p>}
@@ -80,6 +99,19 @@ export function FinSheet({
       <div className="fz-sheet-body">{children}</div>
       {footer && <footer className="fz-sheet-foot">{footer}</footer>}
     </Sheet>
+  );
+}
+
+/** Separador con título dentro de un formulario largo. */
+export function FormSection({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="fz-form-sec">
+      <header>
+        <h4>{title}</h4>
+        {hint && <small>{hint}</small>}
+      </header>
+      {children}
+    </section>
   );
 }
 
@@ -180,6 +212,35 @@ export function PersonInput({
         ))}
       </datalist>
     </>
+  );
+}
+
+/** Elegir un episodio (los activos primero). */
+export function EpisodeSelect({
+  episodes,
+  value,
+  onChange,
+}: {
+  episodes: Episode[];
+  value?: string;
+  onChange: (id: string | undefined) => void;
+}) {
+  const sorted = [...episodes].sort((a, b) =>
+    a.status === b.status ? b.created_at.localeCompare(a.created_at) : a.status === 'activo' ? -1 : 1,
+  );
+  const list = sorted.slice(0, 120);
+  const current = value ? episodes.find((e) => e.id === value) : undefined;
+  if (current && !list.includes(current)) list.unshift(current);
+  return (
+    <select className="fz-input" value={value ?? ''} onChange={(e) => onChange(e.target.value || undefined)}>
+      <option value="">Ninguno</option>
+      {list.map((ep) => (
+        <option key={ep.id} value={ep.id}>
+          {ep.title}
+          {ep.status === 'cerrado' ? ' (cerrado)' : ''}
+        </option>
+      ))}
+    </select>
   );
 }
 

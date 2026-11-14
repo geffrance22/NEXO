@@ -577,6 +577,15 @@ export type EntryDetails = {
   recurringId?: string;
   goalId?: string;
   debtId?: string;
+  /** Bolsillo o cartera de Finanzas: el ahorro lo llena, el gasto sale de él. */
+  pocketId?: string;
+  /** Ingresos: es un abono de un cobro por partes (un total mayor que llega en varias veces). */
+  chargeId?: string;
+  /**
+   * Solo mientras se guarda: el cobro por partes que nace con este abono. No queda en la base
+   * (se convierte en el cobro y su id pasa a `chargeId`).
+   */
+  chargeNew?: ChargeDraft;
   /**
    * Cápsula del tiempo (entradas del diario): queda sellada y oculta hasta `opensOn`
    * (AAAA-MM-DD). `once`: se ve una sola vez y se borra al cerrarla. `seenAt` (ISO): cuándo la
@@ -601,6 +610,20 @@ export type EntryDetails = {
    * (`v1.iv.datos`). En la base, título, texto, etiquetas, personas y fotos quedan vacíos.
    */
   vault?: string;
+};
+
+/** Un cobro por partes que nace desde el formulario de un ingreso (el abono es la primera parte). */
+export type ChargeDraft = {
+  /** El total acordado (mayor que este abono). */
+  total: number;
+  /** Nombre del cobro; sin él se usa el concepto del movimiento. */
+  title?: string;
+  /** AAAA-MM-DD: cuándo esperas recibir lo que falta (opcional). */
+  nextOn?: string;
+  /** Cuánto esperas ese día (sin valor: todo lo que falta). */
+  nextAmount?: number;
+  /** Crear un pendiente «espero» para no olvidar cobrarlo. */
+  task?: boolean;
 };
 
 /** Una carpeta propia del diario. */

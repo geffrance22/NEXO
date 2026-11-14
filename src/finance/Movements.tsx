@@ -35,6 +35,7 @@ import {
   type Period,
 } from './money';
 import { PeriodBar } from './PeriodBar';
+import { useFinance } from './store';
 import { download, noonISO } from './ui';
 
 type Filter = 'todos' | MoneyFlow | 'pendientes';
@@ -98,6 +99,17 @@ export function MovementsTab({ period, setPeriod }: { period: Period; setPeriod:
 
   const people = workspace.people;
   const nameOf = (id: string) => people.find((p) => p.id === id)?.name ?? '';
+  const fin = useFinance();
+  // Nombres de bolsillos y cobros por partes (para mostrar a cuál pertenece cada movimiento).
+  const finTitle = useMemo(
+    () =>
+      new Map(
+        (fin.items ?? [])
+          .filter((i) => i.kind === 'bolsillo' || i.kind === 'cobro')
+          .map((i) => [i.id, i.kind === 'bolsillo' && i.data.emoji ? `${i.data.emoji} ${i.title}` : i.title]),
+      ),
+    [fin.items],
+  );
   const moves = useMemo(
     () =>
       workspace.entries
@@ -436,6 +448,12 @@ export function MovementsTab({ period, setPeriod }: { period: Period; setPeriod:
                         )}
                         {e.details.split && <em className="fz-chip">Tu parte {money(e.details.split.mine)}</em>}
                         {e.details.recurringId && <em className="fz-chip muted">Fijo</em>}
+                        {e.details.chargeId && finTitle.get(e.details.chargeId) && (
+                          <em className="fz-chip good">Abono · {finTitle.get(e.details.chargeId)}</em>
+                        )}
+                        {e.details.pocketId && finTitle.get(e.details.pocketId) && (
+                          <em className="fz-chip muted">{finTitle.get(e.details.pocketId)}</em>
+                        )}
                         {e.details.worth === 1 && <em className="fz-chip good">Valió la pena</em>}
                         {e.details.worth === -1 && <em className="fz-chip bad">Me arrepiento</em>}
                       </small>

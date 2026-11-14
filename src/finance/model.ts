@@ -1,10 +1,23 @@
 import type { Direction, Entry, MoneyFlow } from '../data';
 import { amountsIn, directionAt } from '../lib/capture';
 import { addDays, normalizeText, todayInputValue } from '../lib/format';
-import { daysBetween, dayOf, flowOf, monthBounds, monthKey, totals } from './money';
+import { costOf, daysBetween, dayOf, flowOf, monthBounds, monthKey, shiftMonth, totals } from './money';
 
 /** Lo que Finanzas guarda aparte de los movimientos (tabla `finance_items`). */
-export type FinKind = 'ajustes' | 'deuda' | 'inversion' | 'proyeccion' | 'recurrente' | 'meta' | 'deseo';
+export type FinKind =
+  | 'ajustes'
+  | 'deuda'
+  | 'inversion'
+  | 'proyeccion'
+  | 'recurrente'
+  | 'meta'
+  | 'deseo'
+  | 'bolsillo'
+  | 'apunte'
+  | 'cobro'
+  | 'tarjeta';
+/** Tipos que llegaron con las migraciones 202611130001 y 0002 (sin ellas, la base los rechaza). */
+export const newKinds: FinKind[] = ['bolsillo', 'apunte', 'cobro', 'tarjeta'];
 
 export type Account = { name: string; initial: number };
 
@@ -57,11 +70,38 @@ export type Investment = {
   closedOn?: string;
 };
 
+/** Qué tan seguro es algo de tu plan: cuenta entero en el mínimo, el realista o solo en el ideal. */
+export type PlanSure = 'seguro' | 'probable' | 'quizas';
+
+/** Una línea de la carta: lo que piensas que entra o sale, con su monto y de dónde o cómo. */
+export type PlanItem = {
+  id: string;
+  dir: 'in' | 'out';
+  amount: number;
+  text: string;
+  /** De dónde viene o cómo lo pagas: «cliente Andrés», «tarjeta», «prima». */
+  source?: string;
+  category?: string;
+  sure: PlanSure;
+  /** AAAA-MM-DD: cuándo esperas que pase. */
+  on?: string;
+  /** Ya pasó (llegó o lo pagaste). */
+  hit?: boolean;
+  /** El movimiento con el que se cumplió. */
+  entryId?: string;
+  /** De dónde salió la línea (un fijo «rec:<id>» o una parte de un cobro «part:<id>»). */
+  ref?: string;
+};
+
 export type Projection = {
   /** AAAA-MM */
   month: string;
   /** Lo que escribiste: la carta a tu yo del mes. */
   letter: string;
+  /** Tu plan en líneas: ingresos y gastos con su descripción. */
+  items: PlanItem[];
+  /** Presupuesto de este mes (manda sobre el general de Ajustes). */
+  budget?: number;
   /** Tus escenarios de ingreso: mínimo, realista e ideal. */
   low?: number;
   mid?: number;
@@ -113,6 +153,111 @@ export type Wish = {
   entryId?: string;
 };
 
+/** Bolsillo de ahorro o cartera para gastar: su saldo sale de los movimientos que lo nombran. */
+export type PocketUse = 'ahorro' | 'gasto';
+export type Pocket = {
+  use: PocketUse;
+  color: string;
+  emoji?: string;
+  /** La cuenta en la que vive (Nequi, Bancolombia…). */
+  account?: string;
+  /** Con cuánto arrancó (antes de registrar movimientos). */
+  initial: number;
+  /** Bolsillos de ahorro: a cuánto quieres llegar. */
+  target?: number;
+  /** Carteras para gastar: lo que piensas poner cada mes. */
+  monthly?: number;
+  note?: string;
+  episodeId?: string;
+  /**
+   * Recargas y retiros de una cartera para gastar (apartar plata no es ahorrar: no crea un
+   * movimiento). En los bolsillos de ahorro, guardar y sacar sí son movimientos de ahorro.
+   */
+  log: PocketLog[];
+};
+export type PocketLog = { id: string; d: string; v: number; n?: string };
+
+export type NoteTint = 'papel' | 'menta' | 'cielo' | 'rosa' | 'arena' | 'lila';
+/** Apunte financiero: texto libre con montos ($5k, -$12.000) que se suman solos. */
+export type FinNote = {
+  text: string;
+  tint: NoteTint;
+  pinned?: boolean;
+  episodeId?: string;
+  pocketId?: string;
+  /** Montos que ya pasaste a movimientos: clave del monto → id del movimiento. */
+  done: Record<string, string>;
+};
+
+/** Una parte que esperas recibir de un cobro por partes. */
+export type PartStatus = 'esperando' | 'llego' | 'no';
+export type ChargePart = {
+  id: string;
+  /** AAAA-MM-DD: cuándo debería llegar. */
+  due: string;
+  amount: number;
+  status: PartStatus;
+  /** Fechas que tenía antes (cada vez que se aplazó). La primera es la que se acordó. */
+  moved?: string[];
+  /** Cuándo llegó de verdad y cuánto. */
+  gotOn?: string;
+  got?: number;
+  entryId?: string;
+  note?: string;
+};
+/** Un ingreso que llega en abonos: el total acordado, lo que llegó y lo que esperas. */
+export type Charge = {
+  total: number;
+  personId?: string;
+  who?: string;
+  episodeId?: string;
+  /** El pendiente «espero» que te recuerda cobrarlo. */
+  taskId?: string;
+  /** AAAA-MM-DD: desde cuándo. */
+  start: string;
+  category?: string;
+  method?: string;
+  note?: string;
+  parts: ChargePart[];
+  /** Lo que se dio por perdido (no llegará). */
+  lost?: number;
+  closedOn?: string;
+};
+
+export type CardType = 'credito' | 'debito' | 'prepago';
+export type CardNet = 'visa' | 'mastercard' | 'amex' | 'diners' | 'otra';
+/**
+ * Una tarjeta. Lo que se ve en claro sirve para reconocerla y llevar sus cuentas; el número
+ * completo y el CVV van solo en `secret`, cifrados con el PIN de la bóveda.
+ */
+export type Card = {
+  type: CardType;
+  network: CardNet;
+  bank?: string;
+  holder?: string;
+  last4?: string;
+  /** AAAA-MM: hasta cuándo sirve. */
+  expiry?: string;
+  /** Diseño de la tarjeta (uno de `cardSkins`). */
+  skin: string;
+  /** Medio de pago de Nexo con el que se registran sus movimientos (sin valor: el nombre). */
+  method?: string;
+  /** Crédito: cupo total, lo que ya debías al registrarla, días de corte y de pago, tasa y cuota. */
+  limit?: number;
+  owed?: number;
+  cutDay?: number;
+  payDay?: number;
+  /** Tasa efectiva anual, en %. */
+  rate?: number;
+  /** Cuota de manejo al mes. */
+  fee?: number;
+  benefits?: string;
+  note?: string;
+  /** Número completo y CVV cifrados (formato de la bóveda: v1.iv.datos). */
+  secret?: string;
+};
+export type CardSecret = { number?: string; cvv?: string };
+
 export type FinData = {
   ajustes: Settings;
   deuda: Debt;
@@ -121,6 +266,10 @@ export type FinData = {
   recurrente: Recurring;
   meta: Goal;
   deseo: Wish;
+  bolsillo: Pocket;
+  apunte: FinNote;
+  cobro: Charge;
+  tarjeta: Card;
 };
 
 export type FinItem<K extends FinKind = FinKind> = {
@@ -143,7 +292,35 @@ export const finKinds: FinKind[] = [
   'recurrente',
   'meta',
   'deseo',
+  'bolsillo',
+  'apunte',
+  'cobro',
+  'tarjeta',
 ];
+
+/** Diseños de tarjeta: fondo y color de la letra. */
+export const cardSkins: Record<string, { bg: string; ink: string }> = {
+  noche: { bg: 'linear-gradient(135deg, #1f2a2e 0%, #33454b 100%)', ink: '#f3f6f4' },
+  bosque: { bg: 'linear-gradient(135deg, #24432f 0%, #3f6b4f 100%)', ink: '#f1f7f2' },
+  oceano: { bg: 'linear-gradient(135deg, #1e3a5f 0%, #3e6ea3 100%)', ink: '#f1f5fb' },
+  vino: { bg: 'linear-gradient(135deg, #5a1f33 0%, #93405c 100%)', ink: '#fbf1f4' },
+  oro: { bg: 'linear-gradient(135deg, #8a6414 0%, #c9a24a 100%)', ink: '#fffaf0' },
+  lila: { bg: 'linear-gradient(135deg, #3f2d6b 0%, #7a63b5 100%)', ink: '#f6f3fd' },
+  coral: { bg: 'linear-gradient(135deg, #a1452f 0%, #e07a5f 100%)', ink: '#fff6f2' },
+  plata: { bg: 'linear-gradient(135deg, #c9cfd3 0%, #eef1f3 100%)', ink: '#26302f' },
+};
+export const cardNets: CardNet[] = ['visa', 'mastercard', 'amex', 'diners', 'otra'];
+export const cardNetLabel: Record<CardNet, string> = {
+  visa: 'Visa',
+  mastercard: 'Mastercard',
+  amex: 'American Express',
+  diners: 'Diners',
+  otra: 'Otra',
+};
+
+export const pocketColors = ['#3f8f5a', '#4f6bb5', '#c58a1c', '#a0527f', '#3c9186', '#c0674a', '#6b62b5', '#8a6d4a'];
+export const noteTints: NoteTint[] = ['papel', 'menta', 'cielo', 'rosa', 'arena', 'lila'];
+const sureList: PlanSure[] = ['seguro', 'probable', 'quizas'];
 
 export const defaultAccounts: Account[] = [
   { name: 'Efectivo', initial: 0 },
@@ -235,6 +412,24 @@ export function fixData<K extends FinKind>(kind: K, raw: unknown): FinData[K] {
         return {
           month: typeof r.month === 'string' && /^\d{4}-\d{2}$/.test(r.month) ? r.month : monthKey(today),
           letter: str(r.letter) ?? '',
+          items: Array.isArray(r.items)
+            ? (r.items as Raw[])
+                .filter((i) => i && num(i.amount) > 0)
+                .map((i) => ({
+                  id: str(i.id) ?? crypto.randomUUID(),
+                  dir: i.dir === 'out' ? ('out' as const) : ('in' as const),
+                  amount: num(i.amount),
+                  text: (str(i.text) ?? '').slice(0, 200),
+                  source: str(i.source),
+                  category: str(i.category),
+                  sure: (sureList as unknown[]).includes(i.sure) ? (i.sure as PlanSure) : 'seguro',
+                  on: isDay(i.on) ? i.on : undefined,
+                  hit: i.hit === true || undefined,
+                  entryId: str(i.entryId),
+                  ref: str(i.ref),
+                }))
+            : [],
+          budget: num(r.budget) || undefined,
           low: num(r.low) || undefined,
           mid: num(r.mid) || undefined,
           high: num(r.high) || undefined,
@@ -283,6 +478,88 @@ export function fixData<K extends FinKind>(kind: K, raw: unknown): FinData[K] {
           decidedOn: isDay(r.decidedOn) ? r.decidedOn : undefined,
           entryId: str(r.entryId),
         } satisfies Wish;
+      case 'bolsillo':
+        return {
+          use: r.use === 'gasto' ? 'gasto' : 'ahorro',
+          color: typeof r.color === 'string' && /^#[0-9a-f]{6}$/i.test(r.color) ? r.color : pocketColors[0],
+          emoji: str(r.emoji)?.slice(0, 8) || undefined,
+          account: str(r.account),
+          initial: num(r.initial),
+          target: num(r.target) || undefined,
+          monthly: num(r.monthly) || undefined,
+          note: str(r.note),
+          episodeId: str(r.episodeId),
+          log: Array.isArray(r.log)
+            ? (r.log as Raw[])
+                .filter((x) => x && isDay(x.d) && num(x.v) !== 0)
+                .map((x) => ({ id: str(x.id) ?? crypto.randomUUID(), d: x.d as string, v: num(x.v), ...(str(x.n) && { n: str(x.n) }) }))
+            : [],
+        } satisfies Pocket;
+      case 'apunte': {
+        const done: Record<string, string> = {};
+        if (r.done && typeof r.done === 'object')
+          for (const [k, v] of Object.entries(r.done as Raw)) if (typeof v === 'string') done[k] = v;
+        return {
+          text: str(r.text) ?? '',
+          tint: (noteTints as unknown[]).includes(r.tint) ? (r.tint as NoteTint) : 'papel',
+          pinned: r.pinned === true || undefined,
+          episodeId: str(r.episodeId),
+          pocketId: str(r.pocketId),
+          done,
+        } satisfies FinNote;
+      }
+      case 'cobro':
+        return {
+          total: num(r.total),
+          personId: str(r.personId),
+          who: str(r.who),
+          episodeId: str(r.episodeId),
+          taskId: str(r.taskId),
+          start: isDay(r.start) ? r.start : today,
+          category: str(r.category),
+          method: str(r.method),
+          note: str(r.note),
+          parts: Array.isArray(r.parts)
+            ? (r.parts as Raw[])
+                .filter((p) => p && isDay(p.due) && num(p.amount) > 0)
+                .map((p) => ({
+                  id: str(p.id) ?? crypto.randomUUID(),
+                  due: p.due as string,
+                  amount: num(p.amount),
+                  status: p.status === 'llego' || p.status === 'no' ? p.status : ('esperando' as PartStatus),
+                  moved: strs(p.moved).filter(isDay),
+                  gotOn: isDay(p.gotOn) ? p.gotOn : undefined,
+                  got: num(p.got) || undefined,
+                  entryId: str(p.entryId),
+                  note: str(p.note),
+                }))
+                .sort((a, b) => a.due.localeCompare(b.due))
+            : [],
+          lost: num(r.lost) || undefined,
+          closedOn: isDay(r.closedOn) ? r.closedOn : undefined,
+        } satisfies Charge;
+      case 'tarjeta': {
+        const day = (v: unknown) => (num(v) >= 1 && num(v) <= 31 ? Math.round(num(v)) : undefined);
+        return {
+          type: r.type === 'debito' || r.type === 'prepago' ? r.type : 'credito',
+          network: (cardNets as unknown[]).includes(r.network) ? (r.network as CardNet) : 'otra',
+          bank: str(r.bank),
+          holder: str(r.holder),
+          last4: typeof r.last4 === 'string' && /^\d{4}$/.test(r.last4) ? r.last4 : undefined,
+          expiry: typeof r.expiry === 'string' && /^\d{4}-\d{2}$/.test(r.expiry) ? r.expiry : undefined,
+          skin: typeof r.skin === 'string' && r.skin in cardSkins ? r.skin : 'noche',
+          method: str(r.method),
+          limit: num(r.limit) || undefined,
+          owed: num(r.owed) || undefined,
+          cutDay: day(r.cutDay),
+          payDay: day(r.payDay),
+          rate: num(r.rate) || undefined,
+          fee: num(r.fee) || undefined,
+          benefits: str(r.benefits),
+          note: str(r.note),
+          secret: typeof r.secret === 'string' && r.secret.startsWith('v1.') ? r.secret : undefined,
+        } satisfies Card;
+      }
     }
   })();
   return out as FinData[K];
@@ -436,7 +713,27 @@ export function letterLines(letter: string): LetterLine[] {
   return out;
 }
 
-export function projectionTotals(p: Projection) {
+export const sureMeta: Record<PlanSure, { label: string; hint: string }> = {
+  seguro: { label: 'Seguro', hint: 'Cuenta en tu mínimo' },
+  probable: { label: 'Probable', hint: 'Cuenta en tu realista' },
+  quizas: { label: 'Quizás', hint: 'Solo en tu ideal' },
+};
+
+/**
+ * ¿Ya pasó esa línea del plan? La marcaste, o viene de un fijo ya registrado ese mes o de una
+ * parte de un cobro que ya llegó.
+ */
+export function planHit(i: PlanItem, fin: readonly FinItem[] | null | undefined, month: string) {
+  if (i.hit) return true;
+  if (!i.ref || !fin) return false;
+  const [kind, id, part] = i.ref.split(':');
+  const it = fin.find((x) => x.id === id);
+  if (kind === 'rec' && it?.kind === 'recurrente') return it.data.done.includes(periodKeyOf(it.data, month + '-01'));
+  if (kind === 'part' && it?.kind === 'cobro') return it.data.parts.some((p) => p.id === part && p.status === 'llego');
+  return false;
+}
+
+export function projectionTotals(p: Projection, fin?: readonly FinItem[] | null) {
   const lines = letterLines(p.letter).map((l) => ({
     ...l,
     dir: (p.flip.includes(l.key) ? (l.dir === 'in' ? 'out' : 'in') : l.dir) as 'in' | 'out',
@@ -444,17 +741,37 @@ export function projectionTotals(p: Projection) {
     hit: p.hits.includes(l.key),
   }));
   const on = lines.filter((l) => !l.off);
-  const income = on.filter((l) => l.dir === 'in').reduce((s, l) => s + l.amount, 0);
-  const spend = on.filter((l) => l.dir === 'out').reduce((s, l) => s + l.amount, 0);
+  const lineIn = on.filter((l) => l.dir === 'in').reduce((s, l) => s + l.amount, 0);
+  const lineOut = on.filter((l) => l.dir === 'out').reduce((s, l) => s + l.amount, 0);
+  const sum = (dir: 'in' | 'out', sure?: PlanSure) =>
+    p.items.filter((i) => i.dir === dir && (!sure || i.sure === sure)).reduce((s, i) => s + i.amount, 0);
+  // Lo que escribiste en la carta cuenta como seguro.
+  const inSure = lineIn + sum('in', 'seguro');
+  const inProb = sum('in', 'probable');
+  const inMaybe = sum('in', 'quizas');
+  const income = inSure + inProb + inMaybe;
+  const spend = lineOut + sum('out');
+  const autoMid = inSure + inProb || income;
+  const planned = on.length + p.items.length;
+  const done = on.filter((l) => l.hit).length + p.items.filter((i) => planHit(i, fin, p.month)).length;
   return {
     lines,
     income,
     spend,
-    /** El realista que cuenta: el que escribiste, o lo que suman las líneas. */
-    target: p.mid || income,
+    inSure,
+    inProb,
+    inMaybe,
+    planned,
+    done,
+    /** Tus escenarios: los que escribiste o los que salen de qué tan seguro es cada ingreso. */
+    low: p.low || (inProb || inMaybe ? inSure : 0) || undefined,
+    high: p.high || (inMaybe ? income : 0) || undefined,
+    /** El realista que cuenta: el que escribiste, o lo seguro más lo probable. */
+    target: p.mid || autoMid,
     spendTarget: p.spend || spend,
   };
 }
+export type ProjectionTotals = ReturnType<typeof projectionTotals>;
 
 export type Verdict = {
   key: 'muy-ambicioso' | 'ambicioso' | 'realista' | 'ideal' | 'corto';
@@ -485,7 +802,7 @@ export function verdictOf(actual: number, target: number): Verdict | null {
 }
 
 /** Dónde cayó lo real frente a tus tres escenarios. */
-export function scenarioOf(actual: number, p: Projection) {
+export function scenarioOf(actual: number, p: { low?: number; mid?: number; high?: number }) {
   const { low, mid, high } = p;
   if (high && actual >= high) return 'Superaste tu escenario ideal.';
   if (mid && actual >= mid) return high ? 'Entre tu realista y tu ideal.' : 'Alcanzaste tu escenario realista.';
@@ -503,6 +820,75 @@ export function monthActual(entries: readonly Entry[], month: string) {
     return d >= from && d <= to;
   });
   return totals(list);
+}
+
+/** Hasta qué día del mes se puede ajustar su carta. */
+export const PLAN_LOCK_DAY = 7;
+
+export type LetterWindow = {
+  /** planear: el mes que viene · ajustar: primeros días del mes · cerrada · lejos: aún no se puede. */
+  state: 'planear' | 'ajustar' | 'cerrada' | 'lejos';
+  editable: boolean;
+  /** AAAA-MM-DD: el último día en que se puede cambiar. */
+  until: string;
+};
+
+/**
+ * La carta se escribe con tiempo: la del mes que viene desde ya, y la del mes en curso solo hasta
+ * el día 7. Después queda fija para poder compararla con lo real.
+ */
+export function letterWindow(month: string, today = todayInputValue()): LetterWindow {
+  const now = monthKey(today);
+  const until = `${month}-0${PLAN_LOCK_DAY}`;
+  if (month > shiftMonth(now, 1)) return { state: 'lejos', editable: false, until };
+  if (month > now) return { state: 'planear', editable: true, until };
+  if (month === now && Number(today.slice(8)) <= PLAN_LOCK_DAY) return { state: 'ajustar', editable: true, until };
+  return { state: 'cerrada', editable: false, until };
+}
+
+/** El presupuesto de un mes: el de su carta, o el general de Ajustes. */
+export function budgetFor(items: readonly FinItem[] | null, month: string): { total: number; from: 'mes' | 'general' | null } {
+  const own = itemsOf(items, 'proyeccion').find((l) => l.data.month === month)?.data.budget;
+  if (own) return { total: own, from: 'mes' };
+  const general = itemsOf(items, 'ajustes')[0]?.data.monthBudget ?? 0;
+  return general ? { total: general, from: 'general' } : { total: 0, from: null };
+}
+
+export type LetterScore = {
+  score: number;
+  label: string;
+  tone: 'top' | 'good' | 'mid' | 'low';
+  parts: { key: string; label: string; value: number }[];
+};
+
+/**
+ * Índice de puntería del mes (0 a 100): qué tan cerca entró lo que proyectaste, si gastaste lo
+ * que pensabas, si respetaste el presupuesto y cuánto de tu plan se cumplió.
+ */
+export function letterScore(x: {
+  target: number;
+  income: number;
+  spendTarget: number;
+  spent: number;
+  budget: number;
+  planned: number;
+  done: number;
+}): LetterScore | null {
+  const parts: (LetterScore['parts'][number] & { w: number })[] = [];
+  const control = (q: number) => (q <= 1 ? 1 : Math.max(0, 1 - (q - 1) * 2));
+  if (x.target > 0) {
+    const r = x.income / x.target;
+    parts.push({ key: 'in', label: 'Ingresos', value: r >= 1 ? Math.max(0, 1 - (r - 1) * 0.5) : r, w: 0.4 });
+  }
+  if (x.spendTarget > 0) parts.push({ key: 'out', label: 'Gastos', value: control(x.spent / x.spendTarget), w: 0.3 });
+  if (x.budget > 0) parts.push({ key: 'budget', label: 'Presupuesto', value: control(x.spent / x.budget), w: 0.15 });
+  if (x.planned > 0) parts.push({ key: 'plan', label: 'Plan cumplido', value: x.done / x.planned, w: 0.15 });
+  if (!parts.length) return null;
+  const w = parts.reduce((s, p) => s + p.w, 0);
+  const score = Math.round((100 * parts.reduce((s, p) => s + p.w * Math.min(1, Math.max(0, p.value)), 0)) / w);
+  const [label, tone]: [string, LetterScore['tone']] =
+    score >= 85 ? ['Clavado', 'top'] : score >= 70 ? ['Muy bien', 'good'] : score >= 50 ? ['A medias', 'mid'] : ['Desviado', 'low'];
+  return { score, label, tone, parts: parts.map(({ w: _w, ...p }) => p) };
 }
 
 // ───────────────────────── Fijos ─────────────────────────
@@ -578,4 +964,187 @@ export function goalSaved(goal: FinItem<'meta'>, entries: readonly Entry[]) {
     if (e.kind === 'Movimiento' && e.details.goalId === goal.id && !e.details.pending && flowOf(e) === 'ahorro')
       s += e.direction === 'ingreso' ? -e.amount : e.amount;
   return s;
+}
+
+// ───────────────────────── Bolsillos y carteras ─────────────────────────
+
+/** Cuánto mueve un movimiento el saldo de su bolsillo: guardar y recibir suman; sacar y gastar restan. */
+export function pocketDelta(e: Entry) {
+  if (e.kind !== 'Movimiento' || e.details.pending) return 0;
+  switch (flowOf(e)) {
+    case 'ahorro':
+      return e.direction === 'egreso' ? e.amount : -e.amount;
+    case 'gasto':
+      return -costOf(e);
+    case 'ingreso':
+    case 'reembolso':
+      return e.amount;
+    default:
+      return 0;
+  }
+}
+
+export type PocketLine = { key: string; d: string; title: string; v: number; entry?: Entry; log?: PocketLog };
+
+/** Saldo de un bolsillo, lo que entró y salió este mes, y su historia (lo más reciente primero). */
+export function pocketStats(p: FinItem<'bolsillo'>, entries: readonly Entry[], month = monthKey(todayInputValue())) {
+  let balance = p.data.initial;
+  let added = 0;
+  let spent = 0;
+  let taken = 0;
+  const lines: PocketLine[] = [];
+  const count = (d: string, v: number) => {
+    balance += v;
+    if (monthKey(d) !== month) return;
+    if (v > 0) added += v;
+    else taken -= v;
+  };
+  for (const e of entries) {
+    if (e.kind !== 'Movimiento' || e.details.pocketId !== p.id) continue;
+    const v = pocketDelta(e);
+    const d = dayOf(e);
+    count(d, v);
+    if (v < 0 && flowOf(e) === 'gasto' && monthKey(d) === month) spent -= v;
+    lines.push({ key: e.id, d, title: e.title || (v >= 0 ? 'Entrada' : 'Salida'), v, entry: e });
+  }
+  for (const l of p.data.log) {
+    count(l.d, l.v);
+    lines.push({ key: l.id, d: l.d, title: l.n || (l.v > 0 ? 'Recarga' : 'Retiro'), v: l.v, log: l });
+  }
+  lines.sort((a, b) => b.d.localeCompare(a.d));
+  return { balance, added, taken, spent, lines };
+}
+
+// ───────────────────────── Cobros por partes ─────────────────────────
+
+/** Días de retraso de una parte que ya llegó (frente a la fecha que se acordó primero). */
+export const partDelay = (p: ChargePart) => (p.gotOn ? daysBetween(p.moved?.[0] ?? p.due, p.gotOn) : null);
+
+/** Lo recibido, lo que falta, lo programado y qué tan puntual ha sido. */
+export function chargeStats(c: FinItem<'cobro'>, entries: readonly Entry[], today = todayInputValue()) {
+  const abonos = entries
+    .filter((e) => e.kind === 'Movimiento' && e.details.chargeId === c.id && !e.details.pending)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const received = abonos.reduce((s, e) => s + e.amount, 0);
+  const lost = c.data.lost ?? 0;
+  const left = Math.max(0, c.data.total - received - lost);
+  const waiting = c.data.parts.filter((p) => p.status === 'esperando').sort((a, b) => a.due.localeCompare(b.due));
+  const scheduled = Math.min(left, waiting.reduce((s, p) => s + p.amount, 0));
+  const delays = c.data.parts
+    .filter((p) => p.status === 'llego')
+    .map(partDelay)
+    .filter((d): d is number => d !== null);
+  const onTime = delays.filter((d) => d <= 0).length;
+  return {
+    abonos,
+    received,
+    lost,
+    left,
+    pct: c.data.total ? received / c.data.total : 0,
+    waiting,
+    next: waiting[0] ?? null,
+    late: waiting.filter((p) => p.due < today),
+    scheduled,
+    unscheduled: Math.max(0, left - scheduled),
+    punctuality: delays.length ? onTime / delays.length : null,
+    avgDelay: delays.length ? delays.reduce((s, d) => s + Math.max(0, d), 0) / delays.length : null,
+    missed: c.data.parts.filter((p) => p.status === 'no').length,
+    done: c.data.total > 0 && left <= 0,
+  };
+}
+export type ChargeStats = ReturnType<typeof chargeStats>;
+
+export const isOpenCharge = (c: FinItem<'cobro'>) => !c.archived && !c.data.closedOn;
+
+// ───────────────────────── Tarjetas ─────────────────────────
+
+/** El medio de pago con el que se registran los movimientos de la tarjeta. */
+export const cardMethod = (c: FinItem<'tarjeta'>) => c.data.method?.trim() || c.title;
+
+const sameMethod = (a?: string, b?: string) => Boolean(a && b) && normalizeText(a!.trim()) === normalizeText(b!.trim());
+
+/**
+ * Lo que va de una tarjeta de crédito: lo que debes (lo que ya debías + compras − pagos y
+ * devoluciones), lo disponible del cupo y cuándo tocan el corte y el pago.
+ */
+export function cardStats(c: FinItem<'tarjeta'>, entries: readonly Entry[], today = todayInputValue()) {
+  const m = cardMethod(c);
+  let owed = c.data.owed ?? 0;
+  let spentMonth = 0;
+  let n = 0;
+  const month = monthKey(today);
+  for (const e of entries) {
+    if (e.kind !== 'Movimiento' || e.details.pending) continue;
+    const f = flowOf(e);
+    if (f === 'transferencia') {
+      if (sameMethod(e.details.toMethod, m)) {
+        owed -= e.amount;
+        n++;
+      } else if (sameMethod(e.details.method, m)) {
+        owed += e.amount;
+        n++;
+      }
+      continue;
+    }
+    if (!sameMethod(e.details.method, m)) continue;
+    n++;
+    if (e.direction === 'egreso') {
+      owed += e.amount;
+      if (f === 'gasto' && monthKey(dayOf(e)) === month) spentMonth += e.amount;
+    } else owed -= e.amount;
+  }
+  const next = (d?: number) => {
+    if (!d) return null;
+    const [y, mo] = today.split('-').map(Number);
+    const at = (yy: number, mm: number) => {
+      const last = new Date(yy, mm, 0).getDate();
+      return `${yy}-${String(mm).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
+    };
+    const here = at(y, mo);
+    return here >= today ? here : mo === 12 ? at(y + 1, 1) : at(y, mo + 1);
+  };
+  const expiresIn = c.data.expiry ? daysBetween(today, monthBounds(c.data.expiry).to) : null;
+  return {
+    owed,
+    available: c.data.limit ? c.data.limit - Math.max(0, owed) : null,
+    used: c.data.limit ? Math.max(0, owed) / c.data.limit : null,
+    spentMonth,
+    n,
+    nextCut: next(c.data.cutDay),
+    nextPay: next(c.data.payDay),
+    expiresIn,
+  };
+}
+
+/** Franquicia por los primeros dígitos. */
+export function netOf(number: string): CardNet | null {
+  const d = number.replace(/\D/g, '');
+  if (/^4/.test(d)) return 'visa';
+  if (/^(5[1-5]|2(2[2-9]|[3-6]\d|7[01]|720))/.test(d)) return 'mastercard';
+  if (/^3[47]/.test(d)) return 'amex';
+  if (/^3(0[0-5]|[68])/.test(d)) return 'diners';
+  return null;
+}
+
+/** ¿El número pasa la verificación de Luhn? (detecta errores al escribirlo). */
+export function luhnOk(number: string) {
+  const d = number.replace(/\D/g, '');
+  if (d.length < 12) return false;
+  let sum = 0;
+  for (let i = 0; i < d.length; i++) {
+    let x = Number(d[d.length - 1 - i]);
+    if (i % 2) {
+      x *= 2;
+      if (x > 9) x -= 9;
+    }
+    sum += x;
+  }
+  return sum % 10 === 0;
+}
+
+/** «4111 1111 1111 1111» (Amex: «3782 822463 10005»). */
+export function formatCardNumber(number: string) {
+  const d = number.replace(/\D/g, '').slice(0, 19);
+  if (/^3[47]/.test(d)) return [d.slice(0, 4), d.slice(4, 10), d.slice(10, 15)].filter(Boolean).join(' ');
+  return d.replace(/(\d{4})(?=\d)/g, '$1 ');
 }

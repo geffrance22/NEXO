@@ -5,6 +5,7 @@ import { Segmented } from '../composer/controls';
 import type { Person } from '../data';
 import { friendlyDate, initials, money, todayInputValue } from '../lib/format';
 import { Avatar } from '../people/Avatar';
+import { ChargesBlock } from './Charges';
 import { Progress } from './charts';
 import {
   debtBalances,
@@ -66,6 +67,8 @@ export function DebtsTab() {
 
   return (
     <div className="fz-debts">
+      <ChargesBlock />
+      <h4 className="fz-sub">Deudas con personas</h4>
       <div className="fz-kpis two">
         <div className="fz-kpi in">
           <span>Te deben</span>

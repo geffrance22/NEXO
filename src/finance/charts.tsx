@@ -152,11 +152,14 @@ export function Line({
   series,
   height = 120,
   zero = false,
+  points,
 }: {
   series: { values: number[]; color: string; dashed?: boolean; fill?: boolean }[];
   height?: number;
   /** Dibuja la línea del cero (si los valores cruzan a negativo). */
   zero?: boolean;
+  /** Cuántos puntos tiene el eje (una serie más corta llega solo hasta donde va). */
+  points?: number;
 }) {
   const all = series.flatMap((s) => s.values);
   if (all.length < 2) return <div className="fz-line empty" style={{ height }} />;
@@ -172,12 +175,14 @@ export function Line({
         <line x1="0" x2={W} y1={y(0)} y2={y(0)} stroke="#d9ded0" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />
       )}
       {series.map((s, k) => {
-        const n = s.values.length;
-        const pts = s.values.map((v, i) => `${(i / Math.max(1, n - 1)) * W},${y(v)}`);
+        const n = points ?? s.values.length;
+        const x = (i: number) => (i / Math.max(1, n - 1)) * W;
+        const pts = s.values.map((v, i) => `${x(i)},${y(v)}`);
+        if (s.values.length === 1) pts.push(`${x(0) + 0.5},${y(s.values[0])}`);
         return (
           <g key={k}>
             {s.fill && (
-              <polygon points={`0,${H} ${pts.join(' ')} ${W},${H}`} fill={s.color} opacity="0.1" />
+              <polygon points={`0,${H} ${pts.join(' ')} ${x(s.values.length - 1)},${H}`} fill={s.color} opacity="0.1" />
             )}
             <polyline
               points={pts.join(' ')}
@@ -275,6 +280,46 @@ export function Progress({
           <small>{m.label}</small>
         </em>
       ))}
+    </div>
+  );
+}
+
+/** Anillo de avance (presupuesto usado, índice del mes…) con lo que quieras en el centro. */
+export function Ring({
+  value,
+  max,
+  size = 120,
+  thickness = 10,
+  tone = 'in',
+  children,
+}: {
+  value: number;
+  max: number;
+  size?: number;
+  thickness?: number;
+  tone?: 'in' | 'out' | 'warn' | 'bad' | 'top' | 'good' | 'mid' | 'low';
+  children?: ReactNode;
+}) {
+  const r = (size - thickness) / 2;
+  const c = 2 * Math.PI * r;
+  const pct = max > 0 ? Math.min(1, Math.max(0, value / max)) : 0;
+  return (
+    <div className={'fz-ring ' + tone} style={{ width: size, height: size }}>
+      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} aria-hidden="true">
+        <circle className="fz-ring-track" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={thickness} />
+        <circle
+          className="fz-ring-bar"
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          strokeWidth={thickness}
+          strokeLinecap="round"
+          strokeDasharray={`${pct * c} ${c}`}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </svg>
+      <div className="fz-ring-center">{children}</div>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { CalendarClock, HandCoins, PenLine, PiggyBank, Receipt, TrendingUp, Wall
 import { useApp } from '../../AppContext';
 import { catColor } from '../../finance/charts';
 import {
+  budgetFor,
   debtBalances,
   goalSaved,
   invStats,
@@ -27,7 +28,7 @@ import {
   signed,
   totals,
 } from '../../finance/money';
-import { settingsOf, useFinance } from '../../finance/store';
+import { useFinance } from '../../finance/store';
 import { openFinanceTab, type FinTab } from '../../finance/ui';
 import { addDays, friendlyDate, money, todayInputValue } from '../../lib/format';
 import { Card } from '../Card';
@@ -52,7 +53,7 @@ export function MoneyMonthBlock({ opts, zone }: BlockProps) {
   }, [workspace.entries, month]);
   const t = totals(moves);
   const cats = byCategory(moves).slice(0, num(opts, 'cats', 3));
-  const budget = settingsOf(fin.items).monthBudget;
+  const budget = budgetFor(fin.items, month).total;
   const daysLeft = Number(monthBounds(month).to.slice(8)) - Number(today.slice(8)) + 1;
   const pct = budget ? Math.min(100, Math.round((t.spent / budget) * 100)) : 0;
   return (
@@ -262,7 +263,7 @@ export function LetterBlock({ opts, zone }: BlockProps) {
   const today = todayInputValue();
   const month = monthKey(today);
   const letter = itemsOf(fin.items, 'proyeccion').find((l) => l.data.month === month);
-  const t = letter ? projectionTotals(letter.data) : null;
+  const t = letter ? projectionTotals(letter.data, fin.items) : null;
   const actual = monthActual(workspace.entries, month);
   const pct = t && t.target ? Math.round((actual.income / t.target) * 100) : 0;
   return (

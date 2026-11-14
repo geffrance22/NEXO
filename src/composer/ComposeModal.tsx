@@ -55,6 +55,7 @@ import type {
 } from "../data";
 import { todayInputValue } from "../lib/format";
 import { KindPicker } from "./KindPicker";
+import { QuickTasksSheet } from "../agenda/QuickTasks";
 import { incomeColors, kindMeta, seriesColors } from "./kinds";
 import { useComposer, type ComposerPrefill } from "./useComposer";
 import { afterMoneySaved, prepareMoney } from "../finance/afterSave";
@@ -102,6 +103,8 @@ export type ComposeInit = {
   prefill?: ComposerPrefill;
   /** Cambia para abrir un formulario nuevo aunque ya hubiera uno igual («Guardar y otro»). */
   nonce?: number;
+  /** Cuando el recuerdo nuevo queda guardado, con su id. */
+  onSaved?: (id: string) => void;
 };
 
 type ComposeModalProps = {
@@ -226,7 +229,9 @@ export function ComposeModal({
   const [stage, setStage] = useState<"pick" | "write">(
     init.kind || init.entry ? "write" : "pick",
   );
-  const [shortcut, setShortcut] = useState<"idea" | "link" | "capture" | null>(
+  const [shortcut, setShortcut] = useState<
+    "idea" | "link" | "capture" | "quick" | null
+  >(
     null,
   );
   const [busy, setBusy] = useState(false);
@@ -610,6 +615,7 @@ export function ComposeModal({
       />
     );
   if (shortcut === "capture") return <CaptureForm onClose={onClose} />;
+  if (shortcut === "quick") return <QuickTasksSheet onClose={onClose} />;
   if (shortcut === "link")
     return (
       <SaveLink

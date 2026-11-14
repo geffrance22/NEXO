@@ -1,0 +1,455 @@
+/* ════════════════ Pendientes rápidos (Agenda → Pendientes → Abiertos) ════════════════
+   Una nota fija a la izquierda de las tarjetas. Se pega bajo las pestañas al bajar y, si crece,
+   se desplaza por dentro. En pantallas estrechas va arriba, a lo ancho. */
+.qt-layout {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.qt-main {
+  min-width: 0;
+}
+.qt,
+.qt-block,
+.qt-sheet-in {
+  --qt-ink: #4a3424;
+  --qt-muted: #a08c76;
+  --qt-line: #f1e7d6;
+  --qt-accent: #c4705a;
+  --qt-warn: #b5582f;
+}
+.qt {
+  position: sticky;
+  /* Barra superior + pestañas de Agenda (49 px) + aire. */
+  top: calc(var(--topbar-h) + 61px);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - var(--topbar-h) - 80px);
+  border: 1px solid #f0e5d1;
+  border-radius: 16px 16px 16px 6px;
+  background: #fffaf1;
+  box-shadow:
+    0 1px 2px rgba(80, 55, 25, 0.05),
+    0 14px 30px -22px rgba(80, 55, 25, 0.35);
+  color: var(--qt-ink);
+}
+.qt-head {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 14px 8px 16px;
+}
+.qt-head h3 {
+  font:
+    750 13.5px/1.3 'Manrope',
+    sans-serif;
+  letter-spacing: -0.2px;
+  color: var(--qt-ink);
+}
+.qt-head small {
+  display: block;
+  margin-top: 1px;
+  font-size: 11.5px;
+  color: var(--qt-muted);
+}
+.qt-count {
+  flex: none;
+  margin-top: 1px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(196, 112, 90, 0.1);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #9a5442;
+}
+.qt-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 0 8px 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 85, 40, 0.2) transparent;
+}
+.qt-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* Lo de días anteriores, al final y separado por una raya fina. */
+.qt-carried {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed #eee0c9;
+}
+/* Lo que se arrastra 3 días o más: una línea que lo dice, y su etiqueta en tono cálido. */
+.qt-stale-note {
+  margin: 0;
+  padding: 2px 8px 4px 33px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--qt-warn);
+}
+/* Todo se alinea con el primer renglón del texto (20 px de alto): la casilla, la etiqueta y la ✕
+   quedan centradas en él aunque el texto ocupe dos líneas. */
+.qt-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 5px 4px 5px 8px;
+  border-radius: 8px;
+  transition: background 0.12s;
+}
+.qt-item:hover {
+  background: rgba(120, 85, 40, 0.05);
+}
+.qt-check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  padding: 0;
+  border: 1.5px solid #cfbca5;
+  border-radius: 5px;
+  color: transparent;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.qt-check svg {
+  display: block;
+}
+.qt-check:hover {
+  border-color: var(--qt-accent);
+  color: color-mix(in srgb, var(--qt-accent) 45%, transparent);
+}
+.qt-item.done .qt-check {
+  border-color: var(--qt-accent);
+  background: var(--qt-accent);
+  color: #fff;
+}
+.qt-text,
+.qt-edit {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--qt-ink);
+}
+.qt-text {
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: text;
+  transition: color 0.15s;
+}
+.qt-item.done .qt-text {
+  color: #b5a491;
+}
+.qt-item.done .qt-text span {
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: rgba(150, 110, 80, 0.6);
+  text-decoration-skip-ink: none;
+}
+.qt-edit {
+  height: 20px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--qt-accent) 55%, transparent);
+  outline: 0;
+  background: transparent;
+  font-family: inherit;
+}
+.qt-tag {
+  flex: none;
+  margin-top: 2px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #f5ead8;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 16px;
+  color: #a37b4f;
+}
+.qt-item.stale .qt-tag {
+  background: color-mix(in srgb, var(--qt-warn) 13%, #fff);
+  color: var(--qt-warn);
+}
+/* «Pasar a pendiente» y «Eliminar»: aparecen al pasar por el renglón, juntos al final. */
+.qt-act {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 6px;
+  color: var(--qt-muted);
+  opacity: 0;
+  transition:
+    opacity 0.12s,
+    background 0.12s,
+    color 0.12s;
+}
+.qt-act + .qt-act {
+  margin-left: -6px;
+}
+.qt-item:hover .qt-act,
+.qt-act:focus-visible {
+  opacity: 1;
+}
+.qt-act svg {
+  display: block;
+}
+.qt-act:hover {
+  background: rgba(120, 85, 40, 0.1);
+  color: var(--qt-ink);
+}
+/* Lo que se arrastra: «Pasar a pendiente» siempre a la vista. */
+.qt-item.stale .qt-up {
+  opacity: 1;
+  color: var(--qt-warn);
+}
+.qt-item.stale .qt-up:hover {
+  background: color-mix(in srgb, var(--qt-warn) 12%, transparent);
+}
+@media (hover: none) {
+  .qt-act {
+    opacity: 0.55;
+  }
+}
+/* El «+» queda en la misma columna que las casillas (centro a 16 px del borde). */
+.qt-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+  padding: 5px 6px 5px 9px;
+  border-radius: 8px;
+  color: var(--qt-muted);
+  transition:
+    background 0.12s,
+    box-shadow 0.12s,
+    color 0.12s;
+}
+.qt-add:focus-within {
+  background: #fff;
+  box-shadow: 0 0 0 1px #efdfc6;
+  color: var(--qt-accent);
+}
+.qt-add > svg {
+  flex: none;
+}
+.qt-add input {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--qt-ink);
+}
+.qt-add input::placeholder {
+  color: #bba893;
+}
+.qt-hint {
+  margin: 0;
+  padding: 0 8px 4px 33px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--qt-muted);
+}
+.qt-note {
+  flex: none;
+  margin: 0;
+  padding: 8px 16px 12px;
+  border-top: 1px solid var(--qt-line);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--qt-muted);
+}
+.qt-note code {
+  font-size: 10.5px;
+  word-break: break-all;
+}
+.qt-note.warn {
+  color: #a34a32;
+}
+.qt-note button {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  color: inherit;
+}
+/* Cargando: tres renglones del mismo alto que los de verdad. */
+.qt-sk {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 8px 6px;
+}
+.qt-sk i {
+  display: block;
+  height: 14px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #f6eddd, #fbf6ec, #f6eddd);
+  background-size: 200% 100%;
+  animation: qt-shimmer 1.2s linear infinite;
+}
+.qt-sk i:nth-child(2) {
+  width: 78%;
+}
+.qt-sk i:nth-child(3) {
+  width: 56%;
+}
+@keyframes qt-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qt-sk i {
+    animation: none;
+  }
+}
+@media (max-width: 1000px) {
+  .qt-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .qt {
+    position: static;
+    max-height: 340px;
+  }
+}
+
+/* ───────── Bloque de Mi espacio «Rápidos de hoy» (centro o lateral) ─────────
+   Con la tarjeta de siempre; los renglones van a ras del título (la casilla bajo su ícono). Si lo
+   pones a todo el ancho del centro, la lista se reparte en dos columnas en lugar de estirarse. */
+.qt-block {
+  container: qtb / inline-size;
+  display: flex;
+  flex-direction: column;
+  color: var(--qt-ink);
+}
+.qt-block .hc-head h3 svg {
+  color: var(--qt-accent);
+}
+.qt-block .qt-count {
+  margin-top: 0;
+}
+.qt-block .qt-scroll {
+  max-height: 380px;
+  margin: 0 -10px;
+  padding: 0 2px 2px;
+}
+.qt-block .qt-note {
+  margin: 8px -16px -14px;
+}
+.qt-block .qt-add:focus-within {
+  box-shadow: 0 0 0 1px #efdfc6;
+}
+@container qtb (min-width: 620px) {
+  .qt-block .qt-scroll {
+    max-height: none;
+  }
+  .qt-block .qt-body {
+    columns: 2;
+    column-gap: 28px;
+  }
+  .qt-block .qt-list {
+    display: block;
+  }
+  .qt-block .qt-item,
+  .qt-block .qt-add,
+  .qt-block .qt-stale-note {
+    break-inside: avoid;
+  }
+  .qt-block .qt-carried {
+    margin-top: 2px;
+  }
+}
+
+/* ───────── Ventana desde el «+»: apuntar desde cualquier lado ───────── */
+.sheet-backdrop > .sheet.qt-sheet {
+  max-width: 420px;
+  border-radius: 22px;
+}
+.qt-sheet-in {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #fffaf1;
+  color: var(--qt-ink);
+}
+.qt-sheet-in .qt-head {
+  align-items: center;
+  padding: 18px 14px 10px 20px;
+}
+.qt-sheet-in .qt-head > div {
+  flex: 1;
+  min-width: 0;
+}
+.qt-sheet-in .qt-head h3 {
+  font-size: 15px;
+}
+.qt-close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: var(--qt-muted);
+}
+.qt-close:hover {
+  background: rgba(120, 85, 40, 0.08);
+  color: var(--qt-ink);
+}
+.qt-sheet-in .qt-scroll {
+  max-height: min(52vh, 440px);
+  padding: 0 12px 10px;
+}
+.qt-sheet-in .qt-add {
+  background: #fff;
+  box-shadow: 0 0 0 1px #efdfc6;
+}
+.qt-foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 16px 14px 20px;
+  border-top: 1px solid var(--qt-line);
+}
+.qt-foot small {
+  font-size: 11.5px;
+  color: var(--qt-muted);
+}
+.qt-foot button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 6px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 650;
+  color: #9a5442;
+}
+.qt-foot button:hover {
+  background: rgba(196, 112, 90, 0.1);
+}

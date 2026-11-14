@@ -525,7 +525,7 @@ export function AppShell({ user }: { user: AppUser }) {
     selectedPlace,
     selectedEpisode,
     go,
-    openEntry: (kind, links, details, prefill) =>
+    openEntry: (kind, links, details, prefill, onSaved) =>
       setModal({
         type: "compose",
         init: {
@@ -535,6 +535,9 @@ export function AppShell({ user }: { user: AppUser }) {
           prefill,
           // Desde la ficha de un episodio, el recuerdo nuevo queda dentro de él.
           episodeId: page === "Episodios" ? selectedEpisode?.id : undefined,
+          onSaved,
+          // Con un aviso al guardar, siempre un formulario nuevo (aunque ya hubiera uno abierto).
+          nonce: onSaved ? Date.now() : undefined,
         },
       }),
     openDraft: (draft) =>
@@ -914,7 +917,11 @@ export function AppShell({ user }: { user: AppUser }) {
             onSave={(input, into) => {
               // Un libro que ya tenías en tu estantería: se actualiza esa ficha.
               const before = composing.entry ?? into;
-              if (!before) return savedThen(saveNew(input), input);
+              if (!before)
+                return savedThen(saveNew(input), input).then((id) => {
+                  if (id) composing.onSaved?.(id);
+                  return id;
+                });
               // En la bóveda: se vuelve a cifrar y no se le enseña nada a las fichas.
               if (composing.entry && isVaulted(composing.entry)) {
                 const entry = composing.entry;

@@ -20,6 +20,7 @@ import {
   Layers,
   LayoutGrid,
   ListChecks,
+  ListTodo,
   MapPin,
   NotebookPen,
   PenLine,
@@ -37,6 +38,7 @@ import {
   Wallet,
   Zap,
 } from 'lucide-react';
+import { QuickTasks } from '../agenda/QuickTasks';
 import { TodayAgenda } from '../agenda/TodayAgenda';
 import { kindMeta } from '../composer/kinds';
 import { kinds } from '../data';
@@ -123,6 +125,16 @@ export const blockDefs: BlockDef[] = [
     zones: ['main'],
     wide: true,
     Component: ({ opts }) => <TodayAgenda title={titleOf(opts, '')} />,
+  },
+  {
+    type: 'quick',
+    label: 'Rápidos de hoy',
+    desc: 'Tus pendientes rápidos del día: apunta y tacha aquí mismo. Lo que taches se borra mañana; lo demás sigue.',
+    icon: ListTodo,
+    group: 'dia',
+    // En el lateral de entrada; en el centro va a media columna (a todo el ancho, en dos columnas).
+    zones: [...both],
+    Component: ({ opts }) => <QuickTasks variant="block" title={titleOf(opts, 'Rápidos de hoy')} />,
   },
   {
     // El tipo sigue siendo «capture» para que los espacios ya guardados conserven el bloque.

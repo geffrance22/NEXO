@@ -40,6 +40,8 @@ const MAX_DOC_BYTES = 10 * 1024 * 1024;
 /** Datos con los que arranca un recuerdo nuevo (p. ej. un gasto sugerido desde Finanzas). */
 export type ComposerPrefill = {
   title?: string;
+  /** Texto con el que arranca (p. ej. un pendiente rápido demasiado largo para el título). */
+  body?: string;
   date?: string;
   amount?: number;
   direction?: Direction;
@@ -89,7 +91,9 @@ export function useComposer(
   const [title, setTitleRaw] = useState(
     entry?.title ?? draft?.title ?? prefill?.title ?? "",
   );
-  const [body, setBodyRaw] = useState(entry?.body ?? draft?.body ?? "");
+  const [body, setBodyRaw] = useState(
+    entry?.body ?? draft?.body ?? prefill?.body ?? "",
+  );
   const [tags, setTagsRaw] = useState<string[]>(
     entry?.tags ?? draft?.tags ?? prefill?.tags ?? [],
   );

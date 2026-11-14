@@ -1,6 +1,6 @@
 import { useEffect, type CSSProperties } from 'react';
 
-import { X, StickyNote, Link2, UserPlus, ScanLine } from 'lucide-react';
+import { X, StickyNote, Link2, UserPlus, ScanLine, ListTodo } from 'lucide-react';
 import { kinds, type Kind } from '../data';
 import { kindMeta } from './kinds';
 
@@ -11,7 +11,7 @@ export function KindPicker({
   onClose,
   onShortcut,
 }: {
-  onShortcut: (kind: 'idea' | 'link' | 'person' | 'capture') => void;
+  onShortcut: (kind: 'idea' | 'link' | 'person' | 'capture' | 'quick') => void;
   current?: Kind;
   onPick: (kind: Kind) => void;
   onClose: () => void;
@@ -56,6 +56,8 @@ export function KindPicker({
       action: () => onShortcut('capture'),
     },
   ];
+  /** «Rápido de hoy» va en el pie (no en la cuadrícula): apuntar algo al vuelo, desde cualquier lado. */
+  const QUICK_KEY = 'R';
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (
@@ -72,7 +74,10 @@ export function KindPicker({
         return;
       const key = event.key.toUpperCase();
       const kind = kinds.find((k) => letters[k] === key);
-      const action = extras.find((e) => e.key === key)?.action;
+      const action =
+        key === QUICK_KEY && !current
+          ? () => onShortcut('quick')
+          : extras.find((e) => e.key === key)?.action;
       if (!kind && !action) return;
       event.preventDefault();
       if (kind) onPick(kind);
@@ -80,7 +85,7 @@ export function KindPicker({
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [onPick, onShortcut]);
+  }, [onPick, onShortcut, current]);
   return (
     <div className="cp-picker">
       <header>
@@ -141,7 +146,14 @@ export function KindPicker({
           </button>
         ))}
       </div>
-      <p className="cp-picker-tip">Pulsa la letra de una opción para abrirla.</p>
+      <div className="cp-picker-foot">
+        <p className="cp-picker-tip">Pulsa la letra de una opción para abrirla.</p>
+        {!current && (
+          <button type="button" className="cp-quick" onClick={() => onShortcut('quick')}>
+            <ListTodo size={15} /> Rápido de hoy <kbd>{QUICK_KEY}</kbd>
+          </button>
+        )}
+      </div>
     </div>
   );
 }

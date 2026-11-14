@@ -1,6 +1,7 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Library, Plus, Quote, Search, X } from 'lucide-react';
 import { useApp } from '../AppContext';
+import { QuickTasks } from '../agenda/QuickTasks';
 import { LoadMore, useInfinite } from '../components/LoadMore';
 import { PairedTasks } from '../components/TaskOutcome';
 import type { Entry } from '../data';
@@ -400,11 +401,24 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
       <span />
     );
 
+    // Agenda → Pendientes → Abiertos: la nota de pendientes rápidos, fija a la izquierda.
+    const withQuick = (node: ReactNode) =>
+      tab === 'pendientes' && shelf === 'abiertos' ? (
+        <div className="qt-layout">
+          <QuickTasks />
+          <div className="qt-main">{node}</div>
+        </div>
+      ) : (
+        node
+      );
+
     content = !all.length ? (
-      <>
-        <EmptyState icon={entryTab.icon} title={entryTab.empty} action={add} />
-        {tab === 'peliculas' && <LetterboxdButton />}
-      </>
+      withQuick(
+        <>
+          <EmptyState icon={entryTab.icon} title={entryTab.empty} action={add} />
+          {tab === 'peliculas' && <LetterboxdButton />}
+        </>,
+      )
     ) : (
       <>
         {tab === 'libros' && !needle && <ReadingGoal entries={all} />}
@@ -422,18 +436,22 @@ function ShelfPage({ section, noteId = null }: { section: ShelfSection; noteId?:
             <ViewSwitch views={entryTab.views} value={view} onChange={(v) => setView(tab, v)} />
           </div>
         </div>
-        {sorted.length ? (
-          <EntryCollection entries={pager.visible} view={view} media={MEDIA_TABS.has(tab)} />
-        ) : (
-          <p className="lt-none">
-            {needle
-              ? `Nada coincide con «${query.trim()}».`
-              : shelf === 'estanteria'
-                ? 'Tu estantería está vacía. Añade los libros físicos que tienes en casa.'
-                : 'Nada en este estante.'}
-          </p>
+        {withQuick(
+          <>
+            {sorted.length ? (
+              <EntryCollection entries={pager.visible} view={view} media={MEDIA_TABS.has(tab)} />
+            ) : (
+              <p className="lt-none">
+                {needle
+                  ? `Nada coincide con «${query.trim()}».`
+                  : shelf === 'estanteria'
+                    ? 'Tu estantería está vacía. Añade los libros físicos que tienes en casa.'
+                    : 'Nada en este estante.'}
+              </p>
+            )}
+            {loadMore}
+          </>,
         )}
-        {loadMore}
       </>
     );
   }

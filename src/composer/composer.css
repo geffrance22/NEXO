@@ -190,11 +190,56 @@
     sans-serif;
   color: #a5ad9b;
 }
+/* Pie del selector: el consejo de las letras y, a la derecha, «Rápido de hoy». */
+.cp-picker-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  margin-top: 18px;
+}
 .cp-picker-tip {
-  margin: 18px 0 0;
+  margin: 0;
   text-align: center;
   font-size: 12.5px;
   color: #a5ad9b;
+}
+.cp-picker-foot:not(:has(.cp-quick)) {
+  justify-content: center;
+}
+.cp-quick {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 8px 0 12px;
+  border: 1px solid #f0e2cc;
+  border-radius: 999px;
+  background: #fffaf1;
+  font-size: 13px;
+  font-weight: 650;
+  color: #8a4f3c;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.cp-quick svg {
+  color: #c4705a;
+}
+.cp-quick:hover {
+  border-color: #e7cfac;
+  background: #fdf1df;
+}
+.cp-quick kbd {
+  padding: 1px 7px;
+  border: 1px solid #efe1c9;
+  border-radius: 6px;
+  background: #fff;
+  font:
+    600 11px "DM Sans",
+    sans-serif;
+  color: #b49b80;
 }
 
 /* ───────── Estructura del formulario ───────── */

@@ -998,7 +998,8 @@ body.dl-grabbing * {
   flex: 1;
   min-height: 0;
   padding: 14px 24px 18px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
@@ -1022,6 +1023,7 @@ body.dl-grabbing * {
   list-style: none;
 }
 .hbs-row {
+  min-width: 0;
   border: 1px solid #e9ede2;
   border-radius: 14px;
   background: #fff;
@@ -1068,18 +1070,23 @@ body.dl-grabbing * {
   background: var(--s, #eef3e7);
   color: var(--c, #5f8247);
 }
+/* El nombre y su resumen se recortan aquí: un resumen largo (la descripción de Instantes) no
+   ensancha el renglón ni abre un scroll de lado en la ventana. */
 .hbs-name {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 1px;
+  overflow: hidden;
   text-align: left;
 }
 .hbs-name strong {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 14px;
   font-weight: 650;
   color: #1f2a1c;
@@ -1094,6 +1101,8 @@ body.dl-grabbing * {
   color: #7b8573;
 }
 .hbs-name small {
+  display: block;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1170,6 +1179,7 @@ body.dl-grabbing * {
   }
 }
 .hbs-desc {
+  overflow-wrap: anywhere;
   margin-bottom: 12px;
   font-size: 12.5px;
   line-height: 1.5;
@@ -1191,6 +1201,8 @@ body.dl-grabbing * {
   grid-column: 1 / -1;
 }
 .hbs-label {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   font-size: 12px;
   font-weight: 700;
   color: #5f6a55;
@@ -1450,6 +1462,8 @@ body.dl-grabbing * {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 14px;
   border: 1px solid #e9ede2;
   border-radius: 16px;

@@ -60,6 +60,8 @@ export type AppContextValue = {
     links?: string[],
     details?: EntryDetails,
     prefill?: ComposerPrefill,
+    /** Cuando el recuerdo nuevo queda guardado (p. ej. para quitar el pendiente rápido que lo originó). */
+    onSaved?: (id: string) => void,
   ) => void;
   /** Retoma un borrador del diario en la ventana de escribir. */
   openDraft: (draft: DiaryDraft) => void;

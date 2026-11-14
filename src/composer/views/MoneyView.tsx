@@ -32,6 +32,7 @@ import {
 import { evalAmount, isExpression, parseQuickLine } from '../../finance/parse';
 import { settingsOf, useFinance } from '../../finance/store';
 import { addDays, friendlyDate, money, thousands, todayInputValue } from '../../lib/format';
+import { paidToPeople } from '../../lib/personMoney';
 import { AutoTextarea, ChoiceChips, Label, Segmented } from '../controls';
 import { DateChips } from '../DateChips';
 import { PeopleField, PlaceField, useLinks } from '../LinkFields';
@@ -261,6 +262,21 @@ export function MoneyView({ c }: ViewProps) {
     if (!split) return;
     if (split.n !== parts || split.mine !== share) c.setDetail('split', { n: parts, mine: share });
   }, [split?.n, split?.mine, parts, share]);
+  // Dividirlo es gastar juntos: deja de ser un pago a esa persona.
+  useEffect(() => {
+    if (split && c.details.paidTo) c.setDetail('paidTo', undefined);
+  }, [Boolean(split)]);
+
+  // ── ¿Se lo pagaste a esa persona? (lo que elijas manda; si no, lo deduce la categoría).
+  const paidTo = paidToPeople({ details: c.details, tags: c.tags });
+  const payeeNames = [...chosen].flatMap((id) => {
+    const p = workspace.people.find((x) => x.id === id);
+    return p ? [p.name.split(' ')[0]] : [];
+  });
+  const payees =
+    payeeNames.length <= 1
+      ? (payeeNames[0] ?? 'esa persona')
+      : payeeNames.slice(0, -1).join(', ') + ' y ' + payeeNames[payeeNames.length - 1];
 
   // ── Metas (para el ahorro).
   const goals = itemsOf(fin.items, 'meta').filter((g) => !g.archived);
@@ -792,6 +808,26 @@ export function MoneyView({ c }: ViewProps) {
           </div>
         )}
       </div>
+
+      {flow === 'gasto' && chosen.size > 0 && !split && (
+        <label className={'fm-toggle' + (paidTo ? ' on' : '')}>
+          <input
+            type="checkbox"
+            checked={paidTo}
+            onChange={(e) => c.setDetail('paidTo', e.target.checked)}
+          />
+          <span className="fm-switch" aria-hidden="true" />
+          <span>
+            <b>Se lo pagué a {payees}</b>
+            <small>
+              {paidTo
+                ? 'Un pago, un regalo, un trabajo o un servicio: la plata fue para ' +
+                  (chosen.size === 1 ? 'esa persona.' : 'esas personas.')
+                : 'Si no, cuenta como un gasto que hicieron juntos.'}
+            </small>
+          </span>
+        </label>
+      )}
 
       {flow === 'gasto' && (
         <label className={'fm-toggle' + (split ? ' on' : '')}>

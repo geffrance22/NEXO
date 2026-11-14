@@ -203,6 +203,11 @@ export type AppContextValue = {
   /** Con `silent`, sin preguntar ni avisar (lo elimina otra acción, como borrar una tarjeta). */
   removeEntry: (entry: Entry, silent?: boolean) => void;
   removePerson: (person: Person) => void;
+  /**
+   * «Dinero con personas»: a quién le pagas, quién te paga y cuánto gastan juntos. Con `person`,
+   * abre en esa persona.
+   */
+  openPeopleMoney: (person?: Person) => void;
   /** Une dos fichas de la misma persona: todo lo de `drop` pasa a `keep` y `drop` se borra. */
   mergePeople: (keep: Person, drop: Person) => Promise<boolean>;
   /** Abre «Unir fichas»: con `other`, ya con la pareja elegida; sin él, para buscarla. */

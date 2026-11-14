@@ -3,7 +3,6 @@ import {
   ArrowDownLeft,
   ArrowRight,
   ArrowUpRight,
-  Banknote,
   CalendarClock,
   Check,
   Clapperboard,
@@ -30,10 +29,7 @@ import { PhotoThumbs } from '../components/PhotoThumbs';
 import { RichText } from '../components/RichText';
 import { aimBoard } from '../planner/boardView';
 import { usePersonCards } from '../planner/personCards';
-import { totals } from '../finance/money';
-import { debtBalances, itemsOf } from '../finance/model';
-import { useFinance } from '../finance/store';
-import { openFinanceTab } from '../finance/ui';
+import { MoneyDetail } from './PersonMoney';
 
 const monthNames = [
   'enero',
@@ -168,8 +164,6 @@ export function Together({
       .map((p) => ({ place: p, n: placeCount.get(p.id)! }))
       .sort((a, b) => b.n - a.n);
     const media = shared.filter((e) => e.kind === 'Libro' || e.kind === 'Película');
-    const moves = shared.filter((e) => e.kind === 'Movimiento');
-    const { spent, income: earned } = totals(moves);
     const counts = new Map<Kind, number>();
     for (const e of shared) counts.set(e.kind, (counts.get(e.kind) ?? 0) + 1);
     const first = stats.interactions[stats.interactions.length - 1];
@@ -178,9 +172,6 @@ export function Together({
       episodes,
       places,
       media,
-      moves,
-      spent,
-      earned,
       counts,
       first,
       meetings: counts.get('Encuentro') ?? 0,
@@ -188,8 +179,6 @@ export function Together({
   }, [stats, workspace.episodes, workspace.places, id]);
 
   const onBoards = usePersonCards(id);
-  const fin = useFinance();
-  const debt = debtBalances(itemsOf(fin.items, 'deuda')).find((r) => r.personId === id)?.net ?? 0;
   const commitments = commitmentsWith(id, workspace.entries);
   // El pendiente que nació en una tarjeta ya sale en «En tableros»: no se muestra dos veces.
   const openCommitments = [...commitments.mine, ...commitments.theirs]
@@ -331,41 +320,7 @@ export function Together({
         </>
       )}
 
-      {data.moves.length > 0 && (
-        <>
-          <h4>
-            <Banknote size={15} /> Dinero
-          </h4>
-          <div className="pj-money">
-            <div>
-              <ArrowUpRight size={15} />
-              <b>{money(data.spent)}</b>
-              <span>Gastos</span>
-            </div>
-            <div className="in">
-              <ArrowDownLeft size={15} />
-              <b>{money(data.earned)}</b>
-              <span>Ingresos</span>
-            </div>
-            <div className="n">
-              <b>{data.moves.length}</b>
-              <span>{data.moves.length === 1 ? 'Movimiento' : 'Movimientos'}</span>
-            </div>
-          </div>
-        </>
-      )}
-      {debt !== 0 && (
-        <button
-          type="button"
-          className={'pj-debt ' + (debt > 0 ? 'in' : 'out')}
-          onClick={() => openFinanceTab(go, 'deudas')}
-        >
-          {debt > 0
-            ? `${person.name.split(' ')[0]} te debe ${money(debt)}`
-            : `Le debes ${money(-debt)} a ${person.name.split(' ')[0]}`}
-          <ArrowRight size={13} />
-        </button>
-      )}
+      <MoneyDetail person={person} />
 
       {openCommitments.length > 0 && (
         <>

@@ -80,7 +80,16 @@ export type AppUser = { id: string; email?: string };
 export type Relation =
   "familia" | "pareja" | "amistad" | "trabajo" | "conocido" | "otro";
 export type ExchangeKind =
-  "favor" | "regalo" | "apoyo" | "tiempo" | "dinero" | "iniciativa";
+  | "favor"
+  | "regalo"
+  | "apoyo"
+  | "tiempo"
+  | "dinero"
+  | "iniciativa"
+  /** Un consejo o una idea que sirvió. */
+  | "consejo"
+  /** Una puerta que se abre: un contacto, un trabajo, una recomendación. */
+  | "oportunidad";
 
 /** Algo que diste o recibiste de una persona: alimenta el balance de reciprocidad. */
 export type Exchange = {
@@ -161,6 +170,23 @@ export type Gender = "f" | "m";
 /** Estado de la relación. Sin estado = activa. */
 export type PersonStatus = "distante" | "memoria";
 
+/** Un cliente: si apenas lo será, si vuelve seguido o si ya no lo es. */
+export type ClientStage = "potencial" | "recurrente" | "anterior";
+
+/**
+ * El detalle de lo que es para ti, según el vínculo: quién te la presentó, dónde son vecinos,
+ * qué clase de cliente es o cómo lo llamas tú («Otro»).
+ */
+export type BondDetail = {
+  /** «Nos presentaron»: id de quien te la presentó. */
+  by?: string;
+  /** Vecinos: barrio, dirección o lugar. */
+  where?: string;
+  client?: ClientStage;
+  /** «Otro»: cómo lo llamas tú (padrino, compadre…). */
+  label?: string;
+};
+
 /** Identidad completa de una persona (columna `profile`). Todo es opcional. */
 export type PersonProfile = {
   photo?: StoredImage;
@@ -172,6 +198,8 @@ export type PersonProfile = {
   closeness?: number;
   /** «distante»: ya no están en contacto. «memoria»: falleció. */
   status?: PersonStatus;
+  /** El detalle de lo que es para ti (ver `BondDetail`). */
+  bond?: BondDetail;
   favorite?: boolean;
   phone?: string;
   email?: string;
@@ -213,6 +241,8 @@ export type Person = {
   interests: string;
   bio: string;
   created_at: string;
+  /** Última vez que cambió algo de su ficha (migración 003). */
+  updated_at?: string;
   profile: PersonProfile;
 };
 
@@ -571,6 +601,11 @@ export type EntryDetails = {
   deductible?: boolean;
   /** Pagaste tú y se dividió: en cuántas partes y cuánto era lo tuyo. */
   split?: { n: number; mine: number };
+  /**
+   * Gastos con personas: la plata fue para ellas (un pago, un regalo, un trabajo o un servicio).
+   * Sin valor se deduce de la categoría (ver `paidToPeople`); si no, gastaron juntos.
+   */
+  paidTo?: boolean;
   /** Se repite: al guardarlo nace un fijo en Finanzas (día del mes y cada cuánto). */
   repeat?: { day: number; every: "mes" | "año" };
   /** Enlaces con Finanzas: el fijo que lo registró, la meta a la que abona y la deuda que mueve. */
@@ -679,6 +714,8 @@ export type Entry = {
   episode_id?: string | null;
   /** Cuándo lo registraste (created_at es cuándo pasó). */
   recorded_at?: string;
+  /** Última vez que se tocó (editarlo, completarlo, posponerlo…). */
+  updated_at?: string;
 };
 
 export type CommitmentKind = "quiero" | "prometi" | "espero" | "depende";
@@ -803,7 +840,28 @@ export type TieKind =
   | "socio"
   | "mentor"
   | "aprendiz"
-  | "otro";
+  | "otro"
+  // Familia
+  | "crianza"
+  // Romance
+  | "saliendo"
+  | "interes"
+  | "novio"
+  | "derecho"
+  // Amistad
+  | "amigoenlinea"
+  // Trabajo («atendido» es el inverso de «profesional»: no se elige a mano)
+  | "equipo"
+  | "cliente"
+  | "proveedor"
+  | "profesional"
+  | "atendido"
+  // Conocidos
+  | "presentado"
+  | "ocasional"
+  | "enlinea"
+  | "sintratar"
+  | "tocayo";
 
 /** Vínculo directo entre dos personas: «a» es kind de «b».  = null es «Tú». */
 export type Tie = {

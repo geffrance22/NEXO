@@ -30,7 +30,13 @@ import { prepareImage, uploadToImgbb } from '../lib/imgbb';
 import { moodValue } from '../composer/moods';
 import { relationMeta } from '../lib/people';
 import { ME, canonicalTie, tieKey } from '../lib/relations';
-import { forgetDismissed, hydrateDismissed, setDismissalSync } from '../relations/dismissed';
+import {
+  dismiss,
+  forgetDismissed,
+  hydrateDismissed,
+  setDismissalSync,
+} from '../relations/dismissed';
+import { groupKey } from '../lib/groupSuggestions';
 import { mergedProfile } from '../lib/duplicates';
 import { isHiddenCapsule, isReady, isSpent } from '../diary/capsule';
 import type { Notify } from './useToast';
@@ -264,6 +270,12 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
       let outdated = false;
       let noExperiences = false;
       const loadEntries = async () => {
+        // `updated_at` (migración 003): cuándo se tocó por última vez (ordena «Más reciente»).
+        try {
+          return await fetchAll<Entry>('entries', EXP_ENTRY_COLUMNS + ',updated_at');
+        } catch (e) {
+          if (!isMissingColumn(e)) throw e;
+        }
         try {
           return await fetchAll<Entry>('entries', EXP_ENTRY_COLUMNS);
         } catch (e) {
@@ -313,6 +325,11 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
       };
       let noProfile = false;
       const loadPeople = async () => {
+        try {
+          return await fetchAll<Person>('people', PERSON_COLUMNS + ',updated_at');
+        } catch (e) {
+          if (!isMissingColumn(e)) throw e;
+        }
         try {
           return await fetchAll<Person>('people', PERSON_COLUMNS);
         } catch (e) {
@@ -715,7 +732,9 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
           await removeAttachment(entry.file_path);
         setWorkspace((w) => ({
           ...w,
-          entries: w.entries.map((x) => (x.id === entry.id ? { ...x, ...changes } : x)),
+          entries: w.entries.map((x) =>
+            x.id === entry.id ? { ...x, ...changes, updated_at: new Date().toISOString() } : x,
+          ),
         }));
         notify('Cambios guardados.');
         return true;
@@ -731,7 +750,7 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
   /** Cambia solo los detalles o el estado de un recuerdo (posponer, marcar seguimiento…). */
   const patchEntry = useCallback(
     async (entry: Entry, changes: EntryPatch) => {
-      const next = { ...entry, ...changes };
+      const next = { ...entry, ...changes, updated_at: new Date().toISOString() };
       setWorkspace((w) => ({
         ...w,
         entries: w.entries.map((x) => (x.id === entry.id ? next : x)),
@@ -885,7 +904,8 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
   /** Cambia campos de una persona. Con `silent` no muestra aviso (accesos rápidos). */
   const patchPerson = useCallback(
     async (person: Person, changes: Partial<Omit<Person, 'id' | 'created_at'>>, silent = false) => {
-      const next = { ...person, ...changes };
+      // `updated_at` lo pone la base; aquí se refleja al instante (ordena «Más reciente»).
+      const next = { ...person, ...changes, updated_at: new Date().toISOString() };
       // Se aplica al instante y se revierte si el servidor falla.
       setWorkspace((w) => ({
         ...w,
@@ -1256,6 +1276,9 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
         ...w,
         ties: w.ties.filter((t) => !ids.includes(t.id)),
       }));
+      // Al instante (sin esperar al render): así se puede volver a guardar el mismo vínculo
+      // enseguida, p. ej. con otra nota.
+      tiesRef.current = tiesRef.current.filter((t) => !ids.includes(t.id));
       if (!silent)
         notify(rows.length === 1 ? 'Vínculo eliminado.' : `${rows.length} vínculos eliminados.`, {
           label: 'Deshacer',
@@ -1300,6 +1323,11 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
   const updateGroup = useCallback(
     async (group: Group, changes: Partial<GroupInput>, silent = false) => {
       const next = { ...group, ...changes };
+      // A quien sacas de un grupo no se le vuelve a sugerir para él.
+      if (changes.member_ids) {
+        const out = group.member_ids.filter((id) => !changes.member_ids!.includes(id));
+        if (out.length) dismiss(...out.map((id) => groupKey(group.id, id)));
+      }
       setWorkspace((w) => ({
         ...w,
         groups: w.groups.map((g) => (g.id === group.id ? next : g)),
@@ -1369,7 +1397,7 @@ export function useWorkspace(user: AppUser, notify: Notify, confirm: ConfirmFn) 
           : entry.details.missed
             ? { status, details: rest }
             : { status };
-      const next: Entry = { ...entry, ...changes };
+      const next: Entry = { ...entry, ...changes, updated_at: new Date().toISOString() };
       setWorkspace((w) => ({
         ...w,
         entries: w.entries.map((x) => (x.id === entry.id ? next : x)),

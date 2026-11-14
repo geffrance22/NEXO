@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   Mail,
   MapPin,
+  PenLine,
   Phone,
   Plus,
   RotateCw,
@@ -54,9 +55,11 @@ import {
 } from '../lib/people';
 import {
   ME,
+  bondFor,
+  bondNote,
   groupKinds,
   guessGroupKind,
-  kindTitle,
+  kindChip,
   kindWord,
   kindsForRelation,
   relationForKind,
@@ -69,6 +72,7 @@ import {
 } from '../lib/relations';
 import { GroupPicker } from '../relations/GroupPicker';
 import { Avatar } from './Avatar';
+import { BondFields } from './BondFields';
 
 const relationIcons: Record<Relation, LucideIcon> = {
   familia: Home,
@@ -225,6 +229,7 @@ export function PersonSheet({
   const [active, setActive] = useState<PersonSection>(section ?? 'esencia');
   const photo = useImageUploads(pr.photo ? [pr.photo] : [], 1);
   const scroll = useRef<HTMLDivElement>(null);
+  const indexLock = useRef(0);
   const nameInput = useRef<HTMLInputElement>(null);
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
@@ -248,27 +253,44 @@ export function PersonSheet({
     return () => window.clearTimeout(t);
   }, [section]);
 
-  // Índice lateral: marca la sección visible.
+  // Índice lateral: marca la sección en la que vas. Es la última que ya cruzó el tercio de arriba;
+  // al llegar al final del formulario, la última (aunque sea corta y nunca suba hasta ahí).
   useEffect(() => {
     const root = scroll.current;
     if (!root) return;
-    const io = new IntersectionObserver(
-      (items) => {
-        const visible = items
-          .filter((i) => i.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-        if (visible) setActive((visible.target as HTMLElement).dataset.section as PersonSection);
-      },
-      { root, rootMargin: '0px 0px -65% 0px' },
-    );
-    root.querySelectorAll('[data-section]').forEach((el) => io.observe(el));
-    return () => io.disconnect();
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      // Tras tocar una sección del índice, manda esa mientras el formulario se desliza hasta ella.
+      if (Date.now() < indexLock.current) return;
+      const els = Array.from(root.querySelectorAll<HTMLElement>('[data-section]'));
+      if (!els.length) return;
+      let current = els[0];
+      if (root.scrollTop + root.clientHeight >= root.scrollHeight - 8)
+        current = els[els.length - 1];
+      else {
+        const line = root.getBoundingClientRect().top + root.clientHeight / 3;
+        for (const el of els) if (el.getBoundingClientRect().top <= line) current = el;
+      }
+      setActive(current.dataset.section as PersonSection);
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    root.addEventListener('scroll', onScroll, { passive: true });
+    update();
+    return () => {
+      root.removeEventListener('scroll', onScroll);
+      cancelAnimationFrame(frame);
+    };
   }, []);
 
   const profile = useMemo<PersonProfile>(() => {
     const { name: _n, role: _r, interests: _i, bio: _b, ...rest } = d;
     const out: Record<string, unknown> = { ...pr, ...rest };
     out.photo = photo.images[0];
+    // Del detalle del vínculo, solo lo que corresponde al que elegiste.
+    out.bond = bondFor(meKind, d.bond);
     // Lo que se añade con accesos rápidos mientras el formulario está abierto no se pisa.
     out.exchanges = pr.exchanges;
     out.updates = pr.updates;
@@ -296,7 +318,7 @@ export function PersonSheet({
     }
     if (history.length) out.history = history.slice(0, 40);
     return out as PersonProfile;
-  }, [d, pr, photo.images]);
+  }, [d, pr, photo.images, meKind]);
 
   const preview: Person = {
     id: person?.id ?? 'nuevo',
@@ -324,9 +346,15 @@ export function PersonSheet({
     const adds: TieInput[] = [];
     const mine = views.find((v) => v.other === ME);
     const meNow = mine ? tieKinds[mine.kind].inverse : null;
-    if (meKind !== meNow) {
+    // El detalle («Nos presentó Ana», «Vecinos · El Poblado») va como nota del vínculo contigo.
+    // Una nota escrita a mano se respeta; la que puso el detalle se actualiza con él.
+    const note = bondNote(bondFor(meKind, d.bond), workspace.people);
+    const before = bondNote(bondFor(meNow, pr.bond), workspace.people);
+    const had = mine?.tie.note ?? '';
+    const auto = !had || had === before;
+    if (meKind !== meNow || (meKind && auto && had !== note)) {
       if (mine) removals.push(mine.tie);
-      if (meKind) adds.push({ a: id, b: ME, kind: meKind });
+      if (meKind) adds.push({ a: id, b: ME, kind: meKind, note: note || (auto ? '' : had) });
     }
     for (const v of views) {
       if (v.other === ME) continue;
@@ -411,12 +439,28 @@ export function PersonSheet({
   /** Sexo indicado o deducido del nombre y del rol. */
   const sex = d.gender ?? guessGender(d.name, d.role);
   const relKinds = relation ? kindsForRelation(relation) : [];
+  const bond = d.bond ?? {};
+  // «Otro» escrito a mano: el vínculo es «otro» con tu propio nombre para él.
+  const custom = meKind === 'otro' && bond.label !== undefined;
   const pickMeKind = (k: TieKind) => {
     setLinksTouched(true);
-    if (meKind === k) return setMeKind(null);
+    if (k === 'otro' && bond.label !== undefined) set('bond', { ...bond, label: undefined });
+    else if (meKind === k) return setMeKind(null);
     setMeKind(k);
+    // Si la relación elegida ya lo ofrece (un vecino puede ser amistad o conocido), se queda.
+    if (relation && kindsForRelation(relation).includes(k)) return;
     const r = relationForKind(k);
     if (r !== relation) set('relation', r);
+  };
+  const pickCustom = () => {
+    setLinksTouched(true);
+    if (custom) {
+      setMeKind(null);
+      set('bond', { ...bond, label: undefined });
+      return;
+    }
+    setMeKind('otro');
+    set('bond', { ...bond, label: bond.label ?? '' });
   };
   const addLink = (other: string, kind: TieKind = defaultKind(relation)) => {
     setLinksTouched(true);
@@ -542,11 +586,13 @@ export function PersonSheet({
                 type="button"
                 key={s.id}
                 className={active === s.id ? 'on' : ''}
-                onClick={() =>
+                onClick={() => {
+                  setActive(s.id);
+                  indexLock.current = Date.now() + 900;
                   scroll.current
                     ?.querySelector('#ps-' + s.id)
-                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                }
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
               >
                 {s.label}
               </button>
@@ -666,7 +712,8 @@ export function PersonSheet({
                     onClick={() => {
                       set('relation', relation === r ? undefined : r);
                       // Si el vínculo contigo ya no encaja con la relación, se descarta.
-                      if (meKind && relationForKind(meKind) !== r) setMeKind(null);
+                      if (meKind && (relation === r || !kindsForRelation(r).includes(meKind)))
+                        setMeKind(null);
                     }}
                   >
                     <Icon size={20} />
@@ -678,20 +725,43 @@ export function PersonSheet({
             {relKinds.length > 1 && (
               <div className="ps-mekind" role="radiogroup" aria-label={`Qué es ${first} para ti`}>
                 <span>{capital(first)} es tu…</span>
-                {relKinds.map((k) => (
+                {relKinds.map((k) => {
+                  const on = meKind === k && !(k === 'otro' && custom);
+                  return (
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      key={k}
+                      className={'cp-chip' + (on ? ' on' : '')}
+                      onClick={() => pickMeKind(k)}
+                    >
+                      {kindChip(k, sex)}
+                    </button>
+                  );
+                })}
+                {relation === 'otro' && (
                   <button
                     type="button"
                     role="radio"
-                    aria-checked={meKind === k}
-                    key={k}
-                    className={'cp-chip' + (meKind === k ? ' on' : '')}
-                    onClick={() => pickMeKind(k)}
+                    aria-checked={custom}
+                    className={'cp-chip' + (custom ? ' on' : '')}
+                    onClick={pickCustom}
                   >
-                    {kindTitle(k, sex)}
+                    <PenLine size={13} /> Definirla
                   </button>
-                ))}
+                )}
               </div>
             )}
+            <BondFields
+              kind={meKind}
+              bond={bond}
+              self={person?.id}
+              onChange={(b) => {
+                setLinksTouched(true);
+                set('bond', b);
+              }}
+            />
             {familyHint && (
               <button
                 type="button"

@@ -18,6 +18,7 @@ import { GoalsTab } from '../finance/Goals';
 import { InvestmentsTab } from '../finance/Investments';
 import { LetterTab } from '../finance/Letter';
 import { MovementsTab } from '../finance/Movements';
+import { PersonMoneyIcon } from '../finance/PeopleMoney';
 import { periodAt, type Period } from '../finance/money';
 import { NotesTab, QuickNoteSheet, rememberOpenNote } from '../finance/Notes';
 import { PocketsTab } from '../finance/Pockets';
@@ -61,7 +62,7 @@ function readPeriod(): Period {
 const needsMore: FinTab[] = ['apuntes', 'bolsillos', 'deudas'];
 
 export function FinancePage() {
-  const { openEntry } = useApp();
+  const { openEntry, openPeopleMoney } = useApp();
   const fin = useFinance();
   const [tab, setTabRaw] = useState<FinTab>(readTab);
   const [period, setPeriodRaw] = useState<Period>(readPeriod);
@@ -84,6 +85,15 @@ export function FinancePage() {
           <h1>Tus números, con contexto.</h1>
         </div>
         <div className="fz-head-actions">
+          <button
+            type="button"
+            className="fz-btn ghost pmi-btn"
+            title="Dinero con personas: a quién le pagas y quién te paga"
+            aria-label="Dinero con personas"
+            onClick={() => openPeopleMoney()}
+          >
+            <PersonMoneyIcon />
+          </button>
           <button type="button" className="fz-btn ghost" onClick={() => setQuickNote(true)} title="Escribe un apunte o sigue en uno de los últimos">
             <NotebookPen size={16} /> Apunte rápido
           </button>

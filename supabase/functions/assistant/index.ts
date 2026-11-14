@@ -1492,7 +1492,7 @@ Deno.serve(async (req) => {
               '{"kind":"novedad","person":"id","update_kind":"trabajo|estudios|salud|amor|familia|hogar|logro|viaje|animo|otro","text":"lo que le pasa a esa persona, en tercera persona","date":"AAAA-MM-DD","evidence":"…"},' +
               '{"kind":"dato","person":"id","field":"likes|dislikes|gifts|birthday|fact","label":"solo si field es fact","value":"… o MM-DD si es birthday","evidence":"…"},' +
               '{"kind":"preguntar","person":"id","text":"pregunta para la próxima vez","evidence":"…"},' +
-              '{"kind":"intercambio","person":"id","dir":"dar|recibir","exchange":"favor|regalo|apoyo|tiempo|dinero|iniciativa","note":"qué fue","date":"AAAA-MM-DD","evidence":"…"},' +
+              '{"kind":"intercambio","person":"id","dir":"dar|recibir","exchange":"favor|regalo|apoyo|tiempo|dinero|iniciativa|consejo|oportunidad","note":"qué fue","date":"AAAA-MM-DD","evidence":"…"},' +
               '{"kind":"movimiento","amount":48000,"direction":"egreso|ingreso","category":"Comida|Transporte|Hogar|Salud|Ocio|Educación|Trabajo|Ahorro|Otro|Salario|Ventas|Regalo|Reembolso|Inversión","title":"…","date":"AAAA-MM-DD","evidence":"…"},' +
               '{"kind":"aprendizaje","title":"la lección en una frase","source":"Libro|Curso|Video|Artículo|Persona|Práctica","source_name":"…","evidence":"…"},' +
               '{"kind":"idea","title":"la idea en una frase","project":false,"evidence":"…"},' +
@@ -1676,7 +1676,7 @@ Deno.serve(async (req) => {
               '{"kind":"obra","media":"libro|pelicula|serie","title":"título exacto","author":"autor si es libro","platform":"Netflix|Max|Prime Video|Disney+|Cine|…","status":"estante|quiero|curso|listo","copy":"mio|prestado|vacío (solo libros)","rating":0,"people":["con quién la vio"],"recommended_by":"quién la recomendó o le prestó el libro","evidence":"…"},' +
               '{"kind":"idea","title":"la idea en una frase","project":false,"evidence":"…"},' +
               '{"kind":"trabajo","title":"qué hizo o avanzó","stage":"idea|curso|pausa|listo","next_step":"lo que falta","due":"AAAA-MM-DD o vacío","people":["…"],"evidence":"…"},' +
-              '{"kind":"intercambio","person":"id o nombre","dir":"dar|recibir","exchange":"favor|regalo|apoyo|tiempo|dinero|iniciativa","note":"qué fue","date":"AAAA-MM-DD","evidence":"…"},' +
+              '{"kind":"intercambio","person":"id o nombre","dir":"dar|recibir","exchange":"favor|regalo|apoyo|tiempo|dinero|iniciativa|consejo|oportunidad","note":"qué fue","date":"AAAA-MM-DD","evidence":"…"},' +
               '{"kind":"dato","person":"id o nombre","field":"likes|dislikes|gifts|birthday|fact","label":"solo si field es fact (p. ej. Alergia)","value":"sushi · o MM-DD si es birthday","evidence":"…"},' +
               '{"kind":"preguntar","person":"id o nombre","text":"¿Cómo le fue en la entrevista?","evidence":"…"},' +
               '{"kind":"visita","place":"nombre","place_id":"id si está en la lista","activity":"…","title":"Visita · Jardín Botánico","date":"AAAA-MM-DD","evidence":"…"},' +

@@ -11,6 +11,7 @@ import {
   Activity,
   ArrowDownUp,
   ArrowUpDown,
+  Banknote,
   Bell,
   BellPlus,
   Cake,
@@ -43,6 +44,7 @@ import { normalizeText } from '../lib/format';
 import {
   interestsOf,
   isReachable,
+  lastActivity,
   relationMeta,
   relationOf,
   relativeDay,
@@ -52,6 +54,7 @@ import {
   statusMeta,
   type PersonStats,
 } from '../lib/people';
+import { peopleWithMoney } from '../lib/personMoney';
 import { Avatar } from '../people/Avatar';
 import { BondRing } from '../people/PersonPanel';
 import { useThermoData } from '../people/Thermo';
@@ -74,9 +77,9 @@ const tabs: { id: TabId; label: string }[] = [
   { id: 'todos', label: 'Todos' },
   { id: 'favoritos', label: 'Favoritos' },
   { id: 'familia', label: 'Familia' },
-  { id: 'pareja', label: 'Pareja' },
   { id: 'amistad', label: 'Amistad' },
   { id: 'trabajo', label: 'Trabajo' },
+  { id: 'pareja', label: 'Romance' },
   { id: 'contactar', label: 'Por contactar' },
 ];
 const sorts: { id: Sort; label: string }[] = [
@@ -342,6 +345,8 @@ export function PeoplePage() {
   const [manage, setManage] = useState(false);
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<TabId>('todos');
+  // Solo quienes tienen movimientos de dinero contigo (se combina con las demás pestañas).
+  const [moneyOnly, setMoneyOnly] = useState(false);
   const [sort, setSort] = useState<Sort>('reciente');
   const [view, setView] = useState<View>(storedView);
   const [peek, setPeek] = useState<string | null>(null);
@@ -370,6 +375,13 @@ export function PeoplePage() {
       }),
     [workspace, thermoData],
   );
+  // Lo último que se registró de cada una (cualquier recuerdo, pendiente, cambio en su ficha…).
+  const activity = useMemo(
+    () => lastActivity(workspace.people, workspace.entries, workspace.ties),
+    [workspace.people, workspace.entries, workspace.ties],
+  );
+  // Con quiénes hay movimientos de dinero.
+  const withMoney = useMemo(() => peopleWithMoney(workspace.entries), [workspace.entries]);
   // Los 10 más próximos (vencidos y de hoy primero).
   const reminders = useMemo(
     () => remindersFor(workspace.people, workspace.entries).slice(0, 10),
@@ -445,13 +457,14 @@ export function PeoplePage() {
     .filter(
       (r) =>
         matchTab(r) &&
+        (!moneyOnly || withMoney.has(r.person.id)) &&
         (!inGroups || inGroups.has(r.person.id)) &&
         (!needle || searchText(r.person).includes(needle)),
     )
     .sort((a, b) => {
       switch (sort) {
         case 'reciente':
-          return (b.stats.last ?? '').localeCompare(a.stats.last ?? '');
+          return (activity.get(b.person.id) ?? 0) - (activity.get(a.person.id) ?? 0);
         case 'vinculo':
           return (
             Number(isReachable(b.person)) - Number(isReachable(a.person)) ||
@@ -518,7 +531,13 @@ export function PeoplePage() {
           {
             icon: Sparkles,
             value: pending,
-            label: pending === 1 ? 'vínculo por confirmar' : 'vínculos por confirmar',
+            label: suggestions.some((s) => s.type === 'grupo')
+              ? pending === 1
+                ? 'sugerencia por confirmar'
+                : 'sugerencias por confirmar'
+              : pending === 1
+                ? 'vínculo por confirmar'
+                : 'vínculos por confirmar',
             onClick: () => {
               markSeen(suggestions.map((s) => s.id));
               setDialog('sugerencias');
@@ -618,6 +637,18 @@ export function PeoplePage() {
                   <i>{counts[t.id]}</i>
                 </button>
               ))}
+            {(withMoney.size > 0 || moneyOnly) && (
+              <button
+                type="button"
+                className={'pp-pill icon money' + (moneyOnly ? ' on' : '')}
+                aria-pressed={moneyOnly}
+                aria-label={`Solo con movimientos de dinero (${withMoney.size})`}
+                title={`Solo con movimientos de dinero · ${withMoney.size}`}
+                onClick={() => setMoneyOnly((v) => !v)}
+              >
+                <Banknote size={15} />
+              </button>
+            )}
           </div>
           <div className="pp-pills" role="group" aria-label="Grupos">
             {workspace.groups.length > 0 && (

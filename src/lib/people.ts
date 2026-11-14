@@ -16,11 +16,12 @@ export const relationMeta: Record<
   Relation,
   { label: string; color: string; soft: string; ink: string }
 > = {
+  // En este orden se ofrecen al elegir qué es para ti.
   familia: { label: 'Familia', color: '#c0674a', soft: '#f9e9e2', ink: '#7d3a26' },
-  pareja: { label: 'Pareja', color: '#c25683', soft: '#f8e5ee', ink: '#7a2f52' },
   amistad: { label: 'Amistad', color: '#5f8247', soft: '#eaf1e0', ink: '#3a5229' },
   trabajo: { label: 'Trabajo', color: '#4d7b9d', soft: '#e3eef6', ink: '#2b4c64' },
   conocido: { label: 'Conocido', color: '#9a8a62', soft: '#f4efe2', ink: '#5e5236' },
+  pareja: { label: 'Romance', color: '#c25683', soft: '#f8e5ee', ink: '#7a2f52' },
   otro: { label: 'Otro', color: '#7d8590', soft: '#eef0f3', ink: '#474d55' },
 };
 export const relations = Object.keys(relationMeta) as Relation[];
@@ -43,6 +44,8 @@ export const exchangeKinds: Record<ExchangeKind, string> = {
   regalo: 'Regalo',
   apoyo: 'Apoyo',
   tiempo: 'Tiempo',
+  consejo: 'Consejo',
+  oportunidad: 'Oportunidad',
   dinero: 'Dinero',
   iniciativa: 'Iniciativa',
 };
@@ -107,6 +110,43 @@ export function ageOf(p: Person, today = todayInputValue()) {
  * Recuerdos que cuentan como interacción. Los movimientos, pendientes y las posibles conexiones
  * no: anotar que Andrés podría ayudar a Laura no significa que hablaste con Andrés.
  */
+/**
+ * Lo último que se registró de cada persona (en milisegundos): cualquier recuerdo, pendiente o
+ * movimiento con ella (al crearlo o al tocarlo), sus compromisos, novedades, lo que se dan, sus
+ * vínculos y cualquier cambio en su ficha. Ordena «Más reciente» en Personas.
+ */
+export function lastActivity(
+  people: readonly Person[],
+  entries: readonly Entry[],
+  ties: readonly { a: string | null; b: string; created_at: string }[] = [],
+) {
+  const now = Date.now();
+  const out = new Map<string, number>();
+  const bump = (id: string | undefined | null, at: string | undefined) => {
+    if (!id || !at) return;
+    const t = Math.min(now, Date.parse(at));
+    if (Number.isFinite(t) && t > (out.get(id) ?? 0)) out.set(id, t);
+  };
+  for (const p of people) {
+    bump(p.id, p.created_at);
+    bump(p.id, p.updated_at);
+    for (const u of p.profile.updates ?? []) bump(p.id, u.created_at ?? u.date + 'T12:00:00');
+    for (const x of p.profile.exchanges ?? []) bump(p.id, x.date + 'T12:00:00');
+  }
+  for (const e of entries) {
+    // Cuándo se registró o se tocó (no cuándo pasó: un plan futuro también cuenta hoy).
+    const at = e.updated_at ?? e.recorded_at ?? e.created_at;
+    for (const id of e.person_ids) bump(id, at);
+    bump(e.details.owner, at);
+    bump(e.details.beneficiary, at);
+  }
+  for (const t of ties) {
+    bump(t.a, t.created_at);
+    bump(t.b, t.created_at);
+  }
+  return out;
+}
+
 export const isInteraction = (e: Entry) =>
   e.kind !== 'Pendiente' && e.kind !== 'Movimiento' && !e.tags.includes('conexión');
 

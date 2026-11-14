@@ -1726,6 +1726,8 @@ const EXCHANGES: ExchangeKind[] = [
   "tiempo",
   "dinero",
   "iniciativa",
+  "consejo",
+  "oportunidad",
 ];
 
 // ───────────────────────── Personas en las piezas ─────────────────────────

@@ -10,7 +10,18 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react';
-import type { Gender, Group, GroupKind, Person, Relation, Tie, TieKind, TieNature } from '../data';
+import type {
+  BondDetail,
+  ClientStage,
+  Gender,
+  Group,
+  GroupKind,
+  Person,
+  Relation,
+  Tie,
+  TieKind,
+  TieNature,
+} from '../data';
 import type { Brain, SurnameLesson } from './brain';
 import { normalizeText } from './format';
 import { genderOf } from './gender';
@@ -26,6 +37,10 @@ type TieInfo = {
   category: TieCategory;
   /** Generación de «a» menos la de «b» (−1: «a» está una generación arriba). */
   gen?: number;
+  /** Cómo se nombra al elegirlo en la ficha («Nos presentaron», «Sin tratar»…). */
+  chip?: string;
+  /** Solo existe como el otro lado de un vínculo: no se ofrece para elegir. */
+  hidden?: boolean;
 };
 
 /** «a» es <label> de «b». */
@@ -194,27 +209,234 @@ export const tieKinds: Record<TieKind, TieInfo> = {
     inverse: 'otro',
     category: 'otro',
   },
+
+  // ── Familia ──
+  crianza: {
+    label: 'Familia de crianza',
+    m: 'familia de crianza',
+    f: 'familia de crianza',
+    inverse: 'crianza',
+    category: 'familia',
+    chip: 'Crianza',
+  },
+
+  // ── Romance ──
+  saliendo: {
+    label: 'Están saliendo',
+    m: 'persona con quien sales',
+    f: 'persona con quien sales',
+    inverse: 'saliendo',
+    category: 'pareja',
+    chip: 'Estamos saliendo',
+  },
+  interes: {
+    label: 'Le interesa',
+    m: 'interés romántico',
+    f: 'interés romántico',
+    inverse: 'interes',
+    category: 'pareja',
+    chip: 'Me interesa',
+  },
+  novio: { label: 'Novio / Novia', m: 'novio', f: 'novia', inverse: 'novio', category: 'pareja' },
+  derecho: {
+    label: 'Amigo/a con derecho',
+    m: 'amigo con derecho',
+    f: 'amiga con derecho',
+    inverse: 'derecho',
+    category: 'pareja',
+    chip: 'Con derecho',
+  },
+
+  // ── Amistad ──
+  amigoenlinea: {
+    label: 'Amigo/a en línea',
+    m: 'amigo en línea',
+    f: 'amiga en línea',
+    inverse: 'amigoenlinea',
+    category: 'amistad',
+    chip: 'En línea',
+  },
+
+  // ── Trabajo ──
+  equipo: {
+    label: 'Compañero/a de equipo',
+    m: 'compañero de equipo',
+    f: 'compañera de equipo',
+    inverse: 'equipo',
+    category: 'trabajo',
+  },
+  cliente: {
+    label: 'Cliente',
+    m: 'cliente',
+    f: 'cliente',
+    inverse: 'proveedor',
+    category: 'trabajo',
+  },
+  proveedor: {
+    label: 'Proveedor/a',
+    m: 'proveedor',
+    f: 'proveedora',
+    inverse: 'cliente',
+    category: 'trabajo',
+  },
+  profesional: {
+    label: 'Profesional',
+    m: 'profesional',
+    f: 'profesional',
+    inverse: 'atendido',
+    category: 'trabajo',
+  },
+  atendido: {
+    label: 'Atendido/a',
+    m: 'cliente',
+    f: 'cliente',
+    inverse: 'profesional',
+    category: 'trabajo',
+    hidden: true,
+  },
+
+  // ── Conocidos ──
+  presentado: {
+    label: 'Se los presentaron',
+    m: 'conocido',
+    f: 'conocida',
+    inverse: 'presentado',
+    category: 'otro',
+    chip: 'Nos presentaron',
+  },
+  ocasional: {
+    label: 'Conocido/a ocasional',
+    m: 'conocido ocasional',
+    f: 'conocida ocasional',
+    inverse: 'ocasional',
+    category: 'otro',
+    chip: 'Ocasional',
+  },
+  enlinea: {
+    label: 'Contacto en línea',
+    m: 'contacto en línea',
+    f: 'contacto en línea',
+    inverse: 'enlinea',
+    category: 'otro',
+    chip: 'En línea',
+  },
+  sintratar: {
+    label: 'Conocido/a de vista',
+    m: 'conocido de vista',
+    f: 'conocida de vista',
+    inverse: 'sintratar',
+    category: 'otro',
+    chip: 'Sin tratar',
+  },
+  tocayo: {
+    label: 'Tocayo / Tocaya',
+    m: 'tocayo',
+    f: 'tocaya',
+    inverse: 'tocayo',
+    category: 'otro',
+  },
 };
 
 export const tieCategories: Record<TieCategory, { label: string; color: string; soft: string }> = {
   familia: { label: 'Familia', color: '#c0674a', soft: '#f9e9e2' },
-  pareja: { label: 'Pareja', color: '#c25683', soft: '#f8e5ee' },
+  pareja: { label: 'Romance', color: '#c25683', soft: '#f8e5ee' },
   amistad: { label: 'Amistad', color: '#5f8247', soft: '#eaf1e0' },
   trabajo: { label: 'Trabajo', color: '#4d7b9d', soft: '#e3eef6' },
   otro: { label: 'Otros', color: '#7d8590', soft: '#eef0f3' },
 };
 export const tieCategoryList = Object.keys(tieCategories) as TieCategory[];
 export const kindsByCategory = (cat: TieCategory) =>
-  (Object.keys(tieKinds) as TieKind[]).filter((k) => tieKinds[k].category === cat);
+  (Object.keys(tieKinds) as TieKind[]).filter(
+    (k) => tieKinds[k].category === cat && !tieKinds[k].hidden,
+  );
 
+/**
+ * Lo que puede ser para ti según la relación que elegiste en su ficha. Un mismo vínculo puede
+ * estar en varias (un vecino puede ser amigo o solo conocido; un colega, amigo o del trabajo).
+ */
+const RELATION_KINDS: Record<Relation, TieKind[]> = {
+  familia: [
+    'padre',
+    'hijo',
+    'hermano',
+    'abuelo',
+    'nieto',
+    'tio',
+    'sobrino',
+    'primo',
+    'suegro',
+    'yerno',
+    'cunado',
+    'familiar',
+    'crianza',
+  ],
+  amistad: ['mejoramigo', 'amigo', 'companero', 'vecino', 'amigoenlinea', 'mentor', 'colega'],
+  trabajo: [
+    'colega',
+    'jefe',
+    'subordinado',
+    'socio',
+    'mentor',
+    'aprendiz',
+    'equipo',
+    'cliente',
+    'profesional',
+    'proveedor',
+  ],
+  conocido: [
+    'conocido',
+    'presentado',
+    'ocasional',
+    'enlinea',
+    'sintratar',
+    'colega',
+    'tocayo',
+    'vecino',
+  ],
+  pareja: ['pareja', 'expareja', 'saliendo', 'interes', 'novio', 'derecho'],
+  otro: ['otro', 'conocido'],
+};
 /** Vínculos que tiene sentido elegir para cada tipo de relación de la ficha. */
-export const kindsForRelation = (r: Relation): TieKind[] =>
-  r === 'conocido' ? ['conocido'] : r === 'otro' ? ['otro', 'conocido'] : kindsByCategory(r);
+export const kindsForRelation = (r: Relation): TieKind[] => RELATION_KINDS[r];
 /** Relación de la ficha que corresponde a un vínculo contigo. */
 export const relationForKind = (k: TieKind): Relation => {
   const c = tieKinds[k].category;
-  return c === 'otro' ? (k === 'conocido' ? 'conocido' : 'otro') : c;
+  if (c !== 'otro') return c;
+  return k === 'otro' ? 'otro' : 'conocido';
 };
+/** Nombre corto para elegirlo en la ficha: «Nos presentaron», «Sin tratar», «Tío»… */
+export const kindChip = (k: TieKind, g?: Gender | null) => tieKinds[k].chip ?? kindTitle(k, g);
+
+export const clientStages: Record<ClientStage, string> = {
+  potencial: 'Potencial',
+  recurrente: 'Recurrente',
+  anterior: 'Anterior',
+};
+
+/** Del detalle, solo lo que tiene sentido para ese vínculo (y nada vacío). */
+export function bondFor(kind: TieKind | null, b?: BondDetail): BondDetail | undefined {
+  if (!kind || !b) return undefined;
+  const out: BondDetail = {};
+  if (kind === 'presentado' && b.by) out.by = b.by;
+  if (kind === 'vecino' && b.where?.trim()) out.where = b.where.trim().slice(0, 120);
+  if (kind === 'cliente' && b.client && b.client in clientStages) out.client = b.client;
+  if (kind === 'otro' && b.label?.trim()) out.label = b.label.trim().slice(0, 60);
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** El detalle en una frase (va como nota del vínculo contigo): «Nos presentó Ana». */
+export function bondNote(b: BondDetail | undefined, people: readonly Person[]) {
+  if (!b) return '';
+  const parts: string[] = [];
+  if (b.by) {
+    const p = people.find((x) => x.id === b.by);
+    if (p) parts.push(`Nos presentó ${p.name.split(' ')[0]}`);
+  }
+  if (b.where) parts.push(`Vecinos · ${b.where}`);
+  if (b.client) parts.push(`Cliente ${clientStages[b.client].toLowerCase()}`);
+  if (b.label) parts.push(b.label);
+  return parts.join(' · ').slice(0, 300);
+}
 
 /**
  * Cómo se dice el vínculo: con el sexo de la persona, «madre», «tía», «hermana»; sin él,
@@ -762,7 +984,8 @@ const orderOptions = (learned: TieKind[], base: TieKind[], max = 3): TieKind[] =
 export type Suggestion = {
   /** Clave para descartarla. */
   id: string;
-  type: 'texto' | 'tuya' | 'apellido' | 'probable';
+  /** «grupo»: alguien que podría estar en un grupo (ver groupSuggestions.ts). */
+  type: 'texto' | 'tuya' | 'apellido' | 'probable' | 'grupo';
   /** Pregunta ya redactada (si no, la arma la tarjeta). */
   title?: string;
   /** Botones con naturaleza propia («Sí, también» / «De crianza»). */
@@ -777,6 +1000,17 @@ export type Suggestion = {
   pairs?: [string, string][];
   /** Nombre propuesto para crear un grupo familiar. */
   group?: string;
+  /** Sumar a `members[0]` a un grupo que ya existe. `exact`: su ficha lo dice. */
+  join?: { groupId: string; exact: boolean };
+};
+
+/** Orden de las sugerencias: lo tuyo y lo que dicen las fichas primero. */
+export const suggestionRank: Record<Suggestion['type'], number> = {
+  tuya: 0,
+  texto: 1,
+  grupo: 2,
+  probable: 3,
+  apellido: 4,
 };
 
 /**
@@ -962,8 +1196,7 @@ export function suggestTies(
   // Parentescos probables (no se dan por hechos): se preguntan.
   const nameOf = (id: string) => (id === ME ? 'ti' : (byId.get(id)?.name.split(' ')[0] ?? '?'));
   for (const s of probableTies(live, known, nameOf)) add(s);
-  const rank = { tuya: 0, texto: 1, probable: 2, apellido: 3 };
-  return out.sort((a, b) => rank[a.type] - rank[b.type]);
+  return out.sort((a, b) => suggestionRank[a.type] - suggestionRank[b.type]);
 }
 
 // ───────────────────────── Grupos ─────────────────────────

@@ -674,6 +674,27 @@
   font-style: normal;
   color: #9aa391;
 }
+/* Sugerencia de grupo: la cara (abre su ficha) y el grupo al que se sumaría */
+.rl-sug-faces > .rl-sug-face {
+  display: grid;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+}
+.rl-sug-faces > .rl-sug-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 25%, transparent);
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--c);
+}
 .rl-sug-actions {
   display: flex;
   flex-wrap: wrap;

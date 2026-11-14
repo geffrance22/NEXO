@@ -18,14 +18,17 @@ import { useApp } from '../AppContext';
 import type { Tie, TieKind, TieNature } from '../data';
 import { ignoredSurnames, learn } from '../lib/brain';
 import { normalizeText } from '../lib/format';
+import { suggestGroups } from '../lib/groupSuggestions';
 import {
   ME,
   explain,
+  groupKinds,
   inferTies,
   tieKey,
   kindTitle,
   kindWord,
   suggestTies,
+  suggestionRank,
   surnamesOf,
   tieCategories,
   tieKinds,
@@ -54,18 +57,136 @@ export function useSuggestions(personId?: string) {
   const brain = useBrain();
   // Tus apellidos (de «Mi ficha») también sirven para encontrar a tu familia.
   const myName = me.profile.name ?? '';
-  return useMemo(() => {
-    const all = suggestTies(
+  // Quién podría estar en cada grupo (no depende de la persona: se calcula una vez).
+  const groupHints = useMemo(
+    () =>
+      suggestGroups(
+        workspace.people,
+        workspace.groups,
+        workspace.ties,
+        workspace.entries,
+        workspace.episodes,
+        skip,
+      ),
+    [
       workspace.people,
-      workspace.ties,
       workspace.groups,
+      workspace.ties,
+      workspace.entries,
+      workspace.episodes,
       skip,
-      surnamesOf(myName),
-      myName,
-      brain,
-    );
+    ],
+  );
+  return useMemo(() => {
+    const all = [
+      ...suggestTies(
+        workspace.people,
+        workspace.ties,
+        workspace.groups,
+        skip,
+        surnamesOf(myName),
+        myName,
+        brain,
+      ),
+      ...groupHints,
+    ].sort((a, b) => suggestionRank[a.type] - suggestionRank[b.type]);
     return personId ? all.filter((s) => s.members.includes(personId)) : all;
-  }, [workspace.people, workspace.ties, workspace.groups, skip, personId, myName, brain]);
+  }, [
+    workspace.people,
+    workspace.ties,
+    workspace.groups,
+    skip,
+    personId,
+    myName,
+    brain,
+    groupHints,
+  ]);
+}
+
+/** Suma a varias personas a sus grupos (una escritura por grupo). */
+function useJoinGroups() {
+  const { workspace, updateGroup } = useApp();
+  return async (list: Suggestion[]) => {
+    const byGroup = new Map<string, string[]>();
+    for (const s of list) {
+      if (!s.join) continue;
+      byGroup.set(s.join.groupId, [...(byGroup.get(s.join.groupId) ?? []), s.members[0]]);
+    }
+    const done: string[] = [];
+    for (const [groupId, ids] of byGroup) {
+      const g = workspace.groups.find((x) => x.id === groupId);
+      if (!g) continue;
+      const fresh = ids.filter((id) => !g.member_ids.includes(id));
+      if (
+        !fresh.length ||
+        (await updateGroup(g, { member_ids: [...g.member_ids, ...fresh] }, true))
+      )
+        done.push(...list.filter((s) => s.join?.groupId === groupId).map((s) => s.id));
+    }
+    if (done.length) dismiss(...done);
+    return done.length;
+  };
+}
+
+/** «¿Laura está en Equipo de Rappi?»: sí la suma al grupo; no, no se vuelve a preguntar. */
+function GroupSuggestionCard({ s }: { s: Suggestion }) {
+  const { workspace, notify, peekPerson } = useApp();
+  const join = useJoinGroups();
+  const [busy, setBusy] = useState(false);
+  const g = workspace.groups.find((x) => x.id === s.join?.groupId);
+  const p = workspace.people.find((x) => x.id === s.members[0]);
+  if (!g || !p) return null;
+  const m = groupKinds[g.kind] ?? groupKinds.otro;
+  return (
+    <div className="rl-sug" style={{ '--c': m.color, '--s': m.soft } as CSSProperties}>
+      <span className="rl-sug-icon">
+        <m.icon size={15} />
+      </span>
+      <div className="rl-sug-main">
+        <strong>{s.title}</strong>
+        <small>{s.reason}</small>
+        <div className="rl-sug-faces">
+          <button
+            type="button"
+            className="rl-sug-face"
+            title={`Ver a ${p.name}`}
+            onClick={() => peekPerson(p)}
+          >
+            <Avatar person={p} size={24} />
+          </button>
+          <span className="rl-sug-group">
+            <m.icon size={12} /> {g.name} · {g.member_ids.length}
+          </span>
+        </div>
+        <div className="rl-sug-actions">
+          <button
+            type="button"
+            className="on"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              if (await join([s])) notify(`${p.name.split(' ')[0]} ahora está en «${g.name}».`);
+              setBusy(false);
+            }}
+          >
+            {busy ? <LoaderCircle size={13} className="spin" /> : <Check size={13} />} Sí, añadir
+          </button>
+          <button
+            type="button"
+            className="no"
+            disabled={busy}
+            title="No está en este grupo"
+            onClick={() => {
+              dismiss(s.id);
+              notify('No se volverá a sugerir.', { label: 'Deshacer', run: () => undismiss(s.id) });
+            }}
+          >
+            <X size={13} /> No
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /** Apellidos que Nexo dejó de sugerir por tus respuestas, con «Restablecer». */
@@ -308,28 +429,38 @@ function SuggestionCard({ s }: { s: Suggestion }) {
 /** Lista de sugerencias con «Aceptar todas» para las que dicen exactamente qué vínculo es. */
 export function SuggestionList({ list, max }: { list: Suggestion[]; max?: number }) {
   const { saveTies } = useApp();
+  const join = useJoinGroups();
   const [all, setAll] = useState(false);
   // Solo lo que dicen sus fichas; los parentescos probables se confirman uno a uno.
-  const exact = list.filter((s) => s.tie && (s.type === 'texto' || s.type === 'tuya'));
+  const exactTies = list.filter((s) => s.tie && (s.type === 'texto' || s.type === 'tuya'));
+  const exactGroups = list.filter((s) => s.join?.exact);
+  const exact = exactTies.length + exactGroups.length;
   const shown = max && !all ? list.slice(0, max) : list;
   if (!list.length) return null;
   return (
     <div className="rl-sug-list">
-      {exact.length > 1 && (
+      {exact > 1 && (
         <button
           type="button"
           className="rl-accept-all"
           onClick={async () => {
-            const rows = await saveTies(exact.map((s) => s.tie!));
-            if (rows.length) dismiss(...exact.map((s) => s.id));
+            if (exactTies.length) {
+              const rows = await saveTies(exactTies.map((s) => s.tie!));
+              if (rows.length) dismiss(...exactTies.map((s) => s.id));
+            }
+            if (exactGroups.length) await join(exactGroups);
           }}
         >
-          <CheckCheck size={14} /> Aceptar las {exact.length} que dicen sus fichas
+          <CheckCheck size={14} /> Aceptar las {exact} que dicen sus fichas
         </button>
       )}
-      {shown.map((s) => (
-        <SuggestionCard key={s.id} s={s} />
-      ))}
+      {shown.map((s) =>
+        s.type === 'grupo' ? (
+          <GroupSuggestionCard key={s.id} s={s} />
+        ) : (
+          <SuggestionCard key={s.id} s={s} />
+        ),
+      )}
       {max && list.length > max && !all && (
         <button type="button" className="pp-text-btn" onClick={() => setAll(true)}>
           Ver {list.length - max} sugerencias más
@@ -368,15 +499,17 @@ export function SuggestionsDialog({ onClose }: { onClose: () => void }) {
         className="pk rl-dialog rl-sug-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label="Vínculos sugeridos"
+        aria-label="Vínculos y grupos sugeridos"
       >
         <header className="pk-head">
           <span className="pk-tile">
             <Sparkles size={18} />
           </span>
           <h3>
-            Vínculos sugeridos
-            <small>Nexo los encontró en tus fichas. Confirma o descarta con un toque.</small>
+            Vínculos y grupos sugeridos
+            <small>
+              Nexo los encontró en tus fichas y recuerdos. Confirma o descarta con un toque.
+            </small>
           </h3>
           <button type="button" className="cp-close" aria-label="Cerrar" onClick={onClose}>
             <X size={18} />

@@ -18,10 +18,13 @@ export type PeopleChoice = Pick<
 export function PeopleDialog({
   api,
   initialQuery = '',
+  title = '¿Con quién?',
   onClose,
 }: {
   api: PeopleChoice;
   initialQuery?: string;
+  /** Pregunta de la ventana (por defecto «¿Con quién?»). */
+  title?: string;
   onClose: () => void;
 }) {
   const { workspace, createPerson } = useApp();
@@ -111,7 +114,7 @@ export function PeopleDialog({
     >
       <div className="pk" role="dialog" aria-modal="true" aria-label="Elegir personas">
         <header className="pk-head">
-          <h3>¿Con quién?</h3>
+          <h3>{title}</h3>
           <button type="button" className="cp-close" aria-label="Cerrar" onClick={onClose}>
             <X size={18} />
           </button>

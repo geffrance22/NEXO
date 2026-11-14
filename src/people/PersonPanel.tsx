@@ -11,14 +11,14 @@ import {
   CalendarClock,
   Camera,
   Check,
+  ClipboardCheck,
   Clock,
   Feather,
   Flower2,
   Gift,
-  Mail,
   MessageCircle,
   Minus,
-  Phone,
+  NotebookPen,
   Plus,
   Scale,
   Star,
@@ -58,6 +58,7 @@ import { GiftIdeas } from './GiftIdeas';
 import { PersonMenu } from './PersonMenu';
 import { ThermoBar, ThermoSheet, useThermo } from './Thermo';
 import { Moments, Together } from './Together';
+import { MoneySummary } from './PersonMoney';
 import { TieChips, TiesTab } from '../relations/TiesTab';
 
 type Tab =
@@ -186,11 +187,18 @@ export function BalanceBar({ stats, compact = false }: { stats: PersonStats; com
   );
 }
 
+/**
+ * Lo que de verdad se hace con alguien: escribirle, prepararte antes de verla (qué preguntarle,
+ * qué tienen pendiente), contar en 30 segundos cómo te fue después, y que algo no se te olvide.
+ */
 function ContactActions({ person }: { person: Person }) {
-  const { editPerson, openEntry } = useApp();
-  const { phone, email } = person.profile;
-  const digits = phone?.replace(/[^\d+]/g, '').replace(/^\+/, '');
-  const missing = () => editPerson(person, 'contacto');
+  const { editPerson, openEntry, openBrief } = useApp();
+  const first = person.name.split(' ')[0];
+  const digits = person.profile.phone?.replace(/[^\d+]/g, '').replace(/^\+/, '');
+  // Lo que tienes para preguntarle la próxima vez (preguntas anotadas y novedades por seguir).
+  const toAsk =
+    (person.profile.askNext?.length ?? 0) +
+    (person.profile.updates ?? []).filter((u) => u.followUp && !u.done).length;
   return (
     <div className="pp-actions">
       {digits ? (
@@ -199,37 +207,50 @@ function ContactActions({ person }: { person: Person }) {
           href={`https://wa.me/${digits}`}
           target="_blank"
           rel="noreferrer"
-          title="WhatsApp"
+          title={`Escribirle a ${first}`}
+          aria-label={`Escribirle a ${first}`}
         >
           <MessageCircle size={17} />
         </a>
       ) : (
-        <button type="button" className="pp-action off" title="Añadir teléfono" onClick={missing}>
+        <button
+          type="button"
+          className="pp-action off"
+          title="Añadir su teléfono para escribirle"
+          aria-label="Añadir su teléfono para escribirle"
+          onClick={() => editPerson(person, 'contacto')}
+        >
           <MessageCircle size={17} />
-        </button>
-      )}
-      {phone ? (
-        <a className="pp-action" href={`tel:${phone}`} title={`Llamar · ${phone}`}>
-          <Phone size={17} />
-        </a>
-      ) : (
-        <button type="button" className="pp-action off" title="Añadir teléfono" onClick={missing}>
-          <Phone size={17} />
-        </button>
-      )}
-      {email ? (
-        <a className="pp-action" href={`mailto:${email}`} title={email}>
-          <Mail size={17} />
-        </a>
-      ) : (
-        <button type="button" className="pp-action off" title="Añadir correo" onClick={missing}>
-          <Mail size={17} />
         </button>
       )}
       <button
         type="button"
         className="pp-action"
+        title={
+          toAsk
+            ? `Preparar el encuentro · ${toAsk} ${toAsk === 1 ? 'cosa' : 'cosas'} para preguntarle`
+            : 'Preparar el encuentro: qué preguntarle y qué tienen pendiente'
+        }
+        aria-label={`Preparar el encuentro con ${first}`}
+        onClick={() => openBrief(person, 'antes')}
+      >
+        <NotebookPen size={17} />
+        {toAsk > 0 && <i className="pp-action-n">{toAsk > 9 ? '9+' : toAsk}</i>}
+      </button>
+      <button
+        type="button"
+        className="pp-action"
+        title="Después de verla: lo que hablaron, lo que prometiste y sus novedades, en 30 s"
+        aria-label={`Contar cómo te fue con ${first}`}
+        onClick={() => openBrief(person, 'despues')}
+      >
+        <ClipboardCheck size={17} />
+      </button>
+      <button
+        type="button"
+        className="pp-action"
         title="Recordarme algo"
+        aria-label={`Recordarme algo sobre ${first}`}
         onClick={() => openEntry('Pendiente', [person.id])}
       >
         <CalendarClock size={17} />
@@ -592,7 +613,18 @@ function Chips({ items, tone = '' }: { items: string[]; tone?: string }) {
   );
 }
 
-function Resumen({ person, stats, full }: { person: Person; stats: PersonStats; full: boolean }) {
+function Resumen({
+  person,
+  stats,
+  full,
+  onMoney,
+}: {
+  person: Person;
+  stats: PersonStats;
+  full: boolean;
+  /** Abre el detalle del dinero (en «Juntos»). */
+  onMoney: () => void;
+}) {
   const { askOutcome } = useApp();
   const next = stats.nextPending;
   return (
@@ -633,6 +665,7 @@ function Resumen({ person, stats, full }: { person: Person; stats: PersonStats; 
       ) : (
         <p className="pp-empty">Sin pendientes. ¿Algo que quieras recordar hacer?</p>
       )}
+      <MoneySummary person={person} onDetail={onMoney} />
       <Updates person={person} limit={full ? 6 : 3} />
       <h4>
         <Feather size={15} /> Nota rápida
@@ -1124,7 +1157,24 @@ export function PersonPanel({
       </nav>
 
       <div className="pp-tab-wrap" key={tab}>
-        {tab === 'resumen' && <Resumen person={person} stats={stats} full={full} />}
+        {tab === 'resumen' && (
+          <Resumen
+            person={person}
+            stats={stats}
+            full={full}
+            onMoney={() => {
+              setTab('historia');
+              // En «Juntos», el bloque del dinero queda a la vista.
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() =>
+                  document
+                    .getElementById('pmo-detail')
+                    ?.scrollIntoView({ block: 'start', behavior: 'smooth' }),
+                ),
+              );
+            }}
+          />
+        )}
         {tab === 'vinculos' && <TiesTab person={person} />}
         {tab === 'identidad' && <Identidad person={person} />}
         {tab === 'historia' && (

@@ -20,8 +20,9 @@ export function PersonPeek({ person, onClose }: { person: Person; onClose: () =>
       // Si encima hay un formulario, una confirmación o el visor de fotos, Esc es para ellos.
       if (
         document.querySelector(
-          // La ficha de un recuerdo, el periódico y «Mi ficha» quedan debajo: no cuentan.
-          '.lightbox, .confirm-backdrop, .modal-backdrop, .bdp-backdrop, .sheet-backdrop:not(:has(> .sheet.ev, > .sheet.wk, > .sheet.wkp, > .sheet.bdm, > .sheet.cz-peek, > .sheet.mf))',
+          // La ficha de un recuerdo, el periódico, «Mi ficha» y «Dinero con personas» quedan
+          // debajo: no cuentan.
+          '.lightbox, .confirm-backdrop, .modal-backdrop, .bdp-backdrop, .sheet-backdrop:not(:has(> .sheet.ev, > .sheet.wk, > .sheet.wkp, > .sheet.bdm, > .sheet.cz-peek, > .sheet.mf, > .sheet.pmd))',
         )
       )
         return;

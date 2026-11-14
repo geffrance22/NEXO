@@ -9,13 +9,24 @@ import {
 import {
   Activity,
   ArrowDownLeft,
+  ArrowRight,
   ArrowUpRight,
+  Banknote,
   Check,
+  DoorOpen,
+  Gift,
+  HandHelping,
+  HeartHandshake,
+  Hourglass,
+  Lightbulb,
   LoaderCircle,
+  MessageCircle,
   Plus,
+  Scale,
   Sparkles,
   StickyNote,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 import type { QuickMode } from '../AppContext';
 import { useApp } from '../AppContext';
@@ -25,7 +36,7 @@ import { DateChips } from '../composer/DateChips';
 import { MiniPhotos, pastedImages } from '../composer/PhotoBlocks';
 import { useImageUploads } from '../composer/useImageUploads';
 import { addDays, todayInputValue } from '../lib/format';
-import { exchangeKinds } from '../lib/people';
+import { exchangeKinds, reciprocityOf } from '../lib/people';
 import { updateKindList, updateKinds } from '../lib/updates';
 import { deduceTastes, hasTastes, tastesLabel, withTastes } from '../lib/tastes';
 import { Avatar } from './Avatar';
@@ -54,6 +65,40 @@ const weights = [
   { value: '3', label: 'Enorme' },
 ] as const;
 
+const exchangeIcons: Record<ExchangeKind, LucideIcon> = {
+  favor: HandHelping,
+  regalo: Gift,
+  apoyo: HeartHandshake,
+  tiempo: Hourglass,
+  consejo: Lightbulb,
+  oportunidad: DoorOpen,
+  dinero: Banknote,
+  iniciativa: MessageCircle,
+};
+
+/** Qué escribir según lo que fue y quién dio: «Le ayudé con…», «Me presentó a…». */
+function notePlaceholder(kind: ExchangeKind, dir: 'dar' | 'recibir', name: string) {
+  const give = dir === 'dar';
+  switch (kind) {
+    case 'favor':
+      return give ? 'Le ayudé con…' : 'Me ayudó con…';
+    case 'regalo':
+      return give ? 'Le regalé…' : 'Me regaló…';
+    case 'apoyo':
+      return give ? `Estuve para ${name} cuando…` : 'Estuvo para mí cuando…';
+    case 'tiempo':
+      return give ? 'Le dediqué tiempo para…' : 'Me dedicó tiempo para…';
+    case 'consejo':
+      return give ? 'Le aconsejé sobre…' : 'Me aconsejó sobre…';
+    case 'oportunidad':
+      return give ? 'Le presenté a… / le recomendé para…' : 'Me presentó a… / me recomendó para…';
+    case 'dinero':
+      return give ? 'Le presté o le di…' : 'Me prestó o me dio…';
+    case 'iniciativa':
+      return give ? 'Le escribí para…' : 'Me buscó para…';
+  }
+}
+
 /** Ventana pequeña para alimentar la ficha de una persona en segundos. */
 export function QuickDialog({
   person,
@@ -73,6 +118,8 @@ export function QuickDialog({
   const [label, setLabel] = useState('');
   const [updKind, setUpdKind] = useState<UpdateKind>('otro');
   const [follow, setFollow] = useState<string | undefined>(undefined);
+  // Idea de regalo de su ficha que le diste (sale de la lista al guardar).
+  const [idea, setIdea] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const photos = useImageUploads([], 6);
   const first = useRef<HTMLElement | null>(null);
@@ -114,6 +161,18 @@ export function QuickDialog({
           : true;
   const ready = hasContent && !photoProblem;
   const name = person.name.split(' ')[0];
+  const giftIdeas = mode === 'dar' && kind === 'regalo' ? (person.profile.gifts ?? []) : [];
+  // Cómo queda el balance con esto (antes y después).
+  const balance = useMemo(() => {
+    if (!exchange) return null;
+    const list = person.profile.exchanges ?? [];
+    const before = reciprocityOf(person, list);
+    const after = reciprocityOf(person, [
+      { id: 'nuevo', date, dir: mode, kind, weight: Number(weight) as 1 | 2 | 3 },
+      ...list,
+    ]);
+    return { before, after };
+  }, [exchange, person, date, mode, kind, weight]);
   // Lo nuevo que la novedad dice de sus gustos (lo que ya está en su ficha no se repite).
   const preview = useMemo(
     () =>
@@ -186,7 +245,36 @@ export function QuickDialog({
         ...(text.trim() && { note: text.trim().slice(0, 300) }),
       };
       const exchanges = [item, ...(current.profile.exchanges ?? [])].slice(0, 500);
-      ok = await app.patchPerson(current, { profile: { ...current.profile, exchanges } }, true);
+      // Si le diste una de sus ideas de regalo, ya no queda pendiente.
+      const gifts = current.profile.gifts ?? [];
+      const given = idea && mode === 'dar' && kind === 'regalo' && gifts.includes(idea);
+      const profile = {
+        ...current.profile,
+        exchanges,
+        ...(given && { gifts: gifts.filter((g) => g !== idea) }),
+      };
+      ok = await app.patchPerson(current, { profile }, true);
+      if (ok) {
+        const saved = { ...current, profile };
+        app.notify(
+          `Guardado · ${balance ? balance.after.label.toLowerCase() : 'balance actualizado'}${given ? ` · «${idea}» sale de sus ideas de regalo` : ''}.`,
+          {
+            label: 'Deshacer',
+            run: () =>
+              void app.patchPerson(
+                saved,
+                {
+                  profile: {
+                    ...saved.profile,
+                    exchanges: current.profile.exchanges,
+                    gifts: current.profile.gifts,
+                  },
+                },
+                true,
+              ),
+          },
+        );
+      }
     } else {
       const facts = [
         ...(current.profile.facts ?? []),
@@ -266,30 +354,103 @@ export function QuickDialog({
             <Segmented
               label="Dirección"
               value={mode}
-              onChange={(v) => setMode(v)}
+              onChange={(v) => {
+                setMode(v);
+                setIdea(null);
+              }}
               options={[
                 { value: 'dar', label: 'Yo di', icon: <ArrowUpRight size={15} /> },
-                { value: 'recibir', label: 'Recibí', icon: <ArrowDownLeft size={15} /> },
+                { value: 'recibir', label: `${name} me dio`, icon: <ArrowDownLeft size={15} /> },
               ]}
             />
-            <div className="qd-row">
-              <ChoiceChips
-                label="Qué fue"
-                options={(Object.keys(exchangeKinds) as ExchangeKind[]).map((k) => ({
-                  value: k,
-                  label: exchangeKinds[k],
-                }))}
-                value={kind}
-                onChange={(v) => v && setKind(v)}
-              />
+            <div className="qx-kinds" role="radiogroup" aria-label="Qué fue">
+              {(Object.keys(exchangeKinds) as ExchangeKind[]).map((k) => {
+                const Icon = exchangeIcons[k];
+                return (
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={kind === k}
+                    key={k}
+                    className={kind === k ? 'on' : ''}
+                    onClick={() => {
+                      setKind(k);
+                      setIdea(null);
+                    }}
+                  >
+                    <Icon size={17} />
+                    {exchangeKinds[k]}
+                  </button>
+                );
+              })}
             </div>
-            <div className="qd-row">
-              <ChoiceChips
-                label="Cuánto pesó"
-                options={[...weights]}
-                value={weight}
-                onChange={(v) => v && setWeight(v)}
-              />
+            <input
+              ref={(el) => {
+                first.current = el;
+              }}
+              className="cp-ghost-input qx-note"
+              maxLength={300}
+              placeholder={notePlaceholder(kind, mode as 'dar' | 'recibir', name)}
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                if (idea && e.target.value !== idea) setIdea(null);
+              }}
+            />
+            {/* Regalarle algo de sus ideas: se apunta solo y sale de la lista. */}
+            {giftIdeas.length > 0 && (
+              <div className="qx-ideas" aria-label="De sus ideas de regalo">
+                <Gift size={13} />
+                {giftIdeas.slice(0, 6).map((g) => (
+                  <button
+                    type="button"
+                    key={g}
+                    className={idea === g ? 'on' : ''}
+                    onClick={() => {
+                      const on = idea === g;
+                      setIdea(on ? null : g);
+                      setText(on ? '' : g);
+                    }}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
+            )}
+            {kind === 'dinero' && (
+              <button
+                type="button"
+                className="qx-finance"
+                onClick={() => {
+                  onClose();
+                  app.openEntry('Movimiento', [person.id]);
+                }}
+              >
+                <Banknote size={14} />
+                <span>
+                  ¿Fue plata? Regístrala en Finanzas: queda en tus cuentas y se suma aquí sola.
+                </span>
+                <ArrowRight size={13} />
+              </button>
+            )}
+            <div className="qx-weight" role="radiogroup" aria-label="Cuánto pesó">
+              {weights.map((w) => (
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={weight === w.value}
+                  key={w.value}
+                  className={weight === w.value ? 'on' : ''}
+                  onClick={() => setWeight(w.value)}
+                >
+                  <span className="qx-dots" aria-hidden="true">
+                    {[1, 2, 3].map((n) => (
+                      <i key={n} className={n <= Number(w.value) ? 'on' : ''} />
+                    ))}
+                  </span>
+                  {w.label}
+                </button>
+              ))}
             </div>
             <div className="qd-row">
               <DateChips
@@ -299,22 +460,6 @@ export function QuickDialog({
                 onChange={setDate}
               />
             </div>
-            <input
-              ref={(el) => {
-                first.current = el;
-              }}
-              className="cp-ghost-input"
-              maxLength={300}
-              placeholder={
-                kind === 'iniciativa'
-                  ? mode === 'dar'
-                    ? 'Le escribí para…'
-                    : 'Me buscó para…'
-                  : 'Qué fue (opcional)'
-              }
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-            />
           </>
         )}
 
@@ -455,9 +600,21 @@ export function QuickDialog({
               <>
                 <Plus size={13} /> Se suma a su identidad
               </>
-            ) : (
-              'Alimenta el balance de reciprocidad'
-            )}
+            ) : balance ? (
+              <span
+                className={'qx-balance ' + balance.after.state}
+                title="Cómo queda el balance de dar y recibir con esto"
+              >
+                <Scale size={13} />
+                {balance.before.label !== balance.after.label ? (
+                  <>
+                    {balance.before.label} <ArrowRight size={11} /> <b>{balance.after.label}</b>
+                  </>
+                ) : (
+                  <b>{balance.after.label}</b>
+                )}
+              </span>
+            ) : null}
           </span>
           <button type="button" className="cp-btn ghost" onClick={onClose}>
             Cancelar

@@ -202,6 +202,8 @@ const GIVE: Record<ExchangeKind, number> = {
   apoyo: 1.25,
   favor: 1,
   tiempo: 1.1,
+  consejo: 0.95,
+  oportunidad: 1.15,
   dinero: 0.75,
   iniciativa: 0.9,
 };
@@ -211,6 +213,8 @@ const RECEIVE: Record<ExchangeKind, number> = {
   regalo: 1,
   favor: 0.9,
   tiempo: 1,
+  consejo: 0.95,
+  oportunidad: 1.1,
   iniciativa: 1.15,
   dinero: 0.25,
 };

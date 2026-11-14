@@ -58,6 +58,7 @@ import { useWorkspace } from "../hooks/useWorkspace";
 import { useMyProfile } from "../hooks/useMyProfile";
 import { MyProfileSheet } from "../people/MyProfileSheet";
 import { MergeDialog } from "../people/MergeDialog";
+import { PeopleMoneyDialog } from "../finance/PeopleMoney";
 import { parseHash, toHash, type Route } from "../lib/route";
 import { ConnectionsPage } from "../pages/ConnectionsPage";
 import { Agenda, Libroteca } from "../library/Libroteca";
@@ -198,6 +199,10 @@ export function AppShell({ user }: { user: AppUser }) {
     personId: string;
     otherId?: string;
   } | null>(null);
+  // Dinero con personas (desde Finanzas o desde la ficha de alguien).
+  const [peopleMoney, setPeopleMoney] = useState<{ focus?: string } | null>(
+    null,
+  );
   // Añadir varias personas a la vez (lista escrita o contactos importados).
   const [peopleBatch, setPeopleBatch] = useState(false);
   // Instantes: escribir uno (o un hilo), el feed a la derecha y uno abierto en su ventana.
@@ -681,6 +686,11 @@ export function AppShell({ user }: { user: AppUser }) {
       if (ok && peek === drop.id) setPeek(keep.id);
       return ok;
     },
+    openPeopleMoney: (person) => {
+      // Desde la ficha lateral: la ventana va sola (la ficha quedaría encima).
+      setPeek(null);
+      setPeopleMoney({ focus: person?.id });
+    },
     openMerge: (person, other) =>
       setMerge({ personId: person.id, otherId: other?.id }),
     openAttachment: (entry) => void data.openAttachment(entry),
@@ -840,6 +850,13 @@ export function AppShell({ user }: { user: AppUser }) {
             job={diaryJob}
             hold={Boolean(modal)}
             onDone={closeDiaryJob}
+          />
+        )}
+        {/* Antes que las demás ventanas: lo que abras desde ella (un movimiento, una ficha) queda encima. */}
+        {peopleMoney && (
+          <PeopleMoneyDialog
+            focus={peopleMoney.focus}
+            onClose={() => setPeopleMoney(null)}
           />
         )}
         {modal?.type === "person" && (

@@ -35,9 +35,14 @@ export function PersonGroupsDialog({ person, onClose }: { person: Person; onClos
   // Fijos arriba: en los que estaba al abrir y los que crees aquí (no saltan al marcar).
   const [pinned, setPinned] = useState(mine);
   const near = new Set(tiesOf(person.id, workspace.ties).map((v) => v.other));
-  const suggested = workspace.groups
-    .filter((g) => !mine.includes(g.id) && g.member_ids.some((m) => near.has(m)))
-    .map((g) => g.id);
+  // Primero los que Nexo dedujo (su ficha lo dice, aparece con ellos…); luego los de su gente.
+  const deduced = useSuggestions(person.id).flatMap((s) => (s.join ? [s.join.groupId] : []));
+  const suggested = [
+    ...new Set([
+      ...deduced,
+      ...workspace.groups.filter((g) => g.member_ids.some((m) => near.has(m))).map((g) => g.id),
+    ]),
+  ].filter((id) => !mine.includes(id));
 
   const toggle = (id: string) => {
     const g = workspace.groups.find((x) => x.id === id);
@@ -194,9 +199,13 @@ export function TieChips({ person }: { person: Person }) {
         const other = v.other === ME ? null : workspace.people.find((p) => p.id === v.other);
         const cat = tieCategories[tieKinds[v.kind].category];
         const g = genderOf(other);
+        // «Otro» con nombre propio («padrino», «compadre»): se dice con su nombre.
+        const mine = tieKinds[v.kind].inverse;
         const label = other
           ? `${other.name.split(' ')[0]} · ${kindWord(v.kind, g)}`
-          : `Tu ${kindWord(tieKinds[v.kind].inverse, genderOf(person))}`;
+          : mine === 'otro' && v.tie.note
+            ? `Tu ${v.tie.note.slice(0, 40)}`
+            : `Tu ${kindWord(mine, genderOf(person))}`;
         return (
           <button
             type="button"

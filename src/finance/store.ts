@@ -110,7 +110,7 @@ export function loadFinance(force = false) {
 }
 
 const missingText = `Falta preparar Finanzas: ejecuta ${FINANCE_MIGRATION} en el SQL Editor de Supabase.`;
-const upgradeText = `Para bolsillos, tarjetas, apuntes y cobros por partes ejecuta ${FINANCE_MORE_MIGRATION} en el SQL Editor de Supabase.`;
+const upgradeText = `Para bolsillos, tarjetas, apuntes y trabajos por cobrar ejecuta ${FINANCE_MORE_MIGRATION} en el SQL Editor de Supabase.`;
 
 /** La base rechazó el tipo: es de los nuevos y falta la migración que los permite. */
 function isOldKinds(e: unknown, kind: FinKind) {

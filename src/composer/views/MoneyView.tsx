@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
+  BriefcaseBusiness,
   ChevronDown,
   CornerDownLeft,
   Frown,
   History,
-  Layers,
   Plus,
   Receipt,
   Repeat,
@@ -702,16 +702,16 @@ export function MoneyView({ c }: ViewProps) {
           <span className="fm-switch" aria-hidden="true" />
           <span>
             <b>
-              <Layers size={13} /> Es un abono de un total mayor
+              <BriefcaseBusiness size={13} /> Es el abono de un trabajo
             </b>
             <small>
               {linked && linkedStats
-                ? `Con este llevas ${money(linkedStats.received + (pending ? 0 : c.amount))} de ${money(linked.data.total)} · faltan ${money(Math.max(0, linkedStats.left - (pending ? 0 : c.amount)))}.`
+                ? `Con este llevas ${money(linkedStats.received + (pending ? 0 : c.amount))} abonado de ${money(linked.data.total)} · pendiente ${money(Math.max(0, linkedStats.left - (pending ? 0 : c.amount)))}.`
                 : draft && draft.total > 0
                   ? draft.total > c.amount
-                    ? `Faltarán ${money(draftLeft)} de ${money(draft.total)}: queda en Cobros por partes.`
-                    : 'El total debe ser mayor que este abono.'
-                  : 'Un proyecto, una venta o un sueldo que te pagan en partes: define el total y cuándo llega lo demás.'}
+                    ? `Quedarán pendientes ${money(draftLeft)} de ${money(draft.total)}: queda en Trabajos por cobrar.`
+                    : 'El valor del trabajo debe ser mayor que este abono.'
+                  : 'Un trabajo que te pagan por partes (por ejemplo, la mitad al empezar): define cuánto vale y cuándo llega lo demás.'}
             </small>
           </span>
         </label>
@@ -720,13 +720,13 @@ export function MoneyView({ c }: ViewProps) {
         <div className="fm-charge">
           {charges.length > 0 && (
             <ChoiceChips
-              label="¿De qué cobro?"
+              label="¿De qué trabajo?"
               options={[
                 ...charges.map((x) => {
                   const s = chargeStats(x, entries.filter((e) => e.id !== c.entry?.id));
-                  return { value: x.id, label: `${x.title} · faltan ${money(s.left)}` };
+                  return { value: x.id, label: `${x.title} · pendiente ${money(s.left)}` };
                 }),
-                { value: 'new', label: 'Nuevo total', icon: <Plus size={13} /> },
+                { value: 'new', label: 'Nuevo trabajo', icon: <Plus size={13} /> },
               ]}
               value={c.details.chargeId ?? (draft ? 'new' : undefined)}
               onChange={chooseCharge}
@@ -743,7 +743,7 @@ export function MoneyView({ c }: ViewProps) {
           {draft && (
             <>
               <div className="fm-charge-grid">
-                <AmountBox label="Total acordado" value={draft.total} onChange={(total) => setDraft({ total })} />
+                <AmountBox label="Valor del trabajo" value={draft.total} onChange={(total) => setDraft({ total })} />
                 <label className="fm-box">
                   <span>¿Cuándo llega lo demás?</span>
                   <input
@@ -767,9 +767,9 @@ export function MoneyView({ c }: ViewProps) {
                 className="cp-ghost-input fm-charge-title"
                 value={draft.title ?? ''}
                 maxLength={120}
-                placeholder={`Nombre del cobro (opcional): ${c.title || 'Proyecto web, venta del carro…'}`}
+                placeholder={`Nombre del trabajo (opcional): ${c.title || 'Página web, diseño de logo…'}`}
                 onChange={(e) => setDraft({ title: e.target.value || undefined })}
-                aria-label="Nombre del cobro"
+                aria-label="Nombre del trabajo"
               />
               {draft.nextOn && (
                 <label className="fm-check">

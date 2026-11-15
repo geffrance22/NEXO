@@ -1043,8 +1043,9 @@ export function Boards({ toggleMenu }: { toggleMenu?: () => void } = {}) {
         }
       }
     }
-    writeFired(memo);
     if (fresh.length) {
+      // Aquí solo lo de este equipo: con lo de la base, el recorte borraba lo propio y volvía a actuar.
+      writeFired(new Set([...readFired(), ...fresh]));
       fresh.forEach((k) => runs.current.add(k));
       void saveRuns(board.id, fresh);
     }

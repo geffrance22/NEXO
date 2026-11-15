@@ -481,10 +481,28 @@ export function agendaFor(
     });
   }
 
-  const snoozed = (id: string) =>
-    [...skip].some((k) => k.startsWith('snz|' + id + '|') && k.slice(-10) > today);
+  // Hasta cuándo está pospuesta cada clave (`snz|clave|AAAA-MM-DD`).
+  const until = new Map<string, string>();
+  for (const k of skip) {
+    if (!k.startsWith('snz|')) continue;
+    const id = k.slice(4, -11);
+    const date = k.slice(-10);
+    if (date > (until.get(id) ?? '')) until.set(id, date);
+  }
+  // Lo mismo puede volver con otra clave: la tarjeta que ganó un pendiente (t| → c|) o el proyecto
+  // que pasó de «sin próximo paso» a «vence» (p| → p|…|due). Lo descartado vale para todas.
+  const cardOf = new Map(cards.flatMap((c) => (c.entry_id ? [[c.entry_id, c.id] as const] : [])));
+  const keysOf = (i: AgendaItem) => {
+    const [kind, ref] = i.id.split('|');
+    if (kind === 't' && i.card?.entry_id) return [i.id, 'c|' + i.card.entry_id];
+    if (kind === 'c' && cardOf.has(ref)) return [i.id, 't|' + cardOf.get(ref)];
+    if (kind === 'p') return ['p|' + ref, 'p|' + ref + '|due'];
+    return [i.id];
+  };
+  const hidden = (i: AgendaItem) =>
+    keysOf(i).some((id) => skip.has('ag|' + id) || (until.get(id) ?? '') > today);
   return out
-    .filter((i) => prefs.kinds[i.kind] && !skip.has('ag|' + i.id) && !snoozed(i.id))
+    .filter((i) => prefs.kinds[i.kind] && !hidden(i))
     .sort((a, b) => b.score - a.score)
     .slice(0, prefs.max);
 }

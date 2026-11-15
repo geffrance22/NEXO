@@ -600,6 +600,34 @@
   font-size: 12.5px;
   color: #8a9381;
 }
+/* Debajo de la fecha: cerrado, activo o próximo. Pequeña y suave. */
+.ep-state {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  margin: 3px 0 4px;
+  padding: 2px 8px 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c) 11%, #fff);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0.01em;
+  color: color-mix(in srgb, var(--c) 82%, #1f2a1c);
+}
+.ep-state .ep-live {
+  width: 6px;
+  height: 6px;
+}
+.ep-state.soon {
+  background: color-mix(in srgb, var(--c) 7%, #fff);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 18%, transparent);
+}
+.ep-state.done {
+  background: #eef1ea;
+  color: #6f7966;
+}
 .ep-hero h1 {
   margin: 2px 0 4px;
   font:
@@ -743,6 +771,53 @@
 .ep-panel-head .pp-text-btn {
   margin: 0;
 }
+/* Pestañas de la historia: una pista suave y la elegida en blanco. */
+.ep-tabs {
+  display: flex;
+  gap: 2px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 8px 0 4px;
+  padding: 3px;
+  overflow-x: auto;
+  border-radius: 12px;
+  background: #f3f5ef;
+  scrollbar-width: none;
+}
+.ep-tabs button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 13px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: #7b8573;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    box-shadow 0.15s;
+}
+.ep-tabs button:hover:not(.on) {
+  color: #3a4433;
+}
+.ep-tabs button.on {
+  background: #fff;
+  color: color-mix(in srgb, var(--c) 80%, #1f2a1c);
+  box-shadow: 0 1px 3px rgba(40, 55, 30, 0.12);
+}
+.ep-tabs i {
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #a2aa98;
+}
+.ep-tabs button.on i {
+  color: color-mix(in srgb, var(--c) 60%, #fff);
+}
 .ep-timeline {
   margin: 0;
   padding: 0;
@@ -799,6 +874,33 @@
   font-size: 13px;
   line-height: 1.45;
   color: #5d6754;
+}
+/* Por qué no se hizo: debajo del pendiente, como una respuesta en un hilo (hasta 3 líneas). */
+.ep-why {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 6px;
+  padding: 6px 10px 6px 11px;
+  border-left: 2px solid #e3d9c8;
+  border-radius: 3px 10px 10px 3px;
+  background: #faf8f4;
+}
+.ep-row-main .ep-why small {
+  font-size: 11px;
+  font-weight: 650;
+  color: #a39a8a;
+}
+.ep-why span {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-line;
+  color: #6f6555;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
 }
 .ep-row-x {
   display: grid;

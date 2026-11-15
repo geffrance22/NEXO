@@ -7,6 +7,7 @@ import {
   useState,
   type CSSProperties,
   type ClipboardEvent,
+  type ReactElement,
   type ReactNode,
 } from 'react';
 import {
@@ -96,7 +97,6 @@ export type FeedNav = {
   onOpen?: () => void;
 };
 
-const MAX_CHIPS = 8;
 /** Mientras los cuadernos cargan (siempre la misma lista vacía, para no rehacer el mapa por id). */
 const NO_NOTEBOOKS: Notebook[] = [];
 /** El día (AAAA-MM-DD) en que pasó un recuerdo. */
@@ -226,7 +226,6 @@ function InstantPost({
   const [editing, setEditing] = useState(false);
   const [menuAt, setMenuAt] = useState<HTMLElement | null>(null);
   const [linking, setLinking] = useState(false);
-  const [allChips, setAllChips] = useState(false);
   const [sharing, setSharing] = useState(false);
   const canShare = useCanShare();
   const share = useShare(i.id);
@@ -238,7 +237,6 @@ function InstantPost({
   const links = linkCount(i);
 
   const chips = useLinkChips(i, nav);
-  const shownChips = allChips ? chips : chips.slice(0, MAX_CHIPS);
 
   const searchAgain = () => {
     const ws = app.workspace;
@@ -427,16 +425,7 @@ function InstantPost({
           </div>
         )}
 
-        {chips.length > 0 && (
-          <div className="ip-links" aria-label="Vinculado">
-            {shownChips}
-            {chips.length > MAX_CHIPS && (
-              <button type="button" className="ip-chip more" onClick={() => setAllChips((v) => !v)}>
-                {allChips ? 'Ver menos' : `+${chips.length - MAX_CHIPS}`}
-              </button>
-            )}
-          </div>
-        )}
+        {chips.length > 0 && <LinkRow chips={chips} />}
 
         {threadCount > 0 && !editing && (
           <button
@@ -503,8 +492,89 @@ function InstantPost({
   );
 }
 
+/**
+ * Los vínculos en una sola línea: los que no caben quedan en «+N», que los muestra en una
+ * ventanita. Cada ficha se pinta una sola vez; las que sobran quedan fuera de la fila, invisibles,
+ * para poder medirlas (así, al cambiar el ancho, se recalcula sin repetirlas).
+ */
+function LinkRow({ chips }: { chips: ReactElement[] }) {
+  const row = useRef<HTMLDivElement>(null);
+  const more = useRef<HTMLButtonElement>(null);
+  const [fit, setFit] = useState(chips.length);
+  const [open, setOpen] = useState(false);
+  const [, setTick] = useState(0);
+
+  // Antes de pintar: cuántas caben dejando sitio al «+N».
+  useLayoutEffect(() => {
+    const el = row.current;
+    if (!el) return;
+    const widths = Array.from(el.querySelectorAll<HTMLElement>(':scope > .ip-slot')).map(
+      (s) => s.offsetWidth,
+    );
+    const gap = parseFloat(getComputedStyle(el).columnGap) || 0;
+    const room = el.clientWidth + 0.5;
+    const all = widths.reduce((a, w) => a + w, 0) + gap * Math.max(0, widths.length - 1);
+    let next = widths.length;
+    if (all > room) {
+      const tail = gap + (more.current?.offsetWidth ?? 32);
+      let used = 0;
+      next = 0;
+      while (next < widths.length && used + (next ? gap : 0) + widths[next] + tail <= room) {
+        used += (next ? gap : 0) + widths[next];
+        next++;
+      }
+    }
+    setFit((v) => (v === next ? v : next));
+  });
+  useEffect(() => {
+    const el = row.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setTick((t) => t + 1));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const rest = Math.max(0, chips.length - fit);
+  useEffect(() => {
+    if (!rest) setOpen(false);
+  }, [rest]);
+
+  return (
+    <div ref={row} className="ip-links" aria-label="Vinculado">
+      {chips.map((c, k) => (
+        <span key={c.key ?? k} className={'ip-slot' + (k < fit ? '' : ' off')}>
+          {c}
+        </span>
+      ))}
+      <button
+        ref={more}
+        type="button"
+        className={'ip-more' + (rest ? '' : ' off')}
+        aria-label={`${rest} vínculos más`}
+        aria-expanded={open}
+        tabIndex={rest ? undefined : -1}
+        onClick={() => setOpen((v) => !v)}
+      >
+        +{rest}
+      </button>
+      {open && rest > 0 && more.current && (
+        <Popover
+          anchor={more.current}
+          label="Más vínculos"
+          className="ip-more-pop"
+          onClose={() => setOpen(false)}
+        >
+          <div className="ip-more-list" onClick={() => setOpen(false)}>
+            {chips.slice(fit)}
+          </div>
+        </Popover>
+      )}
+    </div>
+  );
+}
+
 /** Los vínculos de un instante como fichas que se pueden abrir (y quitar). */
-function useLinkChips(i: Instant, nav: FeedNav): ReactNode[] {
+function useLinkChips(i: Instant, nav: FeedNav): ReactElement[] {
   const app = useApp();
   const { workspace } = app;
   const { list: notebookList } = useCuadernos();
@@ -515,7 +585,7 @@ function useLinkChips(i: Instant, nav: FeedNav): ReactNode[] {
   const places = byId(workspace.places);
   const unlink = (key: LinkKey, id: string) => void linkInstant(i.id, {}, { [key]: [id] });
 
-  const out: ReactNode[] = [];
+  const out: ReactElement[] = [];
   for (const id of i.episode_ids) {
     const e = episodes.get(id);
     if (!e) continue;

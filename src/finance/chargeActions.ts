@@ -7,7 +7,7 @@ import { updateItem } from './store';
 import { moneyInput } from './ui';
 
 /**
- * Lo que se hace con un cobro por partes: recibir una parte (o un abono suelto), aplazarla, darla
+ * Lo que se hace con un trabajo por cobrar: recibir una parte (o un abono suelto), aplazarla, darla
  * por perdida y mantener al día su pendiente «espero» (fecha y cierre).
  */
 
@@ -99,7 +99,7 @@ export async function receiveCharge(
   const finalParts = done ? parts.map((p) => (p.status === 'esperando' ? { ...p, status: 'no' as const, note: p.note ?? 'No hizo falta' } : p)) : parts;
   await updateItem(item, { data: { parts: finalParts, ...(done && { closedOn: todayInputValue() }) } });
   await syncTask(app, item, finalParts, done ? 'hecho' : null);
-  let msg = done ? `¡Completo! Recibiste ${money(item.data.total)} de «${item.title}».` : `Abono de ${money(opts.amount)} registrado. Faltan ${money(left)}.`;
+  let msg = done ? `¡Pagado! Recibiste ${money(item.data.total)} de «${item.title}».` : `Abono de ${money(opts.amount)} registrado. Pendiente ${money(left)}.`;
   if (part) {
     const delay = daysBetween(part.moved?.[0] ?? part.due, opts.date);
     msg += delay > 0 ? ` Llegó con ${delay} ${delay === 1 ? 'día' : 'días'} de retraso.` : ' Llegó a tiempo.';
@@ -144,7 +144,7 @@ export async function closeCharge(app: App, item: FinItem<'cobro'>) {
   });
   if (r !== true) return app.notify(r);
   await syncTask(app, item, parts, s.received > 0 ? 'hecho' : 'no');
-  app.notify(s.left > 0 ? `Cobro cerrado: ${money(s.left)} no llegaron.` : 'Cobro cerrado.');
+  app.notify(s.left > 0 ? `Trabajo cerrado: ${money(s.left)} no llegaron.` : 'Trabajo cerrado.');
 }
 
 /** Las partes que esperas recibir de todos tus cobros abiertos, por fecha. */

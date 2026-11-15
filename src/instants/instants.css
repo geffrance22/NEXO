@@ -1076,21 +1076,37 @@ body:has(.cdock.open) .ib {
   color: var(--mood);
   font-weight: 650;
 }
+/* Los vínculos: una sola línea, sin recuadros; lo que no cabe queda en «+N». */
 .ip-links {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.ip-slot {
+  display: flex;
+  flex: none;
+  max-width: 100%;
+}
+/* Fuera de la fila e invisibles: siguen ahí solo para medirlos. */
+.ip-slot.off,
+.ip-links .ip-more.off {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 .ip-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
   max-width: 100%;
-  height: 28px;
-  border: 1px solid color-mix(in srgb, var(--c, #6b62b5) 18%, #fff);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--c, #6b62b5) 8%, #fff);
-  color: color-mix(in srgb, var(--c, #6b62b5) 78%, #1d2027);
+  height: 26px;
+  color: color-mix(in srgb, var(--c, #6b62b5) 70%, #2a2d36);
   animation: cp-fade 0.2s ease;
 }
 .ip-chip.person {
@@ -1099,14 +1115,17 @@ body:has(.cdock.open) .ib {
 .ip-chip-main {
   display: inline-flex !important;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
-  max-width: 230px;
+  max-width: 200px;
   height: 100%;
-  padding: 0 10px 0 9px !important;
-  border-radius: inherit;
+  padding: 0 !important;
   font-size: 12.5px !important;
   font-weight: 600 !important;
+}
+.ip-chip-main > svg {
+  flex: none;
+  color: var(--c, #6b62b5);
 }
 .ip-chip-main span {
   overflow: hidden;
@@ -1115,36 +1134,87 @@ body:has(.cdock.open) .ib {
 }
 .ip-chip-main:hover span {
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  text-underline-offset: 3px;
 }
-.ip-chip.person .ip-chip-main {
-  padding-left: 4px !important;
-}
+/* Quitar: aparece encima del final del nombre (no mueve la fila al pasar el ratón). */
 .ip-chip-x {
-  display: none !important;
-  flex: none;
+  position: absolute;
+  top: 50%;
+  right: 0;
+  display: grid !important;
   place-items: center;
   width: 18px;
   height: 18px;
-  margin: 0 5px 0 -6px;
   border-radius: 50%;
-  opacity: 0.7;
+  background: #fff !important;
+  box-shadow: -8px 0 6px -1px #fff;
+  color: #8a8f9c !important;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity 0.15s;
 }
 .ip-chip:hover .ip-chip-x,
 .ip-chip:focus-within .ip-chip-x {
-  display: grid !important;
+  opacity: 1;
+  pointer-events: auto;
 }
 .ip-chip-x:hover {
-  background: rgba(0, 0, 0, 0.07) !important;
-  opacity: 1;
+  background: #f1f1f5 !important;
+  color: #3a3d46 !important;
 }
-.ip-chip.more {
-  padding: 0 11px !important;
-  border-color: #ececf1;
+.ip-links .ip-more {
+  flex: none;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 999px;
+  color: #7d8190;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.ip-links .ip-more:hover,
+.ip-links .ip-more[aria-expanded='true'] {
+  background: #f2f2f6;
+  color: #3a3d46;
+}
+/* Los que no cupieron, en su ventanita. */
+.nx-pop.ip-more-pop {
+  min-width: 200px;
+  max-width: min(300px, calc(100vw - 16px));
+  padding: 6px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.ip-more-list {
+  display: flex;
+  flex-direction: column;
+}
+.ip-more-list .ip-chip {
+  display: flex;
+  width: 100%;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 9px;
+}
+.ip-more-list .ip-chip:hover {
+  background: #f4f4f7;
+}
+.ip-more-list .ip-chip-main {
+  flex: 1;
+  max-width: none;
+}
+.ip-more-list .ip-chip-x {
+  right: 6px;
   background: #f4f4f7 !important;
-  color: #6b6f80 !important;
-  font-size: 12px !important;
-  font-weight: 650 !important;
+  box-shadow: -8px 0 6px -1px #f4f4f7;
+}
+.ip-more-list .ip-chip-x:hover {
+  background: #e9e9ef !important;
 }
 /* Solo al final de un hilo: cuántos tiene; al tocarlo, se sigue el hilo. */
 .ip-thread {

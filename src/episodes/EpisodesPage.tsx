@@ -35,7 +35,13 @@ import { PhotoThumbs } from '../components/PhotoThumbs';
 import { EmbedBar } from '../components/EmbedBar';
 import { kindMeta } from '../composer/kinds';
 import type { Entry, Episode, EpisodeKind, Person } from '../data';
-import { commitmentKinds, commitmentOf, outcomeHint } from '../lib/commitments';
+import {
+  commitmentKinds,
+  commitmentOf,
+  isMissedTask,
+  outcomeHint,
+  outcomeLabels,
+} from '../lib/commitments';
 import {
   candidateEntries,
   episodeKindOf,
@@ -72,6 +78,25 @@ const sortLabels: Record<Sort, string> = {
 };
 /** Un episodio activo sin nada nuevo en estos días se marca como «sin novedades». */
 const QUIET_DAYS = 21;
+
+/** Pestañas de la historia de un episodio (como mucho tres). */
+type StoryTab = 'todo' | 'recuerdos' | 'pendientes';
+const STORY_TABS: StoryTab[] = ['todo', 'recuerdos', 'pendientes'];
+const storyLabels: Record<StoryTab, string> = {
+  todo: 'Todo',
+  recuerdos: 'Recuerdos',
+  pendientes: 'Pendientes',
+};
+/** Los pendientes aparte; el dinero solo en «Todo» (tiene su propio panel). */
+const storyGroup = (e: Entry): StoryTab | null =>
+  e.kind === 'Pendiente' ? 'pendientes' : e.kind === 'Movimiento' ? null : 'recuerdos';
+
+/** La etiqueta de la ficha: cerrado, próximo (aún no empieza) o activo. */
+function episodeState(ep: Episode, s: EpisodeSummary) {
+  if (ep.status === 'cerrado') return { text: 'Cerrado', tone: 'done' as const };
+  if (s.startsIn !== null) return { text: 'Próximo', tone: 'soon' as const };
+  return { text: 'Activo', tone: 'live' as const };
+}
 /** Tipos para empezar rápido cuando aún no hay episodios. */
 const STARTERS: EpisodeKind[] = [
   'viaje',
@@ -608,7 +633,22 @@ export function EpisodeDetail({
   const told = useMemo(() => instantsWith(instants, 'episode_ids', ep.id), [instants, ep.id]);
   const m = episodeKindOf(ep.kind);
   const [adding, setAdding] = useState(false);
+  const [view, setView] = useState<StoryTab>('todo');
   const [outcome, setOutcome] = useState(ep.outcome);
+  const state = episodeState(ep, s);
+  // Pestañas de la historia: solo si separan algo (con una sola clase de piezas, no hacen falta).
+  const story = useMemo(() => {
+    const groups: Record<StoryTab, Entry[]> = {
+      todo: s.items,
+      recuerdos: s.items.filter((e) => storyGroup(e) === 'recuerdos'),
+      pendientes: s.items.filter((e) => storyGroup(e) === 'pendientes'),
+    };
+    const tabs = STORY_TABS.filter((t) => t === 'todo' || groups[t].length > 0);
+    const useful = tabs.some((t) => t !== 'todo' && groups[t].length < s.items.length);
+    return { groups, tabs: useful ? tabs : [] };
+  }, [s.items]);
+  const shownTab = story.tabs.includes(view) ? view : 'todo';
+  const shown = story.groups[shownTab];
   const budgetPct = ep.budget ? Math.min(100, Math.round((s.spent / ep.budget) * 100)) : null;
   const hasMoney = s.spent > 0 || s.earned > 0;
   const duration =
@@ -638,6 +678,16 @@ export function EpisodeDetail({
           <small>
             {m.label} · {range(s.from, s.to)}
           </small>
+          <span className={'ep-state ' + state.tone}>
+            {state.tone === 'live' ? (
+              <i className="ep-live" aria-hidden="true" />
+            ) : state.tone === 'soon' ? (
+              <CalendarClock size={11} aria-hidden="true" />
+            ) : (
+              <CircleCheck size={11} aria-hidden="true" />
+            )}
+            {state.text}
+          </span>
           <h1>{ep.title}</h1>
           {ep.summary && <p>{ep.summary}</p>}
         </div>
@@ -757,11 +807,27 @@ export function EpisodeDetail({
               </div>
             </div>
             {adding && <LinkPicker episode={ep} />}
-            {s.items.length ? (
+            {story.tabs.length > 0 && (
+              <div className="ep-tabs" role="tablist" aria-label="Filtrar la historia">
+                {story.tabs.map((t) => (
+                  <button
+                    type="button"
+                    role="tab"
+                    key={t}
+                    aria-selected={shownTab === t}
+                    className={shownTab === t ? 'on' : ''}
+                    onClick={() => setView(t)}
+                  >
+                    {storyLabels[t]} <i>{story.groups[t].length}</i>
+                  </button>
+                ))}
+              </div>
+            )}
+            {shown.length ? (
               <ol className="ep-timeline">
-                {s.items.map((e, i) => {
+                {shown.map((e, i) => {
                   const d = todayInputValue(new Date(e.created_at));
-                  const prev = i ? todayInputValue(new Date(s.items[i - 1].created_at)) : '';
+                  const prev = i ? todayInputValue(new Date(shown[i - 1].created_at)) : '';
                   return (
                     <li key={e.id}>
                       {d !== prev && <span className="ep-day">{friendlyDate(d)}</span>}
@@ -963,6 +1029,8 @@ function TimelineRow({
   onUnlink: () => void;
 }) {
   const km = kindMeta[e.kind];
+  // No se hizo: la razón queda debajo, como en un hilo.
+  const why = isMissedTask(e) ? e.details.missed?.why?.trim() : undefined;
   return (
     <div className="ep-row" style={{ '--k': km.accent, '--ks': km.soft } as CSSProperties}>
       <span className="ep-row-icon">
@@ -979,6 +1047,12 @@ function TimelineRow({
           {e.details.place && ` · ${e.details.place}`}
         </small>
         {e.body && e.kind !== 'Encuentro' && <p>{e.body.slice(0, 180)}</p>}
+        {why && (
+          <span className="ep-why" title={why}>
+            <small>{outcomeLabels(e).missed}</small>
+            <span>{why}</span>
+          </span>
+        )}
         {e.images.length > 0 && <PhotoThumbs images={e.images} />}
       </button>
       <button

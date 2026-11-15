@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  BriefcaseBusiness,
   CalendarRange,
   Check,
   CircleCheck,
@@ -9,7 +10,6 @@ import {
   Copy,
   Feather,
   GraduationCap,
-  Layers,
   ListPlus,
   Lock,
   PenLine,
@@ -439,7 +439,7 @@ function LetterView({ month, item, onGo }: { month: string; item: FinItem<'proye
           on: x.part.due,
           ref: `part:${x.charge.id}:${x.part.id}`,
         })),
-      'tus cobros por partes',
+      'tus trabajos por cobrar',
     );
   const prevLetter = itemsOf(fin.items, 'proyeccion').find((l) => l.data.month === prevMonth);
   const copyPrev = () =>
@@ -585,7 +585,7 @@ function LetterView({ month, item, onGo }: { month: string; item: FinItem<'proye
               {i.on && <span>{friendlyDate(i.on).toLowerCase()}</span>}
               {i.category && <span>{i.category}</span>}
               {i.ref?.startsWith('rec:') && <span className="fz-chip muted">Fijo</span>}
-              {i.ref?.startsWith('part:') && <span className="fz-chip muted">Cobro</span>}
+              {i.ref?.startsWith('part:') && <span className="fz-chip muted">Trabajo</span>}
             </small>
           )}
           {hint && (
@@ -808,8 +808,8 @@ function LetterView({ month, item, onGo }: { month: string; item: FinItem<'proye
                       </button>
                     )}
                     {parts.length > 0 && (
-                      <button type="button" className="fz-btn ghost sm" onClick={bringParts} title="Lo que esperas de tus cobros por partes este mes">
-                        <Layers size={13} /> Cobros
+                      <button type="button" className="fz-btn ghost sm" onClick={bringParts} title="Lo que esperas de tus trabajos por cobrar este mes">
+                        <BriefcaseBusiness size={13} /> Trabajos
                       </button>
                     )}
                     {(prevLetter?.data.items.length ?? 0) > 0 && (

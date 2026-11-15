@@ -3,6 +3,7 @@ import {
   ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
+  BriefcaseBusiness,
   Bug,
   CalendarClock,
   Check,
@@ -11,7 +12,6 @@ import {
   Frown,
   HandCoins,
   Landmark,
-  Layers,
   MapPin,
   NotebookPen,
   PenLine,
@@ -28,7 +28,7 @@ import {
 import { useApp } from '../AppContext';
 import { addDays, friendlyDate, money, todayInputValue } from '../lib/format';
 import { dismiss, useDismissed } from '../relations/dismissed';
-import { ChargeBar, PartSheet } from './Charges';
+import { ChargeBar, PartSheet, paidPct } from './Charges';
 import { waitingParts } from './chargeActions';
 import { Bars, catColor, Donut, Line, Progress, Ring, type Bar } from './charts';
 import {
@@ -344,7 +344,7 @@ export function SummaryTab({
           title: charge.title,
           amount: part.amount,
           sign: 1,
-          kind: 'Parte de un cobro',
+          kind: 'Pago de un trabajo',
           onOpen: () => setReceiving({ charge, part }),
         });
     for (const dbt of itemsOf(fin.items, 'deuda'))
@@ -538,7 +538,7 @@ export function SummaryTab({
       nudges.push({ key: 'l-adj', text: `Ajusta tu carta de ${monthName(thisMonth)}: tienes hasta el ${PLAN_LOCK_DAY}`, run: () => go('proyeccion') });
     if (day >= 20 && !nextLetter) nudges.push({ key: 'l-next', text: `Ya puedes planear ${monthName(nextMonth)}`, run: () => go('proyeccion') });
     const late = waitingParts(fin.items).filter((x) => x.part.due < today);
-    if (late.length) nudges.push({ key: 'late', text: `${late.length} ${late.length === 1 ? 'parte de un cobro atrasada' : 'partes de cobros atrasadas'}`, run: () => go('deudas') });
+    if (late.length) nudges.push({ key: 'late', text: `${late.length} ${late.length === 1 ? 'pago de un trabajo atrasado' : 'pagos de trabajos atrasados'}`, run: () => go('deudas') });
     if (period.kind === 'mes' && !budget.total && t.n >= 12)
       nudges.push({
         key: 'budget',
@@ -812,35 +812,43 @@ export function SummaryTab({
           )}
 
           {charges.length > 0 && (
-            <Card title="Cobros por partes" icon={<Layers size={15} />} action={<More onClick={() => go('deudas')} />} className="fz-charges-card">
+            <Card title="Trabajos por cobrar" icon={<BriefcaseBusiness size={15} />} action={<More onClick={() => go('deudas')} />} className="fz-charges-card">
               <p className="fz-charges-total">
-                Te falta recibir <b className="in">{money(toReceive)}</b>
+                Pendiente por recibir <b className="in">{money(toReceive)}</b>
               </p>
               <ul className="fz-mini-charges">
                 {charges.slice(0, 4).map(({ c, s }) => {
                   const n = s.next ? daysBetween(today, s.next.due) : null;
                   return (
                     <li key={c.id}>
-                      <div>
+                      <div className="fz-mc-head">
                         <strong>{c.title}</strong>
+                        <span>
+                          {s.done ? 'Pagado' : 'Pendiente'} {!s.done && <b>{moneyShort(s.left)}</b>}
+                        </span>
+                      </div>
+                      <div className="fz-charge-meter">
+                        <ChargeBar total={c.data.total} s={s} />
+                        <b>{paidPct(s)} %</b>
+                      </div>
+                      <div className="fz-mc-foot">
                         <small>
-                          {moneyShort(s.received)} de {moneyShort(c.data.total)}
+                          Abonado {moneyShort(s.received)} de {moneyShort(c.data.total)}
                           {s.next && (
                             <>
                               {' · '}
                               <em className={n! < 0 ? 'bad' : n! <= 3 ? 'warn' : ''}>
-                                {n! < 0 ? `atrasada ${-n!} d` : n === 0 ? 'hoy' : `próx. ${friendlyDate(s.next.due).toLowerCase()}`} ({moneyShort(s.next.amount)})
+                                {n! < 0 ? `atrasado ${-n!} d` : n === 0 ? 'hoy' : `próx. ${friendlyDate(s.next.due).toLowerCase()}`} ({moneyShort(s.next.amount)})
                               </em>
                             </>
                           )}
                         </small>
+                        {s.next && n! <= 0 && (
+                          <button type="button" className="fz-btn soft sm" onClick={() => setReceiving({ charge: c, part: s.next! })}>
+                            <Check size={13} /> Llegó
+                          </button>
+                        )}
                       </div>
-                      {s.next && n! <= 0 && (
-                        <button type="button" className="fz-btn soft sm" onClick={() => setReceiving({ charge: c, part: s.next! })}>
-                          <Check size={13} /> Llegó
-                        </button>
-                      )}
-                      <ChargeBar total={c.data.total} s={s} />
                     </li>
                   );
                 })}

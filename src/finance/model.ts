@@ -1015,7 +1015,7 @@ export function pocketStats(p: FinItem<'bolsillo'>, entries: readonly Entry[], m
   return { balance, added, taken, spent, lines };
 }
 
-// ───────────────────────── Cobros por partes ─────────────────────────
+// ───────────────────────── Trabajos por cobrar (cobros por partes) ─────────────────────────
 
 /** Días de retraso de una parte que ya llegó (frente a la fecha que se acordó primero). */
 export const partDelay = (p: ChargePart) => (p.gotOn ? daysBetween(p.moved?.[0] ?? p.due, p.gotOn) : null);

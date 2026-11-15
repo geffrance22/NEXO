@@ -134,7 +134,7 @@ export function FinancePage() {
       )}
       {!fin.missing && fin.upgrade && needsMore.includes(tab) && (
         <div className="fz-notice" role="status">
-          Para guardar bolsillos, tarjetas, apuntes y cobros por partes ejecuta <code>{FINANCE_MORE_MIGRATION}</code> en el
+          Para guardar bolsillos, tarjetas, apuntes y trabajos por cobrar ejecuta <code>{FINANCE_MORE_MIGRATION}</code> en el
           SQL Editor de Supabase. Lo demás sigue funcionando.
         </div>
       )}

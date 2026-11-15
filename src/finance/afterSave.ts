@@ -144,7 +144,7 @@ export async function afterMoneySaved(
       const p = input.personIds[0] ? person(input.personIds[0]) : undefined;
       const made = await createItem(
         'cobro',
-        draft.title || input.title || input.tags[0] || 'Cobro por partes',
+        draft.title || input.title || input.tags[0] || 'Trabajo',
         {
           total: draft.total,
           personId: p?.id,
@@ -158,7 +158,7 @@ export async function afterMoneySaved(
         cid,
       );
       if (typeof made !== 'string') {
-        said.push(`quedó como abono: faltan ${money(rest)} de ${money(draft.total)}`);
+        said.push(`quedó como abono del trabajo: pendiente ${money(rest)} de ${money(draft.total)}`);
         if (draft.task !== false && draft.nextOn && extra.createEntry && rest > 0) {
           const task = await extra.createEntry(
             moneyInput({
@@ -202,7 +202,7 @@ export async function afterMoneySaved(
             : pt,
       );
       await updateItem(charge, { data: { parts, ...(left <= 0 && { closedOn: input.date }) } });
-      said.push(left > 0 ? `abono a «${charge.title}»: faltan ${money(left)}` : `«${charge.title}» quedó completo`);
+      said.push(left > 0 ? `abono a «${charge.title}»: pendiente ${money(left)}` : `«${charge.title}» quedó pagado`);
       const task = charge.data.taskId ? extra.entries?.find((e) => e.id === charge.data.taskId) : undefined;
       if (task && task.status === 'pendiente') {
         const next = parts.filter((pt) => pt.status === 'esperando').sort((a, b) => a.due.localeCompare(b.due))[0];

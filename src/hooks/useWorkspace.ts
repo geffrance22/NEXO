@@ -201,7 +201,8 @@ async function fetchAll<T>(
       .from(table)
       .select(columns, { count: 'exact' })
       .order('created_at', { ascending: false })
-      .order('id')
+      // Los descartes no tienen `id` (su clave es owner_id + key): ordenar por `id` fallaba siempre.
+      .order(table === 'dismissals' ? 'key' : 'id')
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw error;
     const page = data as unknown as T[];

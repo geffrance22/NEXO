@@ -39,6 +39,30 @@ const isMissing = (e: { code?: string; message?: string }) =>
 const CHECK_EVERY = 20_000;
 const INBOX_EVERY = 2 * 60_000;
 
+/**
+ * Lo que ya se avisó aquí (avisos del servidor y recordatorios con su hora). Aunque la base no
+ * llegue a marcarlo, no se repite: ni al volver a la ventana ni al recargar.
+ */
+const SHOWN = "nexo-board-notices-shown";
+const shownNow = new Set<string>();
+function readShown(): Set<string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(SHOWN) ?? "[]");
+    return new Set([...(Array.isArray(v) ? (v as string[]) : []), ...shownNow]);
+  } catch {
+    return new Set(shownNow);
+  }
+}
+function markShown(keys: string[]) {
+  if (!keys.length) return;
+  keys.forEach((k) => shownNow.add(k));
+  try {
+    localStorage.setItem(SHOWN, JSON.stringify([...readShown()].slice(-500)));
+  } catch {
+    /* Sin almacenamiento: queda en memoria mientras la app siga abierta. */
+  }
+}
+
 function systemNotice(title: string, body: string, tag: string, onClick: () => void) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   try {
@@ -114,7 +138,9 @@ export function BoardInbox() {
       if (error) return;
       window.dispatchEvent(new Event(BOARDS_CHANGED));
       const claimed = new Set(((won ?? []) as { id: string }[]).map((r) => r.id));
-      const mine = due.filter((c) => claimed.has(c.id));
+      const shown = readShown();
+      const mine = due.filter((c) => claimed.has(c.id) && !shown.has(`r|${c.id}|${c.remind_at}`));
+      markShown(mine.map((c) => `r|${c.id}|${c.remind_at}`));
       if (!mine.length) return;
       const first = mine[0];
       const text =
@@ -145,8 +171,18 @@ export function BoardInbox() {
 
   // Lo que dejó el servidor.
   useEffect(() => {
+    // Volver a la ventana y el intervalo pueden coincidir: una sola consulta a la vez.
+    let busy = false;
     const load = async () => {
-      if (missing.current.inbox || document.hidden) return;
+      if (busy || missing.current.inbox || document.hidden) return;
+      busy = true;
+      try {
+        await read();
+      } finally {
+        busy = false;
+      }
+    };
+    const read = async () => {
       const { data, error } = await supabase
         .from("board_inbox")
         .select("id,board_id,card_id,kind,title,body")
@@ -158,15 +194,21 @@ export function BoardInbox() {
         if (isMissing(error)) missing.current.inbox = true;
         return;
       }
-      const rows = (data ?? []) as InboxRow[];
-      if (!rows.length) return;
-      void supabase
+      const all = (data ?? []) as InboxRow[];
+      if (!all.length) return;
+      // Se marcan leídos (con await: una consulta sin esperar no llega a enviarse), también los
+      // que ya salieron aquí pero la base no alcanzó a marcar.
+      await supabase
         .from("board_inbox")
         .update({ read_at: new Date().toISOString() })
         .in(
           "id",
-          rows.map((r) => r.id),
+          all.map((r) => r.id),
         );
+      const shown = readShown();
+      const rows = all.filter((r) => !shown.has("i|" + r.id));
+      markShown(rows.map((r) => "i|" + r.id));
+      if (!rows.length) return;
       const first = rows[0];
       const text =
         rows.length === 1

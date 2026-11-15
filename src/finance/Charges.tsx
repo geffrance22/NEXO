@@ -1,14 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  Archive,
+  ArrowRight,
   BellPlus,
+  BriefcaseBusiness,
   CalendarClock,
+  CalendarDays,
   CalendarPlus,
   Check,
   CircleCheck,
   CircleDashed,
   CircleX,
   Clock,
-  Layers,
+  ExternalLink,
+  MoreHorizontal,
   Pencil,
   Plus,
   Trash2,
@@ -17,6 +22,8 @@ import {
 import { useApp } from '../AppContext';
 import { Segmented } from '../composer/controls';
 import { incomeCategories } from '../composer/logic';
+import { Sheet } from '../components/Sheet';
+import { useDismiss } from '../hooks/useDismiss';
 import { addDays, friendlyDate, initials, money, todayInputValue } from '../lib/format';
 import { Avatar } from '../people/Avatar';
 import { closeCharge, dropPart, ensureChargeTask, postponePart, receiveCharge } from './chargeActions';
@@ -33,40 +40,53 @@ import {
 } from './model';
 import { daysBetween, isMoney, moneyShort, percent } from './money';
 import { createItem, removeItem, restoreItem, settingsOf, updateItem, useFinance } from './store';
-import { EpisodeSelect, Field, FinSheet, FormSection, MoneyField, PersonInput, relDays } from './ui';
+import { EpisodeSelect, Field, FinSheet, FormSection, MoneyField, PersonInput } from './ui';
 
 const first = (s?: string) => (s ?? '').split(' ')[0];
 
-/** Cuándo toca una parte, dicho corto: «Hoy», «En 3 días», «Atrasada 2 días». */
-function dueText(due: string, today: string) {
-  const n = daysBetween(today, due);
-  if (n === 0) return { text: 'Hoy', tone: 'warn' };
-  if (n < 0) return { text: `Atrasada ${-n} ${n === -1 ? 'día' : 'días'}`, tone: 'bad' };
-  if (n <= 3) {
-    const t = relDays(n);
-    return { text: t.charAt(0).toUpperCase() + t.slice(1), tone: 'warn' };
-  }
-  return { text: friendlyDate(due), tone: 'muted' };
-}
+/** Lo abonado de un trabajo, de 0 a 100 (si pagaron de más, se queda en 100). */
+export const paidPct = (s: ChargeStats) => Math.round(Math.min(1, Math.max(0, s.pct)) * 100);
 
-/** Barra del cobro: lo que llegó, lo programado, lo que falta sin fecha y lo perdido. */
-export function ChargeBar({ total, s }: { total: number; s: ChargeStats }) {
-  const w = (n: number) => (total > 0 ? Math.min(100, (n / total) * 100) : 0) + '%';
+/**
+ * Barra del trabajo: lo abonado (lleno), lo pendiente con fecha (suave) y, al final, lo que se
+ * perdió. Lo pendiente sin fecha es el fondo. Se mide sobre lo mayor entre el total y lo que
+ * suma todo, así nunca se pasa del ancho.
+ */
+export function ChargeBar({
+  total,
+  s,
+  plain = false,
+}: {
+  total: number;
+  s: ChargeStats;
+  /** Solo lo recibido (y lo perdido): sin el tramo de lo que tiene fecha. */
+  plain?: boolean;
+}) {
+  const base = Math.max(total, s.received + s.lost + s.left, 1);
+  const w = (n: number) => ({ width: (Math.min(n, base) / base) * 100 + '%' });
+  const pct = paidPct(s);
   return (
-    <div className="fz-charge-bar" aria-hidden="true">
-      <i className="got" style={{ width: w(s.received) }} />
-      <i className="planned" style={{ width: w(s.scheduled) }} />
-      <i className="free" style={{ width: w(s.unscheduled) }} />
-      <i className="lost" style={{ width: w(s.lost) }} />
+    <div
+      className="fz-charge-bar"
+      role="progressbar"
+      aria-label="Recibido"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={pct}
+      aria-valuetext={`${pct} % recibido`}
+    >
+      {s.received > 0 && <i className="got" style={w(s.received)} />}
+      {!plain && s.scheduled > 0 && <i className="planned" style={w(s.scheduled)} />}
+      {s.lost > 0 && <i className="lost" style={w(s.lost)} />}
     </div>
   );
 }
 
 type PartAction = { charge: FinItem<'cobro'>; part: ChargePart | null; mode: 'receive' | 'postpone' | 'drop' };
 
-/** Ingresos que llegan por partes: cada cobro con su total, sus abonos y lo que esperas. */
+/** Trabajos que te pagan por partes: cada uno con su total, lo abonado y lo pendiente. */
 export function ChargesBlock() {
-  const { workspace, notify, confirm, go, viewEntry, createEntry, patchEntry, resolveTask } = useApp();
+  const { workspace, notify, confirm } = useApp();
   const fin = useFinance();
   const today = todayInputValue();
   const moves = useMemo(() => workspace.entries.filter(isMoney), [workspace.entries]);
@@ -80,7 +100,6 @@ export function ChargesBlock() {
   const [editing, setEditing] = useState<FinItem<'cobro'> | 'new' | null>(null);
   const [action, setAction] = useState<PartAction | null>(null);
   const [showClosed, setShowClosed] = useState(false);
-  const fullApp = { workspace, notify, createEntry, patchEntry, resolveTask };
 
   const remove = async (c: FinItem<'cobro'>) => {
     const ok = await confirm({
@@ -93,183 +112,44 @@ export function ChargesBlock() {
     if (!ok) return;
     const r = await removeItem(c);
     if (r !== true) return notify(r);
-    notify('Cobro eliminado.', { label: 'Deshacer', run: () => void restoreItem(c) });
+    notify('Trabajo eliminado.', { label: 'Deshacer', run: () => void restoreItem(c) });
   };
 
   return (
     <section className="fz-block fz-charges">
       <header className="fz-block-head">
         <h3>
-          <Layers size={16} /> Cobros por partes
+          <BriefcaseBusiness size={16} /> Trabajos por cobrar
         </h3>
         <button type="button" className="fz-btn primary sm" onClick={() => setEditing('new')}>
-          <Plus size={14} /> Nuevo cobro
+          <Plus size={14} /> Nuevo trabajo
         </button>
-        <small>Un proyecto, una venta o un pago que llega en abonos: el total, lo que llegó, cuándo esperas lo demás y si se cumplió.</small>
+        <small>Los trabajos que te pagan por partes (un anticipo y lo demás después): cuánto vale, cuánto te han abonado, cuánto falta y cuándo llega.</small>
       </header>
 
       {open.length ? (
         <div className="fz-charge-grid">
-          {open.map((c) => {
-            const s = chargeStats(c, moves, today);
-            const person = c.data.personId ? workspace.people.find((p) => p.id === c.data.personId) : undefined;
-            const ep = c.data.episodeId ? workspace.episodes.find((e) => e.id === c.data.episodeId) : undefined;
-            const task = c.data.taskId ? workspace.entries.find((e) => e.id === c.data.taskId) : undefined;
-            const partOf = new Map(c.data.parts.filter((p) => p.entryId).map((p) => [p.entryId!, p]));
-            const looseParts = c.data.parts.filter((p) => p.status !== 'esperando' && !(p.entryId && s.abonos.some((e) => e.id === p.entryId)));
-            return (
-              <article key={c.id} className={'fz-charge' + (s.late.length ? ' late' : '') + (s.done ? ' done' : '')}>
-                <header>
-                  {person ? <Avatar person={person} size={36} /> : <span className="fz-avatar sm">{c.data.who ? initials(c.data.who) : <Layers size={15} />}</span>}
-                  <div>
-                    <strong>{c.title}</strong>
-                    <small>
-                      {c.data.who ? `${first(c.data.who)} · ` : ''}desde {friendlyDate(c.data.start).toLowerCase()}
-                    </small>
-                  </div>
-                  <span className="fz-row-tools">
-                    <button type="button" className="fz-icon" aria-label="Editar" title="Editar" onClick={() => setEditing(c)}>
-                      <Pencil size={13} />
-                    </button>
-                    <button type="button" className="fz-icon" aria-label="Eliminar" title="Eliminar" onClick={() => void remove(c)}>
-                      <Trash2 size={13} />
-                    </button>
-                  </span>
-                </header>
-
-                <div className="fz-charge-sum">
-                  <b>{money(s.received)}</b>
-                  <small>de {money(c.data.total)}</small>
-                  <em className={s.done ? 'good' : ''}>{s.done ? 'Completo' : `Faltan ${moneyShort(s.left)}`}</em>
-                </div>
-                <ChargeBar total={c.data.total} s={s} />
-                <div className="fz-charge-key">
-                  <span>
-                    <i className="got" /> Llegó {percent(s.pct)}
-                  </span>
-                  {s.scheduled > 0 && (
-                    <span>
-                      <i className="planned" /> Con fecha {moneyShort(s.scheduled)}
-                    </span>
-                  )}
-                  {s.unscheduled > 0 && (
-                    <span>
-                      <i className="free" /> Sin fecha {moneyShort(s.unscheduled)}
-                    </span>
-                  )}
-                  {s.lost > 0 && (
-                    <span>
-                      <i className="lost" /> Perdido {moneyShort(s.lost)}
-                    </span>
-                  )}
-                </div>
-
-                <ol className="fz-charge-line">
-                  {s.abonos.map((e) => {
-                    const part = partOf.get(e.id);
-                    const delay = part ? partDelay(part) : null;
-                    return (
-                      <li key={e.id} className="got">
-                        <CircleCheck size={15} />
-                        <button type="button" className="fz-charge-what" onClick={() => viewEntry(e)}>
-                          {friendlyDate(todayInputValue(new Date(e.created_at)))}
-                          {delay !== null && (
-                            <em className={'fz-chip ' + (delay > 0 ? 'warn' : 'good')}>{delay > 0 ? `${delay} d tarde` : 'A tiempo'}</em>
-                          )}
-                        </button>
-                        <b className="in">+{moneyShort(e.amount)}</b>
-                      </li>
-                    );
-                  })}
-                  {looseParts.map((p) => (
-                    <li key={p.id} className={p.status === 'no' ? 'no' : 'got'}>
-                      {p.status === 'no' ? <CircleX size={15} /> : <CircleCheck size={15} />}
-                      <span className="fz-charge-what">
-                        {friendlyDate(p.due)} · {p.status === 'no' ? p.note || 'No se dio' : 'Llegó'}
-                      </span>
-                      <b className={p.status === 'no' ? 'muted' : 'in'}>{moneyShort(p.got ?? p.amount)}</b>
-                    </li>
-                  ))}
-                  {s.waiting.map((p) => {
-                    const d = dueText(p.due, today);
-                    return (
-                      <li key={p.id} className={'wait ' + d.tone}>
-                        <CircleDashed size={15} />
-                        <span className="fz-charge-what">
-                          <em className={'fz-chip ' + d.tone}>{d.text}</em>
-                          {p.moved?.length ? <small>aplazada {p.moved.length}×</small> : null}
-                        </span>
-                        <b>{moneyShort(p.amount)}</b>
-                        <span className="fz-charge-acts">
-                          <button type="button" className="fz-btn soft sm" onClick={() => setAction({ charge: c, part: p, mode: 'receive' })}>
-                            <Check size={13} /> Llegó
-                          </button>
-                          <button type="button" className="fz-icon" title="Aplazar" aria-label="Aplazar" onClick={() => setAction({ charge: c, part: p, mode: 'postpone' })}>
-                            <Clock size={14} />
-                          </button>
-                          <button type="button" className="fz-icon" title="No se dio" aria-label="No se dio" onClick={() => setAction({ charge: c, part: p, mode: 'drop' })}>
-                            <X size={14} />
-                          </button>
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ol>
-
-                <footer>
-                  <button type="button" className="fz-btn ghost sm" onClick={() => setAction({ charge: c, part: null, mode: 'receive' })}>
-                    <Plus size={13} /> Abono
-                  </button>
-                  {s.unscheduled > 0 && (
-                    <button type="button" className="fz-btn ghost sm" onClick={() => setEditing(c)}>
-                      <CalendarPlus size={13} /> Poner fecha a lo que falta
-                    </button>
-                  )}
-                  {!task && s.left > 0 && (
-                    <button type="button" className="fz-icon" title="Crear un pendiente para cobrarlo" onClick={() => void ensureChargeTask(fullApp, c).then((ok) => notify(ok ? 'Pendiente creado: está en tu Agenda.' : 'No se pudo crear el pendiente.'))}>
-                      <BellPlus size={14} />
-                    </button>
-                  )}
-                  {(s.done || (!s.waiting.length && s.left > 0)) && (
-                    <button type="button" className="fz-btn ghost sm" onClick={() => void closeCharge(fullApp, c)}>
-                      {s.done ? 'Archivar' : 'Cerrar cobro'}
-                    </button>
-                  )}
-                </footer>
-                {(ep || task || s.punctuality !== null) && (
-                  <div className="fz-charge-meta">
-                    {ep && (
-                      <button type="button" className="fz-chip" onClick={() => go('Episodios', ep)}>
-                        {ep.title}
-                      </button>
-                    )}
-                    {task && (
-                      <button type="button" className={'fz-chip ' + (task.status === 'pendiente' ? 'warn' : 'good')} onClick={() => viewEntry(task)}>
-                        <CalendarClock size={11} /> {task.status === 'pendiente' ? 'Pendiente abierto' : 'Pendiente cerrado'}
-                      </button>
-                    )}
-                    {s.punctuality !== null && (
-                      <span className={'fz-chip ' + (s.punctuality >= 0.8 ? 'good' : s.punctuality >= 0.5 ? 'warn' : 'bad')}>
-                        Puntualidad {percent(s.punctuality)}
-                        {s.avgDelay ? ` · ${Math.round(s.avgDelay)} d de retraso medio` : ''}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </article>
-            );
-          })}
+          {open.map((c) => (
+            <ChargeCard
+              key={c.id}
+              charge={c}
+              s={chargeStats(c, moves, today)}
+              onEdit={() => setEditing(c)}
+              onRemove={() => void remove(c)}
+              onPart={(part, mode) => setAction({ charge: c, part, mode })}
+            />
+          ))}
         </div>
       ) : (
         <p className="fz-muted">
-          Nada por cobrar en partes. Al registrar un ingreso marca «Es un abono de un total mayor» y queda aquí solo.
+          Ningún trabajo por cobrar. Al registrar un ingreso marca «Es el abono de un trabajo» y queda aquí solo.
         </p>
       )}
 
       {closed.length > 0 && (
         <div className="fz-closed">
           <button type="button" className="fz-link" onClick={() => setShowClosed((v) => !v)}>
-            {showClosed ? 'Ocultar' : 'Ver'} cerrados ({closed.length})
+            {showClosed ? 'Ocultar' : 'Ver'} terminados ({closed.length})
           </button>
           {showClosed && (
             <ul>
@@ -301,6 +181,476 @@ export function ChargesBlock() {
       {editing && <ChargeSheet item={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
       {action && <PartSheet action={action} onClose={() => setAction(null)} />}
     </section>
+  );
+}
+
+type MenuItem = { label: string; icon: ReactNode; run: () => void; danger?: boolean };
+
+/** Un menú «…» pequeño: se cierra al elegir, al tocar fuera o con Esc. */
+function MoreMenu({ label, items }: { label: string; items: (MenuItem | false | null | undefined)[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(open, ref, close);
+  const list = items.filter((x): x is MenuItem => Boolean(x));
+  if (!list.length) return null;
+  return (
+    <span ref={ref} className="fz-more">
+      <button
+        type="button"
+        className="fz-icon"
+        aria-label={label}
+        title={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <MoreHorizontal size={18} />
+      </button>
+      {open && (
+        <div className="fz-more-menu" role="menu" aria-label={label}>
+          {list.map((it) => (
+            <button
+              key={it.label}
+              type="button"
+              role="menuitem"
+              className={it.danger ? 'danger' : undefined}
+              onClick={() => {
+                close();
+                it.run();
+              }}
+            >
+              {it.icon}
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+const days = (n: number) => `${n} ${n === 1 ? 'día' : 'días'}`;
+
+/**
+ * La tarjeta de un trabajo por cobrar. Primero lo recibido y lo que falta; luego el próximo cobro
+ * con su acción, el último abono y, si lo pides, todos los movimientos. Lo demás (editar, crear el
+ * pendiente, cerrar, eliminar) va en el menú «…».
+ */
+function ChargeCard({
+  charge: c,
+  s,
+  onEdit,
+  onRemove,
+  onPart,
+}: {
+  charge: FinItem<'cobro'>;
+  s: ChargeStats;
+  onEdit: () => void;
+  onRemove: () => void;
+  onPart: (part: ChargePart | null, mode: PartAction['mode']) => void;
+}) {
+  const { workspace, notify, go, viewEntry, createEntry, patchEntry, resolveTask } = useApp();
+  const app = { workspace, notify, createEntry, patchEntry, resolveTask };
+  const [movesOpen, setMovesOpen] = useState(false);
+  const today = todayInputValue();
+  const person = c.data.personId ? workspace.people.find((p) => p.id === c.data.personId) : undefined;
+  const ep = c.data.episodeId ? workspace.episodes.find((e) => e.id === c.data.episodeId) : undefined;
+  const task = c.data.taskId ? workspace.entries.find((e) => e.id === c.data.taskId) : undefined;
+  const looseParts = c.data.parts.filter((p) => p.status !== 'esperando' && !(p.entryId && s.abonos.some((e) => e.id === p.entryId)));
+  const who = person?.name ?? c.data.who;
+  const sub = [who && first(who), c.data.category].filter(Boolean).join(' · ') || `Desde ${friendlyDate(c.data.start).toLowerCase()}`;
+  const next = s.next;
+  const n = next ? daysBetween(today, next.due) : 0;
+  const late = Boolean(next) && n < 0;
+  const later = s.waiting.slice(1);
+  const laterNote = [
+    later.length === 1 ? `Después: 1 cobro más de ${moneyShort(later[0].amount)}` : later.length > 1 ? `Después: ${later.length} cobros más` : '',
+    s.unscheduled > 0 ? `${moneyShort(s.unscheduled)} sin fecha` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const last = s.abonos[s.abonos.length - 1];
+  const moves = s.abonos.length + looseParts.length + s.waiting.length;
+  const canClose = s.done || (!s.waiting.length && s.left > 0);
+
+  return (
+    <article className={'fz-charge' + (late ? ' late' : '') + (s.done ? ' done' : '')}>
+      <header className="fz-charge-head">
+        {person ? (
+          <Avatar person={person} size={40} />
+        ) : (
+          <span className="fz-avatar fz-charge-face">{who ? initials(who) : <BriefcaseBusiness size={16} />}</span>
+        )}
+        <div>
+          <strong title={c.title}>{c.title}</strong>
+          <small>{sub}</small>
+        </div>
+        <MoreMenu
+          label="Opciones del trabajo"
+          items={[
+            { label: 'Editar', icon: <Pencil size={15} />, run: onEdit },
+            next && s.unscheduled > 0 && { label: 'Poner fecha a lo que falta', icon: <CalendarPlus size={15} />, run: onEdit },
+            task
+              ? { label: task.status === 'pendiente' ? 'Ver su pendiente' : 'Ver su pendiente (cerrado)', icon: <CalendarClock size={15} />, run: () => viewEntry(task) }
+              : s.left > 0 && {
+                  label: 'Crear un pendiente para cobrarlo',
+                  icon: <BellPlus size={15} />,
+                  run: () => void ensureChargeTask(app, c).then((ok) => notify(ok ? 'Pendiente creado: está en tu Agenda.' : 'No se pudo crear el pendiente.')),
+                },
+            ep && { label: `Ir a «${ep.title.slice(0, 32)}»`, icon: <ExternalLink size={15} />, run: () => go('Episodios', ep) },
+            canClose && { label: s.done ? 'Archivar' : 'Cerrar trabajo', icon: s.done ? <Archive size={15} /> : <CircleX size={15} />, run: () => void closeCharge(app, c) },
+            { label: 'Eliminar', icon: <Trash2 size={15} />, run: onRemove, danger: true },
+          ]}
+        />
+      </header>
+
+      <div className="fz-charge-got">
+        <span className="fz-charge-eyebrow">Recibido</span>
+        <b>{money(s.received)}</b>
+        <small>de {money(c.data.total)} acordados</small>
+      </div>
+      <div className="fz-charge-progress">
+        <ChargeBar total={c.data.total} s={s} plain />
+        <small>
+          {paidPct(s)} % recibido
+          {s.lost > 0 && <span className="lost"> · {moneyShort(s.lost)} no llegaron</span>}
+        </small>
+      </div>
+      <div className="fz-charge-left">
+        <span>Saldo pendiente</span>
+        {s.done ? (
+          <em className="fz-chip good">
+            <Check size={12} /> Pagado
+          </em>
+        ) : (
+          <b>{money(s.left)}</b>
+        )}
+      </div>
+
+      {next ? (
+        <div className={'fz-charge-next' + (late ? ' late' : '')}>
+          <span className="fz-charge-eyebrow">{late ? 'Cobro atrasado' : 'Próximo cobro'}</span>
+          <div className="fz-charge-next-row">
+            <span>
+              <CalendarDays size={16} />
+              {cap(friendlyDate(next.due, today))}
+              {(n > 1 || n < -1) && <small>{n < 0 ? `hace ${days(-n)}` : `en ${days(n)}`}</small>}
+            </span>
+            <b>{money(next.amount)}</b>
+          </div>
+          {next.moved?.length ? (
+            <small className="fz-charge-note">
+              Aplazado {next.moved.length === 1 ? 'una vez' : `${next.moved.length} veces`} · lo acordado era el {friendlyDate(next.moved[0]).toLowerCase()}
+            </small>
+          ) : null}
+          <div className="fz-charge-next-acts">
+            <button type="button" className="fz-btn primary" onClick={() => onPart(next, 'receive')}>
+              <Check size={14} strokeWidth={2.6} /> Confirmar ingreso
+            </button>
+            <MoreMenu
+              label="Más opciones de este cobro"
+              items={[
+                { label: 'Aplazar', icon: <Clock size={15} />, run: () => onPart(next, 'postpone') },
+                { label: 'No se dio', icon: <X size={15} />, run: () => onPart(next, 'drop') },
+              ]}
+            />
+          </div>
+          {laterNote && <small className="fz-charge-note">{laterNote}</small>}
+        </div>
+      ) : !s.done && s.left > 0 ? (
+        <div className="fz-charge-next free">
+          <span className="fz-charge-eyebrow">Sin fecha de cobro</span>
+          <p>Aún no sabes cuándo llega lo que falta.</p>
+          <div className="fz-charge-next-acts">
+            <button type="button" className="fz-btn ghost sm" onClick={onEdit}>
+              <CalendarPlus size={14} /> Poner fecha
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {last && (
+        <button type="button" className="fz-charge-last" title="Ver el movimiento" onClick={() => viewEntry(last)}>
+          <CircleCheck size={17} />
+          <span>Último abono · {friendlyDate(todayInputValue(new Date(last.created_at)), today)}</span>
+          <b className="in">+{money(last.amount)}</b>
+        </button>
+      )}
+
+      <footer>
+        <button type="button" className="fz-btn fz-charge-add" onClick={() => onPart(null, 'receive')}>
+          <Plus size={14} strokeWidth={2.4} /> Registrar abono
+        </button>
+        {moves > 0 && (
+          <button type="button" className="fz-charge-toggle" aria-haspopup="dialog" onClick={() => setMovesOpen(true)}>
+            Ver movimientos <ArrowRight size={15} />
+          </button>
+        )}
+      </footer>
+      {movesOpen && (
+        <ChargeMovesSheet charge={c} s={s} onClose={() => setMovesOpen(false)} onPart={onPart} onEdit={onEdit} />
+      )}
+    </article>
+  );
+}
+
+/** «jueves, 19 de noviembre» para una fecha AAAA-MM-DD. */
+const longDate = (date: string) => {
+  const [y, m, d] = date.split('-').map(Number);
+  return cap(new Date(y, m - 1, d).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' }));
+};
+
+/** Cuándo toca una parte, al lado de su fecha: «Hoy», «Mañana», «En 5 días», «Atrasada 2 días». */
+function whenText(due: string, today: string) {
+  const n = daysBetween(today, due);
+  if (n < 0) return { text: `Atrasada ${days(-n)}`, tone: 'bad' };
+  if (n === 0) return { text: 'Hoy', tone: 'warn' };
+  if (n === 1) return { text: 'Mañana', tone: 'warn' };
+  return { text: `En ${days(n)}`, tone: n <= 3 ? 'warn' : 'muted' };
+}
+
+/**
+ * Los movimientos de un trabajo en su propia ventana translúcida: el resumen arriba, lo que falta
+ * por recibir (con sus acciones) y el historial, del más reciente al acuerdo inicial.
+ */
+function ChargeMovesSheet({
+  charge: c,
+  s,
+  onClose,
+  onPart,
+  onEdit,
+}: {
+  charge: FinItem<'cobro'>;
+  s: ChargeStats;
+  onClose: () => void;
+  onPart: (part: ChargePart | null, mode: PartAction['mode']) => void;
+  onEdit: () => void;
+}) {
+  const { workspace, go, viewEntry } = useApp();
+  const today = todayInputValue();
+  const person = c.data.personId ? workspace.people.find((p) => p.id === c.data.personId) : undefined;
+  const ep = c.data.episodeId ? workspace.episodes.find((e) => e.id === c.data.episodeId) : undefined;
+  const task = c.data.taskId ? workspace.entries.find((e) => e.id === c.data.taskId) : undefined;
+  const who = person?.name ?? c.data.who;
+  const sub = [who && first(who), c.data.category].filter(Boolean).join(' · ') || `Desde ${friendlyDate(c.data.start).toLowerCase()}`;
+  const partOf = new Map(c.data.parts.filter((p) => p.entryId).map((p) => [p.entryId!, p]));
+  const looseParts = c.data.parts.filter((p) => p.status !== 'esperando' && !(p.entryId && s.abonos.some((e) => e.id === p.entryId)));
+  const history = [
+    ...s.abonos.map((e) => ({ key: e.id, day: todayInputValue(new Date(e.created_at)), entry: e, part: partOf.get(e.id) })),
+    ...looseParts.map((p) => ({ key: p.id, day: p.gotOn ?? p.due, entry: undefined, part: p })),
+  ].sort((a, b) => b.day.localeCompare(a.day));
+  const waitingSum = s.waiting.reduce((a, p) => a + p.amount, 0);
+  // Las acciones abren su propia ventana: esta se cierra antes.
+  const act = (part: ChargePart | null, mode: PartAction['mode']) => {
+    onClose();
+    onPart(part, mode);
+  };
+
+  return (
+    <Sheet label={`Movimientos de ${c.title}`} className="fz-sheet fz-moves" yieldTo=".sheet.ev" onRequestClose={onClose}>
+      <header className="fz-sheet-head">
+        {person ? (
+          <Avatar person={person} size={40} />
+        ) : (
+          <span className="fz-avatar fz-moves-face">{who ? initials(who) : <BriefcaseBusiness size={16} />}</span>
+        )}
+        <div>
+          <h3>{c.title}</h3>
+          <p>{sub}</p>
+        </div>
+        <button type="button" className="fz-x" aria-label="Cerrar" onClick={onClose}>
+          <X size={18} />
+        </button>
+      </header>
+
+      <div className="fz-sheet-body">
+        <div className="fz-mv-sum">
+          <div>
+            <small>Recibido</small>
+            <b className="in">{money(s.received)}</b>
+          </div>
+          <div>
+            <small>Pendiente</small>
+            <b>{money(s.left)}</b>
+          </div>
+          <div>
+            <small>Acordado</small>
+            <b>{money(c.data.total)}</b>
+          </div>
+        </div>
+        <div className="fz-charge-progress">
+          <ChargeBar total={c.data.total} s={s} plain />
+          <small>
+            {paidPct(s)} % recibido
+            {s.lost > 0 && <span className="lost"> · {moneyShort(s.lost)} no llegaron</span>}
+          </small>
+        </div>
+        {(ep || task || s.punctuality !== null) && (
+          <div className="fz-mv-tags">
+            {s.punctuality !== null && (
+              <span className={'fz-chip ' + (s.punctuality >= 0.8 ? 'good' : s.punctuality >= 0.5 ? 'warn' : 'bad')}>
+                Puntualidad {percent(s.punctuality)}
+                {s.avgDelay ? ` · ${Math.round(s.avgDelay)} d de retraso medio` : ''}
+              </span>
+            )}
+            {ep && (
+              <button
+                type="button"
+                className="fz-chip"
+                onClick={() => {
+                  onClose();
+                  go('Episodios', ep);
+                }}
+              >
+                <ExternalLink size={11} /> {ep.title}
+              </button>
+            )}
+            {task && (
+              <button type="button" className={'fz-chip ' + (task.status === 'pendiente' ? 'warn' : 'good')} onClick={() => viewEntry(task)}>
+                <CalendarClock size={11} /> {task.status === 'pendiente' ? 'Pendiente abierto' : 'Pendiente cerrado'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {(s.waiting.length > 0 || s.unscheduled > 0) && (
+          <section className="fz-mv-sec">
+            <header>
+              <h4>Por recibir</h4>
+              {s.waiting.length > 0 && (
+                <small>
+                  {s.waiting.length === 1 ? '1 cobro' : `${s.waiting.length} cobros`} · {money(waitingSum)}
+                </small>
+              )}
+            </header>
+            {s.waiting.length > 0 && (
+              <ol className="fz-mv-list">
+                {s.waiting.map((p) => {
+                  const d = whenText(p.due, today);
+                  return (
+                    <li key={p.id} className={'fz-mv wait ' + d.tone}>
+                      <span className="fz-mv-ic">
+                        <CircleDashed size={16} />
+                      </span>
+                      <div className="fz-mv-main">
+                        <strong>{longDate(p.due)}</strong>
+                        <small>
+                          <em className={'fz-chip ' + d.tone}>{d.text}</em>
+                          {p.moved?.length ? <span>Aplazada {p.moved.length === 1 ? 'una vez' : `${p.moved.length} veces`}</span> : null}
+                          {p.note && <span>{p.note}</span>}
+                        </small>
+                      </div>
+                      <b>{money(p.amount)}</b>
+                      <span className="fz-mv-acts">
+                        <button type="button" className="fz-btn soft sm" onClick={() => act(p, 'receive')}>
+                          <Check size={13} /> Llegó
+                        </button>
+                        <button type="button" className="fz-btn ghost sm" onClick={() => act(p, 'postpone')}>
+                          <Clock size={13} /> Aplazar
+                        </button>
+                        <button type="button" className="fz-icon" title="No se dio" aria-label="No se dio" onClick={() => act(p, 'drop')}>
+                          <X size={14} />
+                        </button>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+            {s.unscheduled > 0 && (
+              <p className="fz-mv-free">
+                {money(s.unscheduled)} aún sin fecha.{' '}
+                <button
+                  type="button"
+                  className="fz-link"
+                  onClick={() => {
+                    onClose();
+                    onEdit();
+                  }}
+                >
+                  Poner fecha
+                </button>
+              </p>
+            )}
+          </section>
+        )}
+
+        <section className="fz-mv-sec">
+          <header>
+            <h4>Historial</h4>
+            {s.abonos.length > 0 && (
+              <small>
+                {s.abonos.length === 1 ? '1 abono' : `${s.abonos.length} abonos`} · {money(s.received)}
+              </small>
+            )}
+          </header>
+          <ol className="fz-mv-list">
+            {history.map(({ key, day, entry, part }) => {
+              const no = !entry && part?.status === 'no';
+              const delay = part ? partDelay(part) : null;
+              const amount = entry?.amount ?? part?.got ?? part?.amount ?? 0;
+              const main = (
+                <>
+                  <strong>{longDate(day)}</strong>
+                  <small>
+                    <span>{entry ? 'Abono' : no ? 'No se dio' : 'Llegó'}</span>
+                    {delay !== null && !no && <em className={'fz-chip ' + (delay > 0 ? 'warn' : 'good')}>{delay > 0 ? `${delay} d tarde` : 'A tiempo'}</em>}
+                    {entry?.details.method && <span>{entry.details.method}</span>}
+                    {no && part?.note && <span>{part.note}</span>}
+                  </small>
+                </>
+              );
+              return (
+                <li key={key} className={'fz-mv ' + (no ? 'no' : 'got')}>
+                  <span className="fz-mv-ic">{no ? <CircleX size={16} /> : <CircleCheck size={16} />}</span>
+                  {entry ? (
+                    <button type="button" className="fz-mv-main" title="Ver el movimiento" onClick={() => viewEntry(entry)}>
+                      {main}
+                    </button>
+                  ) : (
+                    <div className="fz-mv-main">{main}</div>
+                  )}
+                  <b className={no ? 'muted' : 'in'}>
+                    {no ? '' : '+'}
+                    {money(amount)}
+                  </b>
+                </li>
+              );
+            })}
+            <li className="fz-mv start">
+              <span className="fz-mv-ic">
+                <BriefcaseBusiness size={15} />
+              </span>
+              <div className="fz-mv-main">
+                <strong>{longDate(c.data.start)}</strong>
+                <small>
+                  <span>Trabajo acordado</span>
+                </small>
+              </div>
+              <b>{money(c.data.total)}</b>
+            </li>
+          </ol>
+        </section>
+      </div>
+
+      <footer className="fz-sheet-foot">
+        <button
+          type="button"
+          className="fz-btn ghost"
+          onClick={() => {
+            onClose();
+            onEdit();
+          }}
+        >
+          <Pencil size={14} /> Editar
+        </button>
+        <button type="button" className="fz-btn primary" onClick={() => act(null, 'receive')}>
+          <Plus size={15} strokeWidth={2.4} /> Registrar abono
+        </button>
+      </footer>
+    </Sheet>
   );
 }
 
@@ -336,9 +686,9 @@ export function PartSheet({ action, onClose }: { action: PartAction; onClose: ()
 
   return (
     <FinSheet
-      icon={<Layers size={18} />}
+      icon={<BriefcaseBusiness size={18} />}
       title={charge.title}
-      sub={part ? `Esperabas ${money(part.amount)} ${friendlyDate(part.due).toLowerCase()}` : `Faltan ${money(s.left)} de ${money(charge.data.total)}`}
+      sub={part ? `Esperabas ${money(part.amount)} ${friendlyDate(part.due).toLowerCase()}` : `Pendiente ${money(s.left)} de ${money(charge.data.total)}`}
       onClose={onClose}
       footer={
         <>
@@ -428,7 +778,7 @@ export function PartSheet({ action, onClose }: { action: PartAction; onClose: ()
 
 type PartRow = { id: string; due: string; amount: number; keep?: ChargePart };
 
-/** Crear o editar un cobro: el total, con quién, su episodio y las partes que esperas. */
+/** Crear o editar un trabajo por cobrar: el total, quién paga, su episodio y las partes que esperas. */
 function ChargeSheet({ item, onClose }: { item: FinItem<'cobro'> | null; onClose: () => void }) {
   const { workspace, notify, createEntry, patchEntry, resolveTask } = useApp();
   const fin = useFinance();
@@ -496,9 +846,9 @@ function ChargeSheet({ item, onClose }: { item: FinItem<'cobro'> | null; onClose
   return (
     <FinSheet
       wide
-      icon={<Layers size={18} />}
-      title={item ? 'Editar cobro' : 'Nuevo cobro por partes'}
-      sub="El total acordado y lo que esperas recibir: cada abono que llegue se descuenta solo."
+      icon={<BriefcaseBusiness size={18} />}
+      title={item ? 'Editar trabajo' : 'Nuevo trabajo por cobrar'}
+      sub="Lo que vale el trabajo y cuándo te pagan lo demás: cada abono que llegue se descuenta solo."
       onClose={onClose}
       footer={
         <>
@@ -516,20 +866,20 @@ function ChargeSheet({ item, onClose }: { item: FinItem<'cobro'> | null; onClose
         </>
       }
     >
-      <FormSection title="El cobro">
+      <FormSection title="El trabajo">
         <div className="fz-form three">
-          <Field label="¿Qué es?" wide>
-            <input className="fz-input" value={title} autoFocus maxLength={200} placeholder="Proyecto web, venta del carro, liquidación…" onChange={(e) => setTitle(e.target.value)} />
+          <Field label="¿Qué trabajo es?" wide>
+            <input className="fz-input" value={title} autoFocus maxLength={200} placeholder="Página web, diseño de logo, remodelación…" onChange={(e) => setTitle(e.target.value)} />
           </Field>
-          <Field label="Total acordado">
+          <Field label="Valor total">
             <MoneyField value={total} onChange={setTotal} />
           </Field>
           {!item ? (
-            <Field label="Ya recibí" hint="Primer abono">
+            <Field label="Ya me abonaron" hint="Anticipo">
               <MoneyField value={firstAbono} onChange={setFirstAbono} />
             </Field>
           ) : (
-            <Field label="Ya llegó">
+            <Field label="Abonado">
               <span className="fz-static">{money(s?.received ?? 0)}</span>
             </Field>
           )}
@@ -543,7 +893,7 @@ function ChargeSheet({ item, onClose }: { item: FinItem<'cobro'> | null; onClose
         {total > 0 && (
           <div className="fz-charge-preview">
             <span>
-              Llegó <b className="in">{money(received)}</b>
+              Abonado <b className="in">{money(received)}</b>
             </span>
             <span>
               Con fecha <b>{money(planned)}</b>

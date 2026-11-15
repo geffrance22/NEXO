@@ -19,6 +19,7 @@ const COLUMNS = 'id,kind,title,data,archived,created_at,updated_at';
 export const FINANCE_MIGRATION = 'supabase/migrations/202611110001_finance.sql';
 
 export const FINANCE_MORE_MIGRATION = 'supabase/migrations/202611130002_finance_cards.sql';
+export const FINANCE_SHOPPING_MIGRATION = 'supabase/migrations/202611150001_finance_shopping.sql';
 
 type State = {
   items: FinItem[] | null;
@@ -111,6 +112,7 @@ export function loadFinance(force = false) {
 
 const missingText = `Falta preparar Finanzas: ejecuta ${FINANCE_MIGRATION} en el SQL Editor de Supabase.`;
 const upgradeText = `Para bolsillos, tarjetas, apuntes y trabajos por cobrar ejecuta ${FINANCE_MORE_MIGRATION} en el SQL Editor de Supabase.`;
+const shoppingText = `Para guardar listas de compras ejecuta ${FINANCE_SHOPPING_MIGRATION} en el SQL Editor de Supabase.`;
 
 /** La base rechazó el tipo: es de los nuevos y falta la migración que los permite. */
 function isOldKinds(e: unknown, kind: FinKind) {
@@ -146,6 +148,8 @@ export async function createItem<K extends FinKind>(
       return missingText;
     }
     if (isOldKinds(error, kind)) {
+      // Las listas de compras tienen su propia migración (lo demás sigue funcionando sin ella).
+      if (kind === 'compras') return shoppingText;
       set({ upgrade: true });
       return upgradeText;
     }

@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from 'react';
-import { X } from 'lucide-react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { MoreHorizontal, X } from 'lucide-react';
 import { Sheet } from '../components/Sheet';
+import { useDismiss } from '../hooks/useDismiss';
 import type { EntryInput, Episode, Page, Person } from '../data';
 import { normalizeText, thousands, todayInputValue } from '../lib/format';
 import { evalAmount } from './parse';
@@ -62,6 +63,52 @@ export const moneyInput = (
   removeFile: false,
   ...over,
 });
+
+export type MenuItem = { label: string; icon: ReactNode; run: () => void; danger?: boolean };
+
+/** Un menú «…» pequeño: se cierra al elegir, al tocar fuera o con Esc. */
+export function MoreMenu({ label, items }: { label: string; items: (MenuItem | false | null | undefined)[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(open, ref, close);
+  const list = items.filter((x): x is MenuItem => Boolean(x));
+  if (!list.length) return null;
+  return (
+    <span ref={ref} className="fz-more">
+      <button
+        type="button"
+        className="fz-icon"
+        aria-label={label}
+        title={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <MoreHorizontal size={18} />
+      </button>
+      {open && (
+        <div className="fz-more-menu" role="menu" aria-label={label}>
+          {list.map((it) => (
+            <button
+              key={it.label}
+              type="button"
+              role="menuitem"
+              className={it.danger ? 'danger' : undefined}
+              onClick={() => {
+                close();
+                it.run();
+              }}
+            >
+              {it.icon}
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
 
 /** Ventana de Finanzas: título, contenido y pie con las acciones. */
 export function FinSheet({

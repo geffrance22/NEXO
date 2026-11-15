@@ -60,6 +60,8 @@ import {
   percent,
   shiftMonth,
 } from './money';
+import { MonthShopping } from './Shopping';
+import { shopSummary } from './shopCalc';
 import { createItem, financeState, removeItem, restoreItem, settingsOf, updateItem, useFinance } from './store';
 import { Field, FinSheet, MoneyField, moneyInput } from './ui';
 
@@ -76,6 +78,7 @@ const blankLetter = (month: string): Projection => ({
   skip: [],
   flip: [],
   writtenOn: todayInputValue(),
+  shop: [],
 });
 
 /** Cómo le fue a una carta: lo planeado, lo real, el veredicto y su índice. */
@@ -352,11 +355,15 @@ function LetterView({ month, item, onGo }: { month: string; item: FinItem<'proye
   const general = settingsOf(fin.items).monthBudget;
   const hitOf = (i: PlanItem) => planHit(i, fin.items, month);
 
-  // Movimientos del mes que parecen ser una línea del plan.
-  const monthMoves = moves.filter((e) => {
-    const d = dayOf(e);
-    return d >= from && d <= to && !e.details.pending;
-  });
+  // Movimientos del mes que parecen ser una línea del plan (o una compra de la lista).
+  const monthMoves = useMemo(
+    () =>
+      moves.filter((e) => {
+        const d = dayOf(e);
+        return d >= from && d <= to && !e.details.pending;
+      }),
+    [moves, from, to],
+  );
   const usedIds = new Set(data.items.map((i) => i.entryId).filter(Boolean));
   const suggestFor = (amount: number, dir: 'in' | 'out') =>
     monthMoves.find((e) => {
@@ -472,6 +479,8 @@ function LetterView({ month, item, onGo }: { month: string; item: FinItem<'proye
     planned: t.planned,
     done: t.done,
   });
+  // Al cerrar, lo que quedó sin marcar en la lista de compras cuenta como no comprado.
+  const shopClosed = data.shop.map((i) => (i.status === 'pendiente' ? { ...i, status: 'no' as const, by: 'auto' as const } : i));
   const closeMonth = async () => {
     let learningId = data.learningId;
     if (asLearning && reflection.trim() && !learningId) {
@@ -479,6 +488,7 @@ function LetterView({ month, item, onGo }: { month: string; item: FinItem<'proye
         `Proyecté ${money(t.target)} de ingresos y entraron ${money(actual.income)}${verdict ? ` (${verdict.label.toLowerCase()})` : ''}.`,
         t.spendTarget ? `Pensé gastar ${money(t.spendTarget)} y gasté ${money(actual.spent)}.` : '',
         score ? `Índice del mes: ${score.score} (${score.label.toLowerCase()}).` : '',
+        shopSummary(shopClosed),
       ]
         .filter(Boolean)
         .join(' ');
@@ -495,8 +505,16 @@ function LetterView({ month, item, onGo }: { month: string; item: FinItem<'proye
       learningId = e?.id;
     }
     // El presupuesto con el que se vivió el mes queda guardado en su carta.
-    await persist({ reflection: reflection.trim() || undefined, closedOn: today, learningId, budget: data.budget ?? (general || undefined) });
-    notify(learningId ? 'Mes cerrado. Quedó también como aprendizaje.' : 'Mes cerrado.');
+    await persist({
+      reflection: reflection.trim() || undefined,
+      closedOn: today,
+      learningId,
+      budget: data.budget ?? (general || undefined),
+      ...(data.shop.length > 0 && { shop: shopClosed }),
+    });
+    const bought = shopClosed.filter((i) => i.status === 'si').length;
+    const shopNote = data.shop.length ? ` Compras: ${bought} sí, ${shopClosed.length - bought} no.` : '';
+    notify((learningId ? 'Mes cerrado. Quedó también como aprendizaje.' : 'Mes cerrado.') + shopNote);
   };
 
   const remove = async () => {
@@ -525,6 +543,7 @@ function LetterView({ month, item, onGo }: { month: string; item: FinItem<'proye
       );
     if (budget.total > 0) out.push(`Del presupuesto usaste el ${percent(actual.spent / budget.total)}.`);
     if (t.planned > 0) out.push(`Se cumplieron ${t.done} de ${t.planned} cosas de tu plan.`);
+    if (data.shop.length && (ended || closed)) out.push(shopSummary(data.shop));
     const missed = data.items.filter((i) => i.dir === 'in' && !hitOf(i));
     if (ended && missed.length)
       out.push(`No llegó: ${missed.slice(0, 2).map((i) => `«${i.text}» (${moneyShort(i.amount)})`).join(' y ')}${missed.length > 2 ? ` y ${missed.length - 2} más` : ''}.`);
@@ -552,7 +571,7 @@ function LetterView({ month, item, onGo }: { month: string; item: FinItem<'proye
         out.push(`${score.score > ps.score ? 'Subiste' : 'Bajaste'} ${Math.abs(score.score - ps.score)} puntos frente a ${monthName(prevMonth)}.`);
     }
     return out.slice(0, 6);
-  }, [started, ended, t.target, t.spendTarget, t.planned, t.done, actual.income, actual.spent, budget.total, data.items, monthMoves, fin.items, score?.score]);
+  }, [started, ended, closed, t.target, t.spendTarget, t.planned, t.done, actual.income, actual.spent, budget.total, data.items, data.shop, monthMoves, fin.items, score?.score]);
 
   const ins = data.items.filter((i) => i.dir === 'in');
   const outs = data.items.filter((i) => i.dir === 'out');
@@ -976,6 +995,16 @@ function LetterView({ month, item, onGo }: { month: string; item: FinItem<'proye
               )}
             </section>
 
+            <MonthShopping
+              month={month}
+              items={data.shop}
+              editable={editable}
+              canMark={started && !closed}
+              ended={ended}
+              moves={monthMoves}
+              onChange={(f) => void persist((d) => ({ shop: f(d.shop ?? []) }))}
+            />
+
             <section className="fz-card">
               <header className="fz-card-head">
                 <h3>
@@ -1131,7 +1160,7 @@ function LetterView({ month, item, onGo }: { month: string; item: FinItem<'proye
                 Guardarlo también como aprendizaje
               </label>
             )}
-            <button type="button" className="fz-btn primary" disabled={!text.trim() && !data.items.length} onClick={() => void closeMonth()}>
+            <button type="button" className="fz-btn primary" disabled={!text.trim() && !data.items.length && !data.shop.length} onClick={() => void closeMonth()}>
               {closed ? 'Guardar' : 'Cerrar el mes'}
             </button>
           </div>

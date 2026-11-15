@@ -5,6 +5,7 @@ import { Segmented } from '../composer/controls';
 import { addDays, friendlyDate, money, todayInputValue } from '../lib/format';
 import { Progress } from './charts';
 import { defaultAccounts, goalSaved, itemsOf, type FinItem, type Goal } from './model';
+import { ShoppingLists } from './Shopping';
 import { costOf, daysBetween, dayOf, flowOf, isMoney, moneyShort, percent } from './money';
 import { createItem, removeItem, restoreItem, settingsOf, updateItem, useFinance } from './store';
 import { Empty, Field, FinSheet, MoneyField, moneyInput, relDays } from './ui';
@@ -144,6 +145,8 @@ export function GoalsTab() {
           </p>
         )}
       </section>
+
+      <ShoppingLists />
 
       <section className="fz-block">
         <header className="fz-block-head">

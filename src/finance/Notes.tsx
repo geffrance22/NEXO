@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownLeft,
   ArrowLeft,
   ArrowUpRight,
   Check,
+  CheckCheck,
   Copy,
   Link2,
   NotebookPen,
+  Palette,
   Pin,
   PinOff,
   Plus,
@@ -15,6 +17,8 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '../AppContext';
+import { useDismiss } from '../hooks/useDismiss';
+import { guessCategory } from '../lib/captureCategories';
 import { friendlyDate, money, normalizeText, todayInputValue } from '../lib/format';
 import { itemsOf, noteTints, type FinItem, type FinNote, type NoteTint } from './model';
 import { calcNote, noteSegments, noteTitle, type NoteHit } from './noteCalc';
@@ -161,13 +165,17 @@ export function NotesTab() {
   );
 }
 
-/** Área de texto con los montos resaltados detrás (mismo tamaño y letra, así coinciden). */
+/**
+ * Área de texto con los montos marcados detrás (mismo tamaño y letra, así coinciden). Las marcas
+ * solo se ven con `marks`.
+ */
 function CalcArea({
   value,
   onChange,
   hits,
   placeholder,
   compact = false,
+  marks = false,
   autoFocus = false,
   onSubmit,
 }: {
@@ -176,6 +184,8 @@ function CalcArea({
   hits: NoteHit[];
   placeholder: string;
   compact?: boolean;
+  /** Resaltar los montos en el texto. */
+  marks?: boolean;
   autoFocus?: boolean;
   /** Ctrl/⌘ + Enter. */
   onSubmit?: () => void;
@@ -194,7 +204,7 @@ function CalcArea({
     return () => window.clearTimeout(t);
   }, [autoFocus]);
   return (
-    <div className={'fz-calc-area' + (compact ? ' compact' : '')}>
+    <div className={'fz-calc-area' + (compact ? ' compact' : '') + (marks ? ' marks' : '')}>
       <div className="fz-calc-mirror" aria-hidden="true">
         {segs.map((s, i) =>
           s.hit ? (
@@ -225,6 +235,55 @@ function CalcArea({
     </div>
   );
 }
+
+/** El color del apunte: un ícono de paleta que abre las opciones al lado de los demás botones. */
+function TintPicker({ value, onChange }: { value: NoteTint; onChange: (t: NoteTint) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(open, ref, close);
+  return (
+    <span ref={ref} className="fz-tint-pick">
+      <button
+        type="button"
+        className="fz-icon"
+        aria-label="Color del apunte"
+        aria-haspopup="true"
+        aria-expanded={open}
+        data-tip={open ? undefined : 'Color'}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Palette size={15} />
+      </button>
+      {open && (
+        <div className="fz-tint-pop" role="radiogroup" aria-label="Color del apunte">
+          <small>Color · {tintLabel[value]}</small>
+          <div>
+            {noteTints.map((t) => (
+              <button
+                type="button"
+                role="radio"
+                aria-checked={value === t}
+                aria-label={tintLabel[t]}
+                data-tip={tintLabel[t]}
+                key={t}
+                className={'tint-' + t + (value === t ? ' on' : '')}
+                onClick={() => {
+                  onChange(t);
+                  close();
+                }}
+              >
+                {value === t && <Check size={12} strokeWidth={3} />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </span>
+  );
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** Abre un apunte en la pestaña Apuntes (lo lee al montarse). */
 export const rememberOpenNote = (id: string) => sessionStorage.setItem(OPEN_KEY, id);
@@ -424,23 +483,71 @@ function NoteEditor({ item, onBack, onLive }: { item: FinItem<'apunte'>; onBack:
     void updateItem(now, { data }).then((r) => r !== true && notify(r));
   };
 
+  /** La categoría que sugiere el concepto (y su línea); sin una clara, ninguna. */
+  const categoryOf = (h: NoteHit, dir: 'egreso' | 'ingreso') => {
+    const line = text.split('\n')[h.line] ?? '';
+    const g = guessCategory({ local: h.label, clause: line, whole: text, direction: dir, entries: workspace.entries });
+    return g.category !== 'Otro' ? g.category : undefined;
+  };
+  /** Cómo se detectó: con «-» es un gasto; sin él, un ingreso. */
+  const dirOf = (h: NoteHit): 'egreso' | 'ingreso' => (h.value < 0 ? 'egreso' : 'ingreso');
+  const inputFor = (h: NoteHit, dir: 'egreso' | 'ingreso') => {
+    const category = categoryOf(h, dir);
+    return moneyInput({
+      title: h.label.slice(0, 180),
+      amount: Math.abs(h.value),
+      direction: dir,
+      date: todayInputValue(),
+      tags: category ? [category] : [],
+      details: { flow: dir === 'egreso' ? 'gasto' : 'ingreso', ...(item.data.pocketId && { pocketId: item.data.pocketId }) },
+      episodeId: item.data.episodeId,
+    });
+  };
+
   const register = async (h: NoteHit, dir: 'egreso' | 'ingreso') => {
     setAsking(null);
-    const e = await createEntry(
-      moneyInput({
-        title: h.label.slice(0, 180),
-        amount: Math.abs(h.value),
-        direction: dir,
-        date: todayInputValue(),
-        details: { flow: dir === 'egreso' ? 'gasto' : 'ingreso', ...(item.data.pocketId && { pocketId: item.data.pocketId }) },
-        episodeId: item.data.episodeId,
-      }),
-      true,
-    );
+    const e = await createEntry(inputFor(h, dir), true);
     if (!e) return;
     const now = itemsOf(financeState().items, 'apunte').find((n) => n.id === item.id) ?? item;
     await updateItem(now, { data: { done: { ...now.data.done, [h.key]: e.id } } });
     notify(`${dir === 'egreso' ? 'Gasto' : 'Ingreso'} de ${money(Math.abs(h.value))} registrado.`, { label: 'Editar', run: () => editEntry(e) });
+  };
+
+  // Registrar en lote: «Seleccionar todos» marca lo que falta; se puede desmarcar antes.
+  const [picking, setPicking] = useState<ReadonlySet<string> | null>(null);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const toggle = (key: string) =>
+    setPicking((s) => {
+      if (!s) return s;
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const registerMany = async (list: NoteHit[]) => {
+    if (batchBusy || !list.length) return;
+    setBatchBusy(true);
+    const made: Record<string, string> = {};
+    let out = 0;
+    let got = 0;
+    for (const h of list) {
+      const dir = dirOf(h);
+      const e = await createEntry(inputFor(h, dir), true);
+      if (!e) break;
+      made[h.key] = e.id;
+      if (dir === 'egreso') out++;
+      else got++;
+    }
+    const n = out + got;
+    if (n) {
+      const now = itemsOf(financeState().items, 'apunte').find((x) => x.id === item.id) ?? item;
+      await updateItem(now, { data: { done: { ...now.data.done, ...made } } });
+    }
+    setBatchBusy(false);
+    setPicking(null);
+    if (!n) return notify('No se pudo registrar ninguno.');
+    const what = [out && plural(out, 'gasto', 'gastos'), got && plural(got, 'ingreso', 'ingresos')].filter(Boolean).join(' y ');
+    notify(n < list.length ? `Se registraron ${what}; ${list.length - n} no se pudieron guardar.` : `Registrados: ${what}.`);
   };
 
   const remove = async () => {
@@ -467,6 +574,12 @@ function NoteEditor({ item, onBack, onLive }: { item: FinItem<'apunte'>; onBack:
 
   const entryOf = (id?: string) => (id ? workspace.entries.find((e) => e.id === id) : undefined);
   const multiline = calc.sections.length > 0;
+  const marks = Boolean(item.data.marks);
+  const unregistered = calc.hits.filter((h) => !entryOf(item.data.done[h.key]));
+  const chosen = picking ? unregistered.filter((h) => picking.has(h.key)) : [];
+  const allOn = chosen.length === unregistered.length && unregistered.length > 0;
+  const chosenOut = chosen.filter((h) => h.value < 0).length;
+  const chosenIn = chosen.length - chosenOut;
 
   return (
     <section className={'fz-note tint-' + item.data.tint}>
@@ -482,66 +595,62 @@ function NoteEditor({ item, onBack, onLive }: { item: FinItem<'apunte'>; onBack:
           onChange={(e) => change({ title: e.target.value })}
           aria-label="Título del apunte"
         />
-        <span className="fz-row-tools">
+        <span className="fz-row-tools fz-note-tools">
           <span className="fz-note-saved">{saved === 'saving' ? 'Guardando…' : saved === 'saved' ? 'Guardado' : ''}</span>
           <button
             type="button"
             className={'fz-icon' + (item.data.pinned ? ' ok' : '')}
             aria-pressed={Boolean(item.data.pinned)}
-            title={item.data.pinned ? 'Quitar de fijados' : 'Fijar (sale en el Resumen)'}
+            aria-label={item.data.pinned ? 'Quitar de fijados' : 'Fijar en el Resumen'}
+            data-tip={item.data.pinned ? 'Quitar de fijados' : 'Fijar en el Resumen'}
             onClick={() => patch({ pinned: item.data.pinned ? undefined : true })}
           >
             {item.data.pinned ? <PinOff size={15} /> : <Pin size={15} />}
           </button>
-          <button type="button" className={'fz-icon' + (links ? ' ok' : '')} title="Vincular a un episodio o un bolsillo" onClick={() => setLinks((v) => !v)}>
+          <TintPicker value={item.data.tint} onChange={(tint) => patch({ tint })} />
+          <button
+            type="button"
+            className={'fz-icon' + (links ? ' ok' : '')}
+            aria-pressed={links}
+            aria-label="Vincular a un episodio o un bolsillo"
+            data-tip="Vincular"
+            onClick={() => setLinks((v) => !v)}
+          >
             <Link2 size={15} />
           </button>
-          <button type="button" className="fz-icon" title="Copiar con el total" onClick={() => void copy()}>
+          <button type="button" className="fz-icon" aria-label="Copiar con el total" data-tip="Copiar con el total" onClick={() => void copy()}>
             <Copy size={15} />
           </button>
-          <button type="button" className="fz-icon" title="Eliminar" onClick={() => void remove()}>
+          <button type="button" className="fz-icon" aria-label="Eliminar apunte" data-tip="Eliminar" onClick={() => void remove()}>
             <Trash2 size={15} />
           </button>
         </span>
       </header>
 
-      <div className="fz-note-tints" role="radiogroup" aria-label="Color del apunte">
-        {noteTints.map((t) => (
-          <button
-            type="button"
-            role="radio"
-            aria-checked={item.data.tint === t}
-            key={t}
-            title={tintLabel[t]}
-            className={'tint-' + t + (item.data.tint === t ? ' on' : '')}
-            onClick={() => patch({ tint: t })}
-          />
-        ))}
-        {links && (
-          <div className="fz-note-links">
-            {workspace.episodes.length > 0 && (
-              <label>
-                <small>Episodio</small>
-                <EpisodeSelect episodes={workspace.episodes} value={item.data.episodeId} onChange={(episodeId) => patch({ episodeId })} />
-              </label>
-            )}
-            {pockets.length > 0 && (
-              <label>
-                <small>Bolsillo</small>
-                <select className="fz-input" value={item.data.pocketId ?? ''} onChange={(e) => patch({ pocketId: e.target.value || undefined })}>
-                  <option value="">Ninguno</option>
-                  {pockets.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.data.emoji} {p.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {!workspace.episodes.length && !pockets.length && <small className="fz-muted">Crea un episodio o un bolsillo para vincularlo.</small>}
-          </div>
-        )}
-      </div>
+      {links && (
+        <div className="fz-note-links">
+          {workspace.episodes.length > 0 && (
+            <label>
+              <small>Episodio</small>
+              <EpisodeSelect episodes={workspace.episodes} value={item.data.episodeId} onChange={(episodeId) => patch({ episodeId })} />
+            </label>
+          )}
+          {pockets.length > 0 && (
+            <label>
+              <small>Bolsillo</small>
+              <select className="fz-input" value={item.data.pocketId ?? ''} onChange={(e) => patch({ pocketId: e.target.value || undefined })}>
+                <option value="">Ninguno</option>
+                {pockets.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.data.emoji} {p.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {!workspace.episodes.length && !pockets.length && <small className="fz-muted">Crea un episodio o un bolsillo para vincularlo.</small>}
+        </div>
+      )}
 
       <div className="fz-note-body">
         <div className="fz-note-paper">
@@ -549,11 +658,26 @@ function NoteEditor({ item, onBack, onLive }: { item: FinItem<'apunte'>; onBack:
             value={text}
             onChange={(v) => change({ text: v })}
             hits={calc.hits}
+            marks={marks}
             placeholder={'Escribe lo que quieras. Los montos con $ cuentan solos:\n\nMe pagaron $250.000\nAlmuerzo con Laura -$38k\nTaxi -$12.000\nPan -$3.500 x4'}
           />
-          <p className="fz-note-help">
-            <b>$5k</b>, <b>$5.000</b>, <b>$5000</b> o <b>$1,5M</b> suman · <b>-$5k</b> o <b>$-5k</b> restan · <b>$15k x3</b> multiplica · una línea que termina en <b>:</b> abre una sección
-          </p>
+          <footer className="fz-note-foot">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={marks}
+              className={'fz-note-switch' + (marks ? ' on' : '')}
+              onClick={() => patch({ marks: marks ? undefined : true })}
+            >
+              <span className="fz-note-switch-track" aria-hidden="true">
+                <i />
+              </span>
+              Resaltar montos
+            </button>
+            <p className="fz-note-help">
+              <b>$5k</b>, <b>$5.000</b> o <b>$1,5M</b> suman · <b>-$5k</b> resta · <b>$15k x3</b> multiplica · una línea que termina en <b>:</b> abre una sección
+            </p>
+          </footer>
         </div>
 
         <aside className="fz-note-calc" aria-live="polite">
@@ -577,12 +701,65 @@ function NoteEditor({ item, onBack, onLive }: { item: FinItem<'apunte'>; onBack:
               ))}
             </ul>
           )}
+          {calc.hits.length > 0 && (
+            <div className="fz-note-hits-head">
+              <span>
+                Detectados <i>{calc.hits.length}</i>
+              </span>
+              {picking ? (
+                <span className="fz-note-hits-tools">
+                  <button type="button" className="fz-note-pick" onClick={() => setPicking(allOn ? new Set() : new Set(unregistered.map((h) => h.key)))}>
+                    {allOn ? 'Ninguno' : 'Todos'}
+                  </button>
+                  <button type="button" className="fz-icon" aria-label="Cancelar la selección" title="Cancelar" onClick={() => setPicking(null)}>
+                    <X size={14} />
+                  </button>
+                </span>
+              ) : (
+                unregistered.length > 1 && (
+                  <button
+                    type="button"
+                    className="fz-note-pick"
+                    title="Marcar todos los que faltan para registrarlos de una vez"
+                    onClick={() => {
+                      setAsking(null);
+                      setPicking(new Set(unregistered.map((h) => h.key)));
+                    }}
+                  >
+                    <CheckCheck size={13} /> Seleccionar todos
+                  </button>
+                )
+              )}
+            </div>
+          )}
           {calc.hits.length > 0 ? (
-            <ul className="fz-note-hits">
+            <ul className={'fz-note-hits' + (picking ? ' picking' : '')}>
               {calc.hits.map((h) => {
                 const done = entryOf(item.data.done[h.key]);
+                if (picking && !done) {
+                  const on = picking.has(h.key);
+                  const dir = dirOf(h);
+                  const cat = categoryOf(h, dir);
+                  return (
+                    <li key={h.key + h.start} className={'pick' + (on ? ' on' : '')}>
+                      <button type="button" role="checkbox" aria-checked={on} className="fz-note-hit-btn" onClick={() => toggle(h.key)}>
+                        <i className="fz-note-tick" aria-hidden="true">
+                          {on && <Check size={11} strokeWidth={3} />}
+                        </i>
+                        <span className="fz-note-hit-label" title={h.label}>
+                          {h.label}
+                          <small className="fz-note-hit-kind">
+                            <em className={dir === 'egreso' ? 'out' : 'in'}>{dir === 'egreso' ? 'Gasto' : 'Ingreso'}</em>
+                            {cat && ` · ${cat}`}
+                          </small>
+                        </span>
+                        <b className={h.value < 0 ? 'out' : 'in'}>{signed(h.value)}</b>
+                      </button>
+                    </li>
+                  );
+                }
                 return (
-                  <li key={h.key + h.start}>
+                  <li key={h.key + h.start} className={done && picking ? 'done' : undefined}>
                     <span className="fz-note-hit-label" title={h.label}>
                       {h.label}
                       {h.times !== 1 && <small> · {money(h.unit)} × {h.times.toLocaleString('es-CO')}</small>}
@@ -612,6 +789,18 @@ function NoteEditor({ item, onBack, onLive }: { item: FinItem<'apunte'>; onBack:
             </ul>
           ) : (
             <p className="fz-muted">Aún no hay montos. Escribe uno con $ y aparece aquí con su cuenta.</p>
+          )}
+          {picking && (
+            <div className="fz-note-batch">
+              <small>
+                {chosen.length
+                  ? [chosenOut && plural(chosenOut, 'gasto', 'gastos'), chosenIn && plural(chosenIn, 'ingreso', 'ingresos')].filter(Boolean).join(' · ')
+                  : 'Nada marcado'}
+              </small>
+              <button type="button" className="fz-btn primary sm" disabled={!chosen.length || batchBusy} onClick={() => void registerMany(chosen)}>
+                {batchBusy ? 'Registrando…' : `Registrar ${chosen.length}`}
+              </button>
+            </div>
           )}
         </aside>
       </div>

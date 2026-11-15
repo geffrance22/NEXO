@@ -15,9 +15,10 @@ export type FinKind =
   | 'bolsillo'
   | 'apunte'
   | 'cobro'
-  | 'tarjeta';
-/** Tipos que llegaron con las migraciones 202611130001 y 0002 (sin ellas, la base los rechaza). */
-export const newKinds: FinKind[] = ['bolsillo', 'apunte', 'cobro', 'tarjeta'];
+  | 'tarjeta'
+  | 'compras';
+/** Tipos que llegaron con migraciones posteriores a la primera (sin ellas, la base los rechaza). */
+export const newKinds: FinKind[] = ['bolsillo', 'apunte', 'cobro', 'tarjeta', 'compras'];
 
 export type Account = { name: string; initial: number };
 
@@ -116,6 +117,54 @@ export type Projection = {
   closedOn?: string;
   learningId?: string;
   writtenOn?: string;
+  /** Lo que piensas comprar este mes y, al final, si lo compraste. */
+  shop: ShopItem[];
+};
+
+/** Una compra de la carta: «si» la compraste, «no» no la compraste, «pendiente» aún no se sabe. */
+export type ShopStatus = 'pendiente' | 'si' | 'no';
+export type ShopItem = {
+  id: string;
+  text: string;
+  /** Precio aproximado. */
+  price?: number;
+  status: ShopStatus;
+  /** «auto»: lo vio Nexo en tus movimientos (o al cerrar el mes); «manual»: lo marcaste tú. */
+  by?: 'auto' | 'manual';
+  /** El gasto con el que se compró. */
+  entryId?: string;
+  /** Viene de una lista de compras: «<id de la lista>:<id de la cosa>». */
+  ref?: string;
+};
+
+/** Para cuándo, más o menos, piensas comprar lo de una lista. */
+export type ShopWhen = 'mes' | 'proximo' | 'trimestre' | 'semestre' | 'año' | 'algun';
+export const shopWhens: ShopWhen[] = ['mes', 'proximo', 'trimestre', 'semestre', 'año', 'algun'];
+/** Una cosa de una lista de compras. */
+export type ShopEntry = {
+  id: string;
+  text: string;
+  qty?: number;
+  /** Precio aproximado por unidad. */
+  price?: number;
+  /** Dónde comprarlo. */
+  where?: string;
+  note?: string;
+  /** AAAA-MM-DD: cuándo la tachaste. */
+  done?: string;
+  /** La carta del mes (AAAA-MM) que la tachó al comprarla. */
+  via?: string;
+  entryId?: string;
+};
+/** Una lista de compras general (Metas y compras): para cuándo, cuánto piensas gastar y qué. */
+export type ShopList = {
+  emoji?: string;
+  when?: ShopWhen;
+  /** AAAA-MM: el mes al que apunta «para cuándo». */
+  due?: string;
+  budget?: number;
+  note?: string;
+  items: ShopEntry[];
 };
 
 export type Recurring = {
@@ -185,6 +234,8 @@ export type FinNote = {
   pinned?: boolean;
   episodeId?: string;
   pocketId?: string;
+  /** Resaltar los montos dentro del texto (por defecto, no). */
+  marks?: boolean;
   /** Montos que ya pasaste a movimientos: clave del monto → id del movimiento. */
   done: Record<string, string>;
 };
@@ -270,6 +321,7 @@ export type FinData = {
   apunte: FinNote;
   cobro: Charge;
   tarjeta: Card;
+  compras: ShopList;
 };
 
 export type FinItem<K extends FinKind = FinKind> = {
@@ -296,6 +348,7 @@ export const finKinds: FinKind[] = [
   'apunte',
   'cobro',
   'tarjeta',
+  'compras',
 ];
 
 /** Diseños de tarjeta: fondo y color de la letra. */
@@ -441,6 +494,19 @@ export function fixData<K extends FinKind>(kind: K, raw: unknown): FinData[K] {
           closedOn: isDay(r.closedOn) ? r.closedOn : undefined,
           learningId: str(r.learningId),
           writtenOn: isDay(r.writtenOn) ? r.writtenOn : undefined,
+          shop: Array.isArray(r.shop)
+            ? (r.shop as Raw[])
+                .filter((i) => i && str(i.text)?.trim())
+                .map((i) => ({
+                  id: str(i.id) ?? crypto.randomUUID(),
+                  text: String(i.text).slice(0, 200),
+                  price: num(i.price) || undefined,
+                  status: i.status === 'si' || i.status === 'no' ? i.status : ('pendiente' as ShopStatus),
+                  by: i.by === 'auto' || i.by === 'manual' ? i.by : undefined,
+                  entryId: str(i.entryId),
+                  ref: str(i.ref),
+                }))
+            : [],
         } satisfies Projection;
       case 'recurrente':
         return {
@@ -505,6 +571,7 @@ export function fixData<K extends FinKind>(kind: K, raw: unknown): FinData[K] {
           pinned: r.pinned === true || undefined,
           episodeId: str(r.episodeId),
           pocketId: str(r.pocketId),
+          marks: r.marks === true || undefined,
           done,
         } satisfies FinNote;
       }
@@ -559,6 +626,31 @@ export function fixData<K extends FinKind>(kind: K, raw: unknown): FinData[K] {
           note: str(r.note),
           secret: typeof r.secret === 'string' && r.secret.startsWith('v1.') ? r.secret : undefined,
         } satisfies Card;
+      }
+      case 'compras': {
+        const isMonth = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}$/.test(v);
+        return {
+          emoji: str(r.emoji)?.slice(0, 8) || undefined,
+          when: (shopWhens as unknown[]).includes(r.when) ? (r.when as ShopWhen) : undefined,
+          due: isMonth(r.due) ? r.due : undefined,
+          budget: num(r.budget) || undefined,
+          note: str(r.note),
+          items: Array.isArray(r.items)
+            ? (r.items as Raw[])
+                .filter((i) => i && str(i.text)?.trim())
+                .map((i) => ({
+                  id: str(i.id) ?? crypto.randomUUID(),
+                  text: String(i.text).slice(0, 200),
+                  qty: num(i.qty) > 1 ? Math.round(num(i.qty)) : undefined,
+                  price: num(i.price) || undefined,
+                  where: str(i.where),
+                  note: str(i.note),
+                  done: isDay(i.done) ? i.done : undefined,
+                  via: isMonth(i.via) ? i.via : undefined,
+                  entryId: str(i.entryId),
+                }))
+            : [],
+        } satisfies ShopList;
       }
     }
   })();

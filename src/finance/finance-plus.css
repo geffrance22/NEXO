@@ -566,24 +566,94 @@
   font-size: 11.5px;
   color: var(--fz-faint);
 }
-.fz-note-tints {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
+/* Barra del apunte: cada botón dice qué hace al pasar por encima. */
+.fz-note-tools [data-tip] {
+  position: relative;
 }
-.fz-note-tints > button {
-  width: 18px;
-  height: 18px;
+.fz-note-tools [data-tip]:is(:hover, :focus-visible)::after {
+  content: attr(data-tip);
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 50%;
+  padding: 4px 8px;
+  border-radius: 7px;
+  background: #24291f;
+  font:
+    600 11px/1.2 'DM Sans',
+    sans-serif;
+  white-space: nowrap;
+  color: #fff;
+  transform: translateX(-50%);
+  pointer-events: none;
+  animation: fz-tip 0.14s 0.25s both;
+}
+.fz-note-tools > :last-child[data-tip]::after {
+  right: 0;
+  left: auto;
+  transform: none;
+}
+@keyframes fz-tip {
+  from {
+    opacity: 0;
+  }
+}
+/* Color del apunte: la paleta abre las opciones. */
+.fz-tint-pick {
+  position: relative;
+  display: inline-flex;
+}
+.fz-tint-pick > .fz-icon[aria-expanded='true'] {
+  background: rgba(31, 42, 28, 0.07);
+  color: var(--fz-ink) !important;
+}
+.fz-tint-pop {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow:
+    0 0 0 1px rgba(31, 42, 28, 0.07),
+    0 18px 40px -14px rgba(31, 42, 28, 0.3);
+  animation: fz-tint-in 0.14s ease;
+}
+@keyframes fz-tint-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+.fz-tint-pop small {
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  color: var(--fz-muted);
+}
+.fz-tint-pop > div {
+  display: flex;
+  gap: 8px;
+}
+.fz-tint-pop button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: var(--tint);
   box-shadow: inset 0 0 0 1.5px var(--tint-line);
+  color: var(--accent);
   transition: transform 0.15s;
 }
-.fz-note-tints > button:hover {
-  transform: scale(1.12);
+.fz-tint-pop button:hover {
+  transform: scale(1.1);
 }
-.fz-note-tints > button.on {
+.fz-tint-pop button.on {
   box-shadow:
     inset 0 0 0 1.5px var(--tint-line),
     0 0 0 2px #fff,
@@ -592,8 +662,12 @@
 .fz-note-links {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
-  margin-left: auto;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 0 0 1px var(--tint-line);
 }
 .fz-note-links label {
   display: flex;
@@ -646,13 +720,21 @@
   pointer-events: none;
   user-select: none;
 }
+/* Por defecto el texto se ve limpio; los montos se marcan solo con «Resaltar montos». */
 .fz-calc-mirror mark {
   border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  color: transparent;
+  transition:
+    background 0.2s,
+    box-shadow 0.2s;
+}
+.fz-calc-area.marks .fz-calc-mirror mark {
   background: rgba(63, 143, 90, 0.16);
   box-shadow: 0 0 0 2px rgba(63, 143, 90, 0.16);
-  color: transparent;
 }
-.fz-calc-mirror mark.minus {
+.fz-calc-area.marks .fz-calc-mirror mark.minus {
   background: rgba(192, 85, 63, 0.15);
   box-shadow: 0 0 0 2px rgba(192, 85, 63, 0.15);
 }
@@ -669,8 +751,67 @@
 .fz-calc-area textarea::placeholder {
   color: #b9b29c;
 }
+/* Pie del apunte: el interruptor de las marcas y la ayuda. */
+.fz-note-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--tint-line);
+}
+.fz-note-switch {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--fz-muted);
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.fz-note-switch:hover {
+  background: rgba(31, 42, 28, 0.05);
+  color: var(--fz-text);
+}
+.fz-note-switch.on {
+  color: var(--fz-text);
+}
+.fz-note-switch-track {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 18px;
+  border-radius: 999px;
+  background: #d9ddd2;
+  transition: background 0.2s;
+}
+.fz-note-switch-track i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(31, 42, 28, 0.25);
+  transition: transform 0.2s cubic-bezier(0.3, 0.9, 0.3, 1);
+}
+.fz-note-switch.on .fz-note-switch-track {
+  background: var(--accent);
+}
+.fz-note-switch.on .fz-note-switch-track i {
+  transform: translateX(12px);
+}
 .fz-note-help {
-  margin: 10px 0 0;
+  flex: 1;
+  min-width: 220px;
+  margin: 0;
   font-size: 12px;
   line-height: 1.5;
   color: var(--fz-faint);
@@ -825,6 +966,133 @@
 .fz-note-ask button.in {
   background: #e3f1e5;
   color: #2d5a36 !important;
+}
+/* Detectados: encabezado con «Seleccionar todos» y, al seleccionar, casillas y su barra. */
+.fz-note-hits-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 26px;
+  margin-bottom: -6px;
+}
+.fz-note-hits-head > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--fz-faint);
+}
+.fz-note-hits-head i {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  color: var(--fz-muted);
+}
+.fz-note-hits-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.fz-note-hits-tools .fz-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+}
+.fz-note-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--accent) !important;
+  transition: background 0.15s;
+}
+.fz-note-pick:hover {
+  background: var(--soft);
+}
+.fz-note-hits li.pick {
+  display: block;
+  padding: 0;
+}
+.fz-note-hit-btn {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 4px;
+  border-radius: 9px;
+  text-align: left;
+  font-size: 12.5px;
+  transition:
+    background 0.15s,
+    opacity 0.15s;
+}
+.fz-note-hit-btn:hover {
+  background: rgba(31, 42, 28, 0.04);
+}
+.fz-note-hits li.pick:not(.on) .fz-note-hit-btn {
+  opacity: 0.6;
+}
+.fz-note-tick {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1.5px #c8cfbd;
+  color: #fff;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
+}
+.fz-note-hits li.pick.on .fz-note-tick {
+  background: var(--accent);
+  box-shadow: none;
+}
+.fz-note-hit-btn .fz-note-hit-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.fz-note-hit-kind {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fz-note-hit-kind em {
+  font-style: normal;
+  font-weight: 650;
+}
+.fz-note-hits.picking li.done {
+  opacity: 0.5;
+}
+.fz-note-batch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: -4px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 12px;
+  background: var(--soft);
+  animation: fz-tint-in 0.16s ease;
+}
+.fz-note-batch small {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
 }
 .fz-notes-empty .fz-row-tools {
   gap: 8px;

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Archive,
   ArrowRight,
@@ -13,7 +13,6 @@ import {
   CircleX,
   Clock,
   ExternalLink,
-  MoreHorizontal,
   Pencil,
   Plus,
   Trash2,
@@ -23,7 +22,6 @@ import { useApp } from '../AppContext';
 import { Segmented } from '../composer/controls';
 import { incomeCategories } from '../composer/logic';
 import { Sheet } from '../components/Sheet';
-import { useDismiss } from '../hooks/useDismiss';
 import { addDays, friendlyDate, initials, money, todayInputValue } from '../lib/format';
 import { Avatar } from '../people/Avatar';
 import { closeCharge, dropPart, ensureChargeTask, postponePart, receiveCharge } from './chargeActions';
@@ -40,7 +38,7 @@ import {
 } from './model';
 import { daysBetween, isMoney, moneyShort, percent } from './money';
 import { createItem, removeItem, restoreItem, settingsOf, updateItem, useFinance } from './store';
-import { EpisodeSelect, Field, FinSheet, FormSection, MoneyField, PersonInput } from './ui';
+import { EpisodeSelect, Field, FinSheet, FormSection, MoneyField, MoreMenu, PersonInput } from './ui';
 
 const first = (s?: string) => (s ?? '').split(' ')[0];
 
@@ -181,52 +179,6 @@ export function ChargesBlock() {
       {editing && <ChargeSheet item={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
       {action && <PartSheet action={action} onClose={() => setAction(null)} />}
     </section>
-  );
-}
-
-type MenuItem = { label: string; icon: ReactNode; run: () => void; danger?: boolean };
-
-/** Un menú «…» pequeño: se cierra al elegir, al tocar fuera o con Esc. */
-function MoreMenu({ label, items }: { label: string; items: (MenuItem | false | null | undefined)[] }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement>(null);
-  const close = useCallback(() => setOpen(false), []);
-  useDismiss(open, ref, close);
-  const list = items.filter((x): x is MenuItem => Boolean(x));
-  if (!list.length) return null;
-  return (
-    <span ref={ref} className="fz-more">
-      <button
-        type="button"
-        className="fz-icon"
-        aria-label={label}
-        title={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <MoreHorizontal size={18} />
-      </button>
-      {open && (
-        <div className="fz-more-menu" role="menu" aria-label={label}>
-          {list.map((it) => (
-            <button
-              key={it.label}
-              type="button"
-              role="menuitem"
-              className={it.danger ? 'danger' : undefined}
-              onClick={() => {
-                close();
-                it.run();
-              }}
-            >
-              {it.icon}
-              {it.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </span>
   );
 }
 

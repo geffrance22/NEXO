@@ -1,6 +1,7 @@
 /**
  * Lo que llega a Nexo desde fuera: «Compartir» del celular (`share_target` del manifiesto, que abre
- * `./?title=…&text=…&url=…`) o el acceso directo «Nuevo instante» (`./?nuevo=instante`).
+ * `./?title=…&text=…&url=…`) o los accesos directos del ícono (`./?nuevo=instante`,
+ * `./?nuevo=movimiento`, `./?nuevo=persona`).
  *
  * Se lee al cargar la app y se guarda en la sesión de la pestaña, así sobrevive a iniciar sesión.
  * La URL se limpia enseguida (recargar no vuelve a compartir lo mismo).
@@ -11,7 +12,18 @@ export type Incoming =
   /** Solo texto: abre un instante nuevo con lo compartido. */
   | { kind: 'text'; text: string }
   /** Instante en blanco (acceso directo del ícono). */
-  | { kind: 'instant' };
+  | { kind: 'instant' }
+  /** Registrar un movimiento (acceso directo del ícono). */
+  | { kind: 'movement' }
+  /** Agregar una persona (acceso directo del ícono). */
+  | { kind: 'person' };
+
+/** `?nuevo=…` de cada acceso directo del ícono (ver public/manifest.webmanifest). */
+const SHORTCUTS: Record<string, Incoming> = {
+  instante: { kind: 'instant' },
+  movimiento: { kind: 'movement' },
+  persona: { kind: 'person' },
+};
 
 const KEY = 'nexo-incoming';
 const PARAMS = ['title', 'text', 'url', 'nuevo'];
@@ -23,6 +35,8 @@ function read(): Incoming | null {
   const title = params.get('title')?.trim() ?? '';
   const text = params.get('text')?.trim() ?? '';
   const url = params.get('url')?.trim() ?? '';
+  const asked = params.get('nuevo') ?? '';
+  const shortcut = Object.prototype.hasOwnProperty.call(SHORTCUTS, asked) ? SHORTCUTS[asked] : null;
   for (const p of PARAMS) params.delete(p);
   const rest = params.toString();
   history.replaceState(
@@ -30,6 +44,7 @@ function read(): Incoming | null {
     '',
     window.location.pathname + (rest ? '?' + rest : '') + window.location.hash,
   );
+  if (shortcut) return shortcut;
   if (!title && !text && !url) return { kind: 'instant' };
   // Android suele mandar el enlace dentro de `text` (y `url` vacío).
   if (url || HAS_LINK.test(text) || HAS_LINK.test(title))

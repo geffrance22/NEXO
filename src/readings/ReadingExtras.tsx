@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../backend";
 import { Highlighter, Sparkles, StickyNote } from "lucide-react";
+import { write } from "./offline";
 
 type MarkGroup = {
   id: string;
@@ -195,15 +196,18 @@ export function useResume(
       timer = 0;
     function save() {
       clearTimeout(timer);
+      // Sin conexión queda en la cola del celular (y se une con los siguientes).
       if (last !== offset)
-        void supabase
-          .from("readings")
-          .update({ resume_at: last, last_read: new Date().toISOString() })
-          .eq("id", id!)
-          .then(({ error }) => {
-            if (error) onError(error.message);
-            else saved.current?.(last);
-          });
+        void write({
+          table: "readings",
+          action: "update",
+          id: id!,
+          reading: id!,
+          values: { resume_at: last, last_read: new Date().toISOString() },
+        }).then(({ error }) => {
+          if (error) onError(error.message);
+          else saved.current?.(last);
+        });
     }
     // Los fragmentos cambian al resaltar (o al cambiar los ajustes del lector): se vuelven a
     // leer cuando el artículo cambia, no en cada paso del scroll.

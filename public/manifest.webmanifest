@@ -21,27 +21,28 @@
   ],
   "shortcuts": [
     {
-      "name": "Guardar un enlace",
-      "short_name": "Guardar enlace",
-      "url": "./#/lecturas/nuevo",
-      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "name": "Registrar movimiento",
+      "short_name": "Movimiento",
+      "url": "./?nuevo=movimiento",
+      "icons": [{ "src": "shortcut-movimiento.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Nuevo instante",
       "short_name": "Instante",
       "url": "./?nuevo=instante",
-      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [{ "src": "shortcut-instante.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Nueva nota",
       "short_name": "Nota",
       "url": "./#/libroteca/nueva",
-      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [{ "src": "shortcut-nota.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
-      "name": "Lecturas",
-      "url": "./#/lecturas",
-      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "name": "Nueva persona",
+      "short_name": "Persona",
+      "url": "./?nuevo=persona",
+      "icons": [{ "src": "shortcut-persona.png", "sizes": "192x192", "type": "image/png" }]
     }
   ],
   "share_target": {

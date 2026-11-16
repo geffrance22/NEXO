@@ -37,6 +37,8 @@ const DEFAULTS: ReaderPrefs = {
   paper: "white",
 };
 const SIZES = [14, 15, 16, 17, 18, 19, 20, 22, 24, 26];
+/** Los tamaños de letra posibles (también los de pellizcar el artículo en el celular). */
+export const READER_SIZES: readonly number[] = SIZES;
 
 const FONTS: Record<ReaderPrefs["font"], { label: string; stack: string }> = {
   serif: {

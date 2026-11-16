@@ -12,17 +12,37 @@ const MAX_ASSETS = 80;
 const scope = new URL(self.registration.scope);
 const home = new URL('./', scope).href;
 
+/**
+ * Los archivos (JS y CSS) que pide esta versión de la página, a la caché si aún no están: así la
+ * app abre sin conexión desde la primera vez (y justo después de publicar una versión nueva).
+ */
+async function keepAssets(html) {
+  const cache = await caches.open(ASSETS);
+  const urls = [...html.matchAll(/(?:src|href)="(\.\/assets\/[^"]+)"/g)].map(
+    (m) => new URL(m[1], scope).href,
+  );
+  for (const url of new Set(urls)) {
+    if (await cache.match(url)) continue;
+    const res = await fetch(url).catch(() => null);
+    if (res && res.ok) await cache.put(url, res);
+  }
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(SHELL)
-      .then((cache) =>
-        cache.addAll(
-          ['./', './manifest.webmanifest', './nexo-favicon.svg', './icon-192.png'].map(
+      .then(async (cache) => {
+        await cache.addAll(
+          ['./manifest.webmanifest', './nexo-favicon.svg', './icon-192.png'].map(
             (p) => new URL(p, scope).href,
           ),
-        ),
-      )
+        );
+        const res = await fetch(home);
+        if (!res.ok) return;
+        await cache.put(home, res.clone());
+        await keepAssets(await res.text());
+      })
       .catch(() => undefined)
       .then(() => self.skipWaiting()),
   );
@@ -55,7 +75,14 @@ self.addEventListener('fetch', (event) => {
         .then((res) => {
           if (res.ok) {
             const copy = res.clone();
-            void caches.open(SHELL).then((c) => c.put(home, copy));
+            event.waitUntil(
+              caches
+                .open(SHELL)
+                .then((c) => c.put(home, copy.clone()))
+                .then(() => copy.text())
+                .then(keepAssets)
+                .catch(() => undefined),
+            );
           }
           return res;
         })

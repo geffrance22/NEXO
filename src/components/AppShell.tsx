@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LoaderCircle, Lock } from "lucide-react";
+import { CloudOff, LoaderCircle, Lock } from "lucide-react";
 import {
   AppProvider,
   type AppContextValue,
@@ -63,6 +63,9 @@ import { MergeDialog } from "../people/MergeDialog";
 import { PeopleMoneyDialog } from "../finance/PeopleMoney";
 import { parseHash, toHash, type Route } from "../lib/route";
 import { shareLink, takeIncoming } from "../lib/share";
+import { useOnline } from "../hooks/useOnline";
+import { forgetOffline } from "../readings/offline";
+import { useReadingSync } from "../readings/useReadingSync";
 import { ConnectionsPage } from "../pages/ConnectionsPage";
 import { Agenda, Libroteca } from "../library/Libroteca";
 import { UploadTray } from "../capturas/UploadTray";
@@ -241,6 +244,14 @@ export function AppShell({ user }: { user: AppUser }) {
 
   const { workspace } = data;
   const { page } = route;
+  // Lo que hiciste en Lecturas sin conexión se envía al volver (estés donde estés).
+  useReadingSync(user.id, notify);
+  // Al volver la conexión, lo que no se pudo cargar se carga solo.
+  const online = useOnline();
+  const failed = Boolean(data.error);
+  useEffect(() => {
+    if (online && failed) void data.reload();
+  }, [online]);
   // Las entradas de la bóveda del diario no salen en ninguna otra parte: solo en su carpeta.
   const diaryVault = useDiaryVault(
     workspace.entries,
@@ -484,6 +495,10 @@ export function AppShell({ user }: { user: AppUser }) {
     if (incoming.kind === "link") {
       shareLink(incoming.text);
       go("Lecturas", { id: "nuevo" });
+    } else if (incoming.kind === "movement") {
+      setModal({ type: "compose", init: { kind: "Movimiento", links: [] } });
+    } else if (incoming.kind === "person") {
+      setModal({ type: "person" });
     } else {
       const text = incoming.kind === "text" ? incoming.text : undefined;
       setWriting((w) => w ?? { text, nonce: Date.now() });
@@ -692,7 +707,11 @@ export function AppShell({ user }: { user: AppUser }) {
     saveMe: mine.saveMe,
     patchMe: mine.patchMe,
     saveMyReading: mine.saveMyReading,
-    signOut: () => void supabase.auth.signOut(),
+    // Antes de salir se envía lo pendiente de Lecturas y se borra su copia del teléfono.
+    signOut: () =>
+      void forgetOffline()
+        .catch(() => {})
+        .finally(() => void supabase.auth.signOut()),
     toggleEntry: (entry) => void data.toggleEntry(entry),
     resolveTask: data.resolveTask,
     askOutcome: (entry, anchor, mode = "choose") => {
@@ -787,7 +806,16 @@ export function AppShell({ user }: { user: AppUser }) {
             onToggleMenu={() => setMobile((open) => !open)}
           />
           <main>
-            {data.error && (
+            {/* Sin conexión no es un error de la base: un aviso corto (Lecturas trae el suyo). */}
+            {data.error && !online && page !== "Lecturas" && (
+              <div className="offline-note" role="status">
+                <CloudOff size={15} aria-hidden="true" />
+                {phone
+                  ? "Sin conexión. En Lecturas, «Por leer» sigue disponible en tu celular."
+                  : "Sin conexión. Tu información vuelve a cargarse sola al recuperarla."}
+              </div>
+            )}
+            {data.error && online && (
               <div className="database-error" role="alert">
                 <strong>No se pudo cargar tu información.</strong>
                 <p>{data.error}</p>

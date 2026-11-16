@@ -79,6 +79,22 @@ import { toHash } from "../lib/route";
 import { landingTab, useLanded } from "../lib/landing";
 import { touchFirst, useMedia } from "../hooks/useMobile";
 import { useWakeLock } from "../hooks/useWakeLock";
+import { useOnline } from "../hooks/useOnline";
+import { usePinchSize } from "./pinch";
+import { ReadProgress } from "./ReadProgress";
+import {
+  OFFLINE_CHANGED,
+  OFFLINE_LIMIT,
+  OFFLINE_SYNCED,
+  isNetworkError,
+  offlineArticle,
+  offlineCards,
+  pendingCount,
+  refreshInbox,
+  rememberArticle,
+  write,
+} from "./offline";
+import { CloudOff, ImageOff, RefreshCw } from "lucide-react";
 import { ActionMenu, type MenuItem } from "./ActionMenu";
 import { ArrowLeft, EllipsisVertical } from "lucide-react";
 import "./readings.css";
@@ -90,6 +106,10 @@ import "./readings.css";
 const COMPACT = "(max-width: 760px)";
 /** Sin tocar la pantalla este tiempo, un artículo abierto deja que se apague (con «Escuchar», no). */
 const READ_IDLE_MS = 4 * 60_000;
+/** Sin conexión, un artículo que no está en la copia del celular. */
+const NOT_SAVED =
+  "Sin conexión, y este artículo no está guardado en tu celular. Ábrelo cuando vuelva la conexión.";
+const OFFLINE_ONLY = "Sin conexión: esto necesita internet.";
 /** Estado de la entrada del historial que pone una capa encima de la lista (ver más abajo). */
 type LayerState = { nexoLocal?: string; rdLayer?: boolean } | null;
 
@@ -145,7 +165,9 @@ function healMarks(content: string, marks: Mark[]) {
   const { moved, lost } = heal(content, marks);
   if (!moved.length) return { marks, lost };
   const to = new Map(moved.map((x) => [x.id, x.to]));
-  for (const x of moved)
+  // Sin conexión solo se recolocan en pantalla: al abrirlo con conexión se guardan.
+  if (navigator.onLine)
+    for (const x of moved)
     void supabase
       .from("reading_marks")
       .update({
@@ -244,6 +266,9 @@ export function Readings({
     [query, search] = useState(""),
     [adding, add] = useState(addLink);
   useLanded("Lecturas");
+  // Lecturas en una sola columna (celular). Ahí, «Por leer» también se lee sin conexión.
+  const compact = useMedia(COMPACT);
+  const online = useOnline();
   // Leyendo, la pantalla no se apaga; si pasan unos minutos sin tocarla, vuelve a apagarse sola.
   useWakeLock(Boolean(article), READ_IDLE_MS);
   const [busy, working] = useState(false),
@@ -359,16 +384,84 @@ export function Readings({
   // Cambios en resaltados: refrescan Anotaciones y los contadores sin recargar la lista.
   const [markRev, bumpMarks] = useState(0);
   const {
-    cards: visible,
-    pinned,
-    more,
+    cards: serverCards,
+    pinned: serverPinned,
+    more: serverMore,
     load,
-    loading,
-    error: listError,
+    loading: serverLoading,
+    error: serverError,
     filters,
     patch: patchCard,
     pin: pinCard,
   } = useLibrary(view, query, revision, markRev);
+  /*
+   * Sin conexión (o si la lista no llega por la red), el celular muestra la copia de «Por leer»
+   * que guarda en el teléfono. Lo que cambias se ve al instante (la copia se actualiza) y se
+   * envía al volver la conexión.
+   */
+  const offlineList =
+    compact &&
+    (!online || (Boolean(serverError) && isNetworkError({ message: serverError })));
+  const [phoneCards, setPhoneCards] = useState<Card[]>([]);
+  useEffect(() => {
+    if (!offlineList) return;
+    let live = true;
+    const read = () =>
+      void offlineCards<Card>().then((c) => {
+        if (live) setPhoneCards(c);
+      });
+    read();
+    window.addEventListener(OFFLINE_CHANGED, read);
+    return () => {
+      live = false;
+      window.removeEventListener(OFFLINE_CHANGED, read);
+    };
+  }, [offlineList]);
+  const phoneShown = useMemo(() => {
+    if (!offlineList || view !== "inbox") return [];
+    const needle = query.trim().toLowerCase();
+    return needle
+      ? phoneCards.filter((c) =>
+          `${c.title} ${c.url} ${c.excerpt}`.toLowerCase().includes(needle),
+        )
+      : phoneCards;
+  }, [offlineList, view, query, phoneCards]);
+  const visible = offlineList
+    ? phoneShown.filter((c) => !c.pinned_at)
+    : serverCards;
+  const pinned = offlineList
+    ? phoneShown.filter((c) => c.pinned_at)
+    : serverPinned;
+  const more = !offlineList && serverMore;
+  const loading = !offlineList && serverLoading;
+  const listError = offlineList ? "" : serverError;
+  // Cambios hechos sin conexión que esperan para guardarse.
+  const [pending, setPending] = useState(0);
+  useEffect(() => {
+    let live = true;
+    const read = () =>
+      void pendingCount().then((n) => {
+        if (live) setPending(n);
+      });
+    // Ya se guardaron: la lista y los contadores se vuelven a pedir.
+    const synced = () => {
+      read();
+      bump((v) => v + 1);
+      bumpMarks((v) => v + 1);
+    };
+    read();
+    window.addEventListener(OFFLINE_CHANGED, read);
+    window.addEventListener(OFFLINE_SYNCED, synced);
+    return () => {
+      live = false;
+      window.removeEventListener(OFFLINE_CHANGED, read);
+      window.removeEventListener(OFFLINE_SYNCED, synced);
+    };
+  }, []);
+  // Con conexión, el celular renueva su copia de «Por leer» (como mucho cada 20 s).
+  useEffect(() => {
+    if (compact && online) void refreshInbox();
+  }, [compact, online, revision]);
   // Artículos que se están volviendo a descargar. `shown`: el abierto ahora, leído al terminar.
   const [refetching, setRefetching] = useState<ReadonlySet<string>>(new Set());
   const shown = useRef(id);
@@ -436,7 +529,10 @@ export function Readings({
       return next;
     });
     if (shown.current === rid) {
-      const fresh = healMarks(row.content, await loadArticleMarks(rid));
+      const loaded = await loadArticleMarks(rid);
+      // La copia del celular, con el texto nuevo.
+      if (compact) void rememberArticle(row, loaded);
+      const fresh = healMarks(row.content, loaded);
       if (shown.current === rid) {
         setArticle(row);
         setMarks(fresh.marks);
@@ -480,11 +576,13 @@ export function Readings({
   function togglePin(card: Card) {
     const on = !card.pinned_at;
     pinCard(card, on);
-    void supabase
-      .from("readings")
-      .update({ pinned_at: on ? new Date().toISOString() : null })
-      .eq("id", card.id)
-      .then(({ error }) => {
+    void write({
+      table: "readings",
+      action: "update",
+      id: card.id,
+      reading: card.id,
+      values: { pinned_at: on ? new Date().toISOString() : null },
+    }).then(({ error }) => {
         if (!error) return;
         pinCard(card, !on);
         notify(
@@ -505,11 +603,13 @@ export function Readings({
     const at = done ? new Date().toISOString() : null;
     setArticle((a) => (a && a.id === rid ? { ...a, read_at: at } : a));
     patchCard(rid, { read_at: at });
-    void supabase
-      .from("readings")
-      .update({ read_at: at })
-      .eq("id", rid)
-      .then(({ error }) => {
+    void write({
+      table: "readings",
+      action: "update",
+      id: rid,
+      reading: rid,
+      values: { read_at: at },
+    }).then(({ error }) => {
         if (!error) {
           bump((v) => v + 1);
           return;
@@ -530,36 +630,57 @@ export function Readings({
     setMarks([]);
     if (id) {
       (async () => {
-        const [a, m] = await Promise.all([
-          supabase.from("readings").select("*").eq("id", id).single(),
-          loadArticleMarks(id),
-        ]);
-        if (a.error) {
-          if (linked.current === id) {
+        // En el celular, sin conexión (o si la red falla), se abre la copia del teléfono.
+        const phone = window.matchMedia(COMPACT).matches;
+        let row: Article;
+        let m: Mark[];
+        let local = false;
+        try {
+          if (phone && !navigator.onLine) throw Error("Sin conexión.");
+          const [a, loaded] = await Promise.all([
+            supabase.from("readings").select("*").eq("id", id).single(),
+            loadArticleMarks(id),
+          ]);
+          if (a.error) throw a.error;
+          row = a.data;
+          m = loaded;
+        } catch (e) {
+          const copy =
+            phone && isNetworkError(e)
+              ? await offlineArticle<Article, Mark>(id)
+              : null;
+          if (copy) {
+            row = copy.article;
+            m = copy.marks;
+            local = true;
+          } else if (phone && isNetworkError(e)) throw Error(NOT_SAVED);
+          else if (linked.current === id) {
             linked.current = "";
             if (live) select("");
             return;
-          }
-          throw a.error;
+          } else throw e;
         }
         if (live) {
-          const healed = healMarks(a.data.content, m);
-          setArticle(a.data);
-          setFolder(a.data.folder);
+          if (phone && !local) void rememberArticle(row, m);
+          const healed = healMarks(row.content, m);
+          setArticle(row);
+          setFolder(row.folder);
           setMarks(healed.marks);
           setLost(new Set(healed.lost));
           // Primera vez que lo abres: deja de ir en negrita en la lista (sin la migración, no hay
           // columna y no se hace nada).
-          if (a.data.opened_at === null) {
+          if (row.opened_at === null) {
             const at = new Date().toISOString();
             patchCard(id, { opened_at: at });
-            void supabase
-              .from("readings")
-              .update({ opened_at: at })
-              .eq("id", id)
-              .then(({ error }) => {
-                if (error) patchCard(id, { opened_at: null });
-              });
+            void write({
+              table: "readings",
+              action: "update",
+              id,
+              reading: id,
+              values: { opened_at: at },
+            }).then(({ error }) => {
+              if (error) patchCard(id, { opened_at: null });
+            });
           }
           // Un resaltado abierto desde el buscador global: se lleva a él al pintarlo.
           try {
@@ -573,7 +694,7 @@ export function Readings({
           }
           if (linked.current === id) {
             linked.current = "";
-            setView(viewOf(a.data));
+            setView(viewOf(row));
           }
         }
       })().catch((e) => live && fail(e.message));
@@ -588,7 +709,6 @@ export function Readings({
    * cierra y vuelves a la lista tal como la dejaste; cerrarlo con su botón quita ese paso.
    * La entrada de la lista queda marcada para que la app no vuelva a montar Lecturas al volver.
    */
-  const compact = useMedia(COMPACT);
   const stacked = Boolean(id) || books || dict || flash || picked.size > 0;
   const pushed = useRef((history.state as LayerState)?.rdLayer === true);
   useEffect(() => {
@@ -693,6 +813,13 @@ export function Readings({
       );
     },
   );
+  // Celular: pellizcar el artículo agranda o achica la letra (la misma de «Aa»).
+  usePinchSize({
+    on: compact && Boolean(article) && !annotations && !trimming,
+    id,
+    size: reader.prefs.size,
+    commit: (next) => reader.change({ size: next }),
+  });
   const total = (key: string) =>
     filters.counts ? " (" + (filters.counts[key] ?? 0) + ")" : "";
   // Esc quita la selección de tarjetas (antes que cerrar el artículo).
@@ -783,12 +910,12 @@ export function Readings({
     }
   }
   async function deleteArticle() {
-    const { error } = await supabase
-      .from("readings")
-      .delete()
-      .eq("id", id)
-      .select("id")
-      .single();
+    const { error } = await write({
+      table: "readings",
+      action: "delete",
+      id,
+      reading: id,
+    });
     if (error) throw error;
     bump((v) => v + 1);
     setMarks((v) => v.filter((m) => m.reading_id !== id));
@@ -835,9 +962,11 @@ export function Readings({
       await fn();
     } catch (e) {
       fail(
-        e instanceof Error
-          ? e.message
-          : String((e as { message?: string })?.message || e),
+        isNetworkError(e)
+          ? OFFLINE_ONLY
+          : e instanceof Error
+            ? e.message
+            : String((e as { message?: string })?.message || e),
       );
     } finally {
       working(false);
@@ -849,13 +978,16 @@ export function Readings({
     >,
   ) {
     if (!article) return;
-    const { data, error } = await supabase
-      .from("readings")
-      .update(changes)
-      .eq("id", id)
-      .select()
-      .single();
+    // Sin conexión queda en la cola y se ve ya (se envía al volver).
+    const { error } = await write({
+      table: "readings",
+      action: "update",
+      id,
+      reading: id,
+      values: changes,
+    });
     if (error) throw error;
+    const data: Article = { ...article, ...changes };
     setArticle(data);
     bump((v) => v + 1);
     if (changes.favorite !== undefined || changes.question !== undefined)
@@ -1053,21 +1185,25 @@ export function Readings({
       return false;
     }
     try {
-      const { data, error } = await supabase
-        .from("reading_marks")
-        .insert({
-          note: aiNote(question, answer),
-          color: "blue",
-          edited_at: new Date().toISOString(),
-          quote: readableSlice(article.content, at.start, at.end),
-          reading_id: article.id,
-          start_offset: at.start,
-          end_offset: at.end,
-        })
-        .select()
-        .single();
+      const row: Mark = {
+        id: crypto.randomUUID(),
+        note: aiNote(question, answer),
+        color: "blue",
+        edited_at: new Date().toISOString(),
+        quote: readableSlice(article.content, at.start, at.end),
+        reading_id: article.id,
+        start_offset: at.start,
+        end_offset: at.end,
+      };
+      const { error } = await write({
+        table: "reading_marks",
+        action: "insert",
+        id: row.id,
+        reading: article.id,
+        values: row,
+      });
       if (error) throw error;
-      setMarks((v) => [...v, data]);
+      setMarks((v) => [...v, row]);
       patchCard(article.id, (c) => ({ mark_count: c.mark_count + 1 }));
       bumpMarks((v) => v + 1);
       notify("Respuesta guardada como resaltado en el artículo.");
@@ -1164,40 +1300,50 @@ export function Readings({
 
     let target = local.id;
     const save = (async () => {
+      // Todo pasa por `write`: sin conexión queda en la cola del celular y se envía al volver.
       if (before) {
         const real = await realId(before.id);
         if (!real) throw Error("El resaltado no se llegó a guardar.");
         target = real;
-        const { error } = await supabase
-          .from("reading_marks")
-          .update(fields)
-          .eq("id", real);
+        const { error } = await write({
+          table: "reading_marks",
+          action: "update",
+          id: real,
+          reading: rid,
+          values: fields,
+        });
         if (error) throw error;
         // Los que quedaron dentro del unido se borran (los recién hechos, en cuanto tienen id).
         for (const o of others) {
           removed.current.add(o.id);
           const id = await realId(o.id);
           if (!id) continue;
-          const gone = await supabase
-            .from("reading_marks")
-            .delete()
-            .eq("id", id);
+          const gone = await write({
+            table: "reading_marks",
+            action: "delete",
+            id,
+            reading: rid,
+          });
           if (gone.error) throw gone.error;
         }
         return real;
       }
-      const { data, error } = await supabase
-        .from("reading_marks")
-        .insert({
+      // El id lo pone el celular (el mismo que lleva el provisional): así sirve sin conexión.
+      const fresh = local.id.slice("tmp:".length);
+      const { error } = await write({
+        table: "reading_marks",
+        action: "insert",
+        id: fresh,
+        reading: rid,
+        values: {
           ...fields,
           reading_id: rid,
           start_offset: local.start_offset,
           end_offset: local.end_offset,
-        })
-        .select("id")
-        .single();
+        },
+      });
       if (error) throw error;
-      return data.id as string;
+      return fresh;
     })();
     if (!before)
       savedId.current.set(
@@ -1216,7 +1362,12 @@ export function Readings({
         setEditing((e) => (e?.id === local.id ? { ...e, id: real } : e));
         // Lo borraste mientras se guardaba: se borra también en la base.
         if (removed.current.has(local.id))
-          void supabase.from("reading_marks").delete().eq("id", real);
+          void write({
+            table: "reading_marks",
+            action: "delete",
+            id: real,
+            reading: rid,
+          });
       },
       (e) => {
         if (before) {
@@ -1261,11 +1412,12 @@ export function Readings({
       removed.current.add(m.id);
       return;
     }
-    void supabase
-      .from("reading_marks")
-      .delete()
-      .eq("id", m.id)
-      .then(({ error }) => {
+    void write({
+      table: "reading_marks",
+      action: "delete",
+      id: m.id,
+      reading: rid,
+    }).then(({ error }) => {
         if (!error) {
           bumpMarks((v) => v + 1);
           return;
@@ -1386,6 +1538,18 @@ export function Readings({
     }
     return points.slice(0, -1).map((p, i) => {
       const img = imageAt.get(i);
+      // Sin conexión solo se ven las imágenes que el artículo guarda comprimidas dentro.
+      if (img && !online && !a.media?.[img[2]])
+        return (
+          <span
+            key={p}
+            className="rd-img-off"
+            role="img"
+            aria-label={img[1] || "Imagen"}
+          >
+            <ImageOff size={16} aria-hidden="true" /> Imagen sin conexión
+          </span>
+        );
       if (img)
         return (
           <img
@@ -1439,7 +1603,7 @@ export function Readings({
   // El artículo solo se vuelve a pintar si cambian él o sus resaltados: abrir la barra es instantáneo.
   const rendered = useMemo(
     () => (article && layout ? body(article, layout) : null),
-    [article, mine, layout, lost],
+    [article, mine, layout, lost, online],
   );
   // Los resaltados se abren con un solo escucha en el artículo (no uno por fragmento).
   const markAt = (target: EventTarget | null) => {
@@ -1633,11 +1797,13 @@ export function Readings({
       setArticle((a) => (a && a.id === card.id ? { ...a, favorite: v } : a));
     };
     apply(on);
-    void supabase
-      .from("readings")
-      .update({ favorite: on })
-      .eq("id", card.id)
-      .then(({ error }) => {
+    void write({
+      table: "readings",
+      action: "update",
+      id: card.id,
+      reading: card.id,
+      values: { favorite: on },
+    }).then(({ error }) => {
         if (error) {
           apply(!on);
           notify("No se pudo guardar el favorito: " + error.message);
@@ -1655,10 +1821,13 @@ export function Readings({
     undo?: Partial<Pick<Card, "folder" | "archived">>,
   ) {
     setDest(null);
-    const { error } = await supabase
-      .from("readings")
-      .update(changes)
-      .eq("id", card.id);
+    const { error } = await write({
+      table: "readings",
+      action: "update",
+      id: card.id,
+      reading: card.id,
+      values: changes,
+    });
     if (error) {
       notify("No se pudo completar: " + error.message);
       return false;
@@ -1684,7 +1853,12 @@ export function Readings({
       danger: true,
     });
     if (!ok) return false;
-    const { error } = await supabase.from("readings").delete().eq("id", card.id);
+    const { error } = await write({
+      table: "readings",
+      action: "delete",
+      id: card.id,
+      reading: card.id,
+    });
     if (error) {
       notify("No se pudo eliminar: " + error.message);
       return false;
@@ -2015,6 +2189,45 @@ export function Readings({
               )
             )}
           </label>
+          {compact && (offlineList || pending > 0) && (
+            <div
+              className={"rd-offline" + (offlineList ? "" : " syncing")}
+              role="status"
+            >
+              {offlineList ? (
+                <CloudOff size={16} aria-hidden="true" />
+              ) : (
+                <RefreshCw size={14} className="spin" aria-hidden="true" />
+              )}
+              <span>
+                {!offlineList
+                  ? pending === 1
+                    ? "Guardando 1 cambio que hiciste sin conexión…"
+                    : `Guardando ${pending} cambios que hiciste sin conexión…`
+                  : view === "inbox"
+                    ? "Sin conexión. Lees la copia de «Por leer» de tu celular: puedes resaltar y anotar."
+                    : "Sin conexión. Solo «Por leer» está guardado en tu celular."}
+                {offlineList && pending > 0 && (
+                  <b>
+                    {pending === 1
+                      ? " 1 cambio se guardará al volver la conexión."
+                      : ` ${pending} cambios se guardarán al volver la conexión.`}
+                  </b>
+                )}
+              </span>
+              {offlineList && view !== "inbox" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setView("inbox");
+                    open();
+                  }}
+                >
+                  Ir a Por leer
+                </button>
+              )}
+            </div>
+          )}
           {picked.size > 0 && view !== "marks" && (
             <BatchBar
               cards={pickedCards}
@@ -2098,7 +2311,7 @@ export function Readings({
             </form>
           </ReaderDialog>
         )}
-        {view === "marks" && (
+        {view === "marks" && !offlineList && (
           <MarkGroups
             query={query}
             current={annotations ? id : ""}
@@ -2135,9 +2348,21 @@ export function Readings({
           </button>
         )}
         {listError && <p role="alert">{listError}</p>}
-        {view !== "marks" && !loading && !visible.length && !pinned.length && (
-          <p>Sin artículos en esta vista.</p>
-        )}
+        {view !== "marks" &&
+          !loading &&
+          !visible.length &&
+          !pinned.length &&
+          (!offlineList ? (
+            <p>Sin artículos en esta vista.</p>
+          ) : view === "inbox" && !query.trim() ? (
+            <p className="rd-offline-empty">
+              Aún no hay artículos guardados en tu celular. Se guardan solos
+              (los {OFFLINE_LIMIT} más recientes de «Por leer») cuando abres
+              Lecturas con conexión.
+            </p>
+          ) : view === "inbox" ? (
+            <p>Ningún artículo guardado coincide.</p>
+          ) : null)}
       </aside>
       {/* Claves distintas para cada hermano: si se repiten, React no sabe cuál quitar. */}
       <main key={"reader:" + id}>
@@ -2268,6 +2493,14 @@ export function Readings({
                     label="Más acciones del artículo"
                     onClose={() => setMoreAt(null)}
                     items={articleMenu(article)}
+                  />
+                )}
+                {!annotations && !trimming && (
+                  <ReadProgress
+                    article={articleRef}
+                    pane={() =>
+                      document.querySelector<HTMLElement>(".readings > main")
+                    }
                   />
                 )}
               </div>

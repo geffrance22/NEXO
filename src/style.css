@@ -2564,6 +2564,22 @@ main:has(.lt-agenda, .ep-page, .ep-detail, .fz, .cx, .pl-page, .pl-detail) {
   font-size: 12px;
   margin-bottom: 20px;
 }
+.offline-note {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 20px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: #eef2e8;
+  color: #4d5d44;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.offline-note svg {
+  flex: none;
+}
 
 /* Modo oscuro: inversión de toda la página; las fotos se devuelven a su color.
    No declarar `color-scheme: dark` (doblaría la inversión de los controles nativos). */

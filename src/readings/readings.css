@@ -5565,6 +5565,11 @@
   .readings .rd-bar-acts .rd-listen-bar button {
     min-height: 38px;
   }
+  /* Pellizcar es para la letra (pinch.ts): sin el zoom de la página ni el doble toque. Se puede
+     seguir desplazando en las dos direcciones (tablas y código anchos). */
+  .readings:has(article) > main {
+    touch-action: pan-x pan-y;
+  }
   /* Debajo de la barra (que mide unos 54 px), no encima. */
   .readings .rd-tagbox {
     top: 62px;
@@ -5573,6 +5578,181 @@
     font-size: clamp(1.6rem, 7vw, 2rem);
     overflow-wrap: break-word;
   }
+}
+
+/* ── Celular: Lecturas sin conexión (offline.ts) ── */
+.rd-offline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px 9px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #eef2ea;
+  color: #3e4c3a;
+  font-size: 12.5px;
+  line-height: 1.45;
+  animation: rd-off-in 0.28s ease-out;
+}
+.rd-offline > svg {
+  flex: none;
+  margin-top: 1px;
+  color: #5d7356;
+}
+.rd-offline > span {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.rd-offline b {
+  font-weight: 650;
+}
+.rd-offline.syncing {
+  background: color-mix(in srgb, var(--rd-accent, #365c52) 9%, transparent);
+  color: var(--rd-accent, #365c52);
+}
+.rd-offline.syncing > svg {
+  color: inherit;
+}
+.readings .rd-offline > button {
+  flex-basis: 100%;
+  min-height: 36px;
+  margin-left: 25px;
+  padding: 0 12px;
+  width: fit-content;
+  border-radius: 10px;
+  background: #fff;
+  color: #2f4a28;
+  font-size: 12.5px;
+  font-weight: 650;
+  box-shadow: 0 0 0 1px rgba(47, 74, 40, 0.14);
+}
+@keyframes rd-off-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.rd-offline-empty {
+  margin: 18px 4px;
+  color: #6c7766;
+  font-size: 13px;
+  line-height: 1.5;
+}
+/* Imagen que no se guardó dentro del artículo: un aviso discreto en su lugar. */
+.rd-img-off {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 0.8em 0;
+  padding: 18px 12px;
+  border: 1px dashed color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 12px;
+  color: color-mix(in srgb, currentColor 55%, transparent);
+  font: 500 12.5px/1.3 'DM Sans', system-ui, sans-serif;
+}
+
+/* ── Celular: progreso del artículo (ReadProgress.tsx) ── */
+/* Una línea fina en el borde de abajo de la barra del artículo. */
+.rd-bar-compact .rd-prog {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2.5px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.rd-bar-compact .rd-prog > i {
+  display: block;
+  height: 100%;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(90deg, #9cc1b2, var(--rd-accent, #365c52));
+  box-shadow: 0 0 6px rgba(54, 92, 82, 0.35);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 0.12s linear;
+  will-change: transform;
+}
+/* ── Celular: pellizcar para cambiar la letra (pinch.ts) ── */
+/* Mientras se pellizca, el tamaño sigue a los dedos sin la transición de «Aa» y sin que el
+   navegador corrija el desplazamiento por su cuenta (lo hace pinch.ts). */
+.readings[data-pinching] article {
+  transition: none;
+}
+.readings[data-pinching] > main {
+  overflow-anchor: none;
+}
+.rd-pinch {
+  position: fixed;
+  left: 50%;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  background: rgba(32, 44, 38, 0.86);
+  color: #f3f6ef;
+  box-shadow: 0 14px 34px rgba(20, 30, 22, 0.28);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  font-family: Georgia, serif;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -8px) scale(0.9);
+  transition:
+    opacity 0.2s ease,
+    transform 0.3s cubic-bezier(0.2, 1.4, 0.35, 1);
+}
+.rd-pinch.on {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+.rd-pinch-a {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.7;
+}
+.rd-pinch-a.big {
+  font-size: 21px;
+}
+.rd-pinch-track {
+  position: relative;
+  width: 92px;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(243, 246, 239, 0.22);
+}
+.rd-pinch-track > i {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--p, 0.33) * 100%);
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+.rd-pinch-track::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--p, 0.33) * 100%);
+  border-radius: inherit;
+  background: #a9d0bf;
+}
+.rd-pinch > b {
+  min-width: 22px;
+  font: 700 15px/1 'DM Sans', system-ui, sans-serif;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* En el mínimo o el máximo, la píldora se estira un poco: no se puede más. */
+.rd-pinch.edge {
+  transform: translate(-50%, 0) scale(1.05, 0.96);
 }
 
 /* ── Barra de resaltado en el celular: abajo, a todo el ancho, con nombres ── */

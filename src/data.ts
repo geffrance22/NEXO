@@ -333,6 +333,8 @@ export type MyProfile = {
   diaryFolders?: DiaryFolder[];
   /** Cómo armaste «Mi espacio»: qué bloques ves, en qué orden y con qué ajustes. */
   home?: HomeLayout;
+  /** Los dos accesos que elegiste para la barra inferior del celular (2.º y 4.º botón). */
+  mobileNav?: string[];
 };
 
 /** Una lectura de la IA que ya fue reemplazada por otra más nueva. */

@@ -1,12 +1,17 @@
 import { Download, Lock, Sparkles } from 'lucide-react';
 import { useApp } from '../AppContext';
+import { useMobile } from '../hooks/useMobile';
 import { downloadWorkspace } from '../lib/export';
+import { NavSettings } from '../mobile/NavSettings';
 
 export function SettingsPage() {
   const { user, workspace, openChat, signOut } = useApp();
+  // La barra inferior solo existe en el celular: allí se eligen sus accesos.
+  const mobile = useMobile();
 
   return (
     <div className="settings-grid">
+      {mobile && <NavSettings />}
       <div className="panel">
         <Lock size={23} />
         <h2>Privacidad y cuenta</h2>

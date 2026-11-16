@@ -1,0 +1,976 @@
+/* ════════════════ Celular ════════════════
+   La barra inferior, el encabezado compacto, el menú lateral y los ajustes que toda la app
+   necesita en una pantalla pequeña. Lo de cada página va dentro de (max-width: 720px), el mismo
+   corte que `useMobile`: en escritorio nada cambia. Este archivo carga después de style.css (ver
+   main.tsx), así que a igual especificidad gana. */
+
+:root {
+  --bnav-h: 62px;
+  /* Lo que ocupa la barra inferior (0 si no está): lo usan la página, los avisos y las barras
+     flotantes para no quedar debajo de ella. */
+  --bnav-space: 0px;
+}
+html:has(.bnav) {
+  --bnav-space: calc(var(--bnav-h) + env(safe-area-inset-bottom, 0px));
+}
+.bnav,
+.sidebar-scrim,
+.sheet-grab {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  /* Nada se sale por los lados: el ancho de la pantalla es el de la página. */
+  html,
+  body {
+    overflow-x: clip;
+  }
+  html {
+    scroll-padding-bottom: var(--bnav-space);
+  }
+
+  /* ───────── Barra inferior ───────── */
+  .bnav {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    /* Encima de la página y del encabezado; debajo de ventanas, menús y barras flotantes. */
+    z-index: 42;
+    display: block;
+    padding: 0 max(4px, env(safe-area-inset-right)) env(safe-area-inset-bottom, 0px)
+      max(4px, env(safe-area-inset-left));
+    border-top: 1px solid rgba(214, 221, 204, 0.9);
+    background: rgba(250, 251, 248, 0.93);
+    backdrop-filter: blur(18px) saturate(1.4);
+    -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    box-shadow: 0 -12px 30px -22px rgba(40, 55, 30, 0.5);
+    transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  /* Con el buscador abierto o el teclado a la vista (ver BottomNav.tsx), la barra baja y deja
+     sitio. + 24 px: el «+» sobresale por encima de la barra. */
+  .app:has(.gsearch.m-open) .bnav,
+  .bnav.kb {
+    transform: translateY(calc(100% + 24px));
+    pointer-events: none;
+  }
+  /* Sin los estilos generales de `nav button` (los del menú lateral). */
+  .bnav .bnav-item,
+  .bnav .bnav-add,
+  .bnav .bnav-item:hover,
+  .bnav .bnav-add:hover {
+    border-radius: 0;
+    background: none;
+  }
+  .bnav-bar {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: stretch;
+    height: var(--bnav-h);
+    max-width: 560px;
+    margin: 0 auto;
+  }
+  .bnav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-width: 0;
+    padding: 6px 2px 5px;
+    color: #7f8976;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.1px;
+    transition: color 0.2s;
+  }
+  .bnav-ico {
+    display: grid;
+    place-items: center;
+    width: 50px;
+    height: 30px;
+    border-radius: 999px;
+    transition:
+      background 0.22s,
+      color 0.22s,
+      transform 0.16s;
+  }
+  .bnav-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bnav-item.on {
+    color: #2c3f25;
+    font-weight: 700;
+  }
+  .bnav-item.on .bnav-ico {
+    background: #dfe8d2;
+    color: #2f4a28;
+  }
+  .bnav-item:active .bnav-ico {
+    transform: scale(0.9);
+  }
+  .bnav-item:focus-visible,
+  .bnav-add:focus-visible {
+    outline: none;
+  }
+  .bnav-item:focus-visible .bnav-ico,
+  .bnav-add:focus-visible .bnav-add-orb {
+    outline: 2px solid #6d8650;
+    outline-offset: 2px;
+  }
+  /* «+»: el botón del centro, un poco por encima de la barra. */
+  .bnav-add {
+    display: grid;
+    place-items: center;
+    min-width: 0;
+    padding: 0;
+  }
+  .bnav-add-orb {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    margin-top: -20px;
+    border-radius: 19px;
+    background: linear-gradient(160deg, #46603d, #2f4229);
+    color: #fff;
+    box-shadow:
+      0 0 0 5px rgba(250, 251, 248, 0.96),
+      0 12px 24px -8px rgba(47, 66, 41, 0.6),
+      inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    transition: transform 0.16s;
+  }
+  .bnav-add svg {
+    transition: transform 0.25s ease;
+  }
+  .bnav-add:active .bnav-add-orb {
+    transform: scale(0.93);
+  }
+  .bnav-add:active svg {
+    transform: rotate(90deg);
+  }
+  /* Perfil: tu foto (o tus iniciales) con un aro cuando está activo. */
+  .bnav-face {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 27px;
+    height: 27px;
+    overflow: hidden;
+    border-radius: 50%;
+    background: #e4e9da;
+    box-shadow: 0 0 0 2px #fff;
+    font:
+      750 10.5px 'Manrope',
+      sans-serif;
+    color: #45563a;
+    transition: box-shadow 0.2s;
+  }
+  .bnav-face .my-face,
+  .bn-acc-face .my-face,
+  .mnav-face .my-face {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+  .bnav-me.on .bnav-ico {
+    background: none;
+  }
+  .bnav-me.on .bnav-face {
+    box-shadow:
+      0 0 0 2px #fff,
+      0 0 0 4px #6f8a56;
+  }
+
+  /* La página termina encima de la barra (también las secciones que ocupan todo el alto). */
+  .main-shell {
+    padding-bottom: var(--bnav-space);
+  }
+
+  /* ───────── Encabezado: menú, sección, buscador y modo oscuro ───────── */
+  :root {
+    --topbar-h: 54px;
+  }
+  .topbar {
+    gap: 4px;
+    padding: 0 max(8px, env(safe-area-inset-right)) 0 max(6px, env(safe-area-inset-left));
+  }
+  .topbar .icon-button {
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border-radius: 13px;
+    color: #66705d;
+  }
+  .topbar .icon-button:active {
+    background: #e9eddf;
+  }
+  /* Solo el nombre de la sección («Mi universo /» sobra en el celular). */
+  .breadcrumb {
+    flex: 1 1 auto;
+    max-width: none;
+    gap: 0;
+    padding-left: 2px;
+  }
+  .breadcrumb .crumb-root,
+  .breadcrumb .crumb-sep {
+    display: none;
+  }
+  .breadcrumb strong {
+    font:
+      750 17px/1.2 'Manrope',
+      sans-serif;
+    letter-spacing: -0.35px;
+    color: #27301f;
+  }
+  .top-actions {
+    flex: none;
+    gap: 0;
+  }
+  .gsearch.m-closed {
+    flex: none;
+  }
+  /* El buscador abierto cubre el encabezado entero. */
+  .gsearch.m-open {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 max(6px, env(safe-area-inset-right)) 0 max(10px, env(safe-area-inset-left));
+    background: #fafbf8;
+    animation: cp-fade 0.16s ease-out;
+  }
+  .gsearch.m-open .gs-field {
+    flex: 1;
+    height: 42px;
+    gap: 9px;
+    padding: 0 12px;
+    border-color: #d3dcc4;
+    border-radius: 13px;
+    background: #fff;
+    color: #8f9886;
+  }
+  .gsearch.m-open .gs-input {
+    /* 16 px o más: el celular no hace zoom al tocar el campo. */
+    font-size: 16px;
+  }
+  .gs-cancel {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
+    color: #66705d;
+  }
+  .gs-cancel:active {
+    background: #e9eddf;
+  }
+  .gsearch .gs-panel {
+    top: calc(var(--topbar-h) + 4px);
+    max-height: min(72vh, 560px);
+    max-height: min(72dvh, 560px);
+    padding: 8px;
+    border-radius: 18px;
+  }
+  .gsearch .gs-row {
+    min-height: 48px;
+    padding: 9px 10px;
+    font-size: 14.5px;
+  }
+
+  /* ───────── Menú lateral: se abre sobre la página, con un velo para cerrarlo ───────── */
+  .sidebar {
+    top: var(--topbar-h);
+    z-index: 48;
+    width: min(292px, 86vw);
+    padding: 22px 14px calc(16px + env(safe-area-inset-bottom, 0px));
+    visibility: hidden;
+    box-shadow: none;
+    transition:
+      transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1),
+      visibility 0s linear 0.26s;
+  }
+  .sidebar.mobile-open {
+    visibility: visible;
+    box-shadow: 18px 0 44px -18px rgba(30, 45, 25, 0.45);
+    transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  /* Más compacto arriba para que todas las secciones quepan sin desplazar el menú. */
+  .sidebar .brand {
+    font-size: 27px;
+  }
+  .sidebar .brand-mark {
+    width: 30px;
+    height: 31px;
+    font-size: 25px;
+  }
+  .sidebar .workspace-label {
+    margin: 3px 14px 14px;
+  }
+  .sidebar nav {
+    gap: 2px;
+  }
+  .sidebar nav button {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+  .sidebar .assistant-nav {
+    margin-top: 14px;
+  }
+  .sidebar-scrim {
+    position: fixed;
+    inset: var(--topbar-h) 0 0;
+    z-index: 47;
+    display: block;
+    background: rgba(32, 42, 26, 0.32);
+    animation: cp-fade 0.2s ease-out;
+  }
+  /* Tableros y su vista de planificación llevan su propio encabezado. */
+  .app:has(.bd) > .sidebar-scrim {
+    top: 56px;
+  }
+  .app:has(.pl-board) > .sidebar-scrim {
+    top: 48px;
+  }
+
+  /* ───────── Página ───────── */
+  :root {
+    --main-pt: 20px;
+  }
+  main {
+    padding: var(--main-pt) max(16px, env(safe-area-inset-right)) 0
+      max(16px, env(safe-area-inset-left));
+  }
+  .page-footer {
+    margin-top: 28px;
+    padding: 16px 0 18px;
+    font-size: 10px;
+  }
+  /* Configuración: una columna que nunca se ensancha por un texto largo. */
+  .settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+  .settings-grid .panel {
+    min-width: 0;
+    padding: 20px;
+    border-radius: 20px;
+  }
+
+  /* ───────── Avisos y barras flotantes: por encima de la barra inferior ───────── */
+  .toast-stack {
+    bottom: calc(14px + var(--bnav-space));
+  }
+  .ib,
+  body:has(.cdock) .ib,
+  body:has(.cdock.open) .ib {
+    bottom: calc(12px + var(--bnav-space));
+  }
+  body:has(.cdock) .ib {
+    bottom: calc(80px + var(--bnav-space));
+  }
+  .cdock,
+  .cap-corner,
+  .dr-float {
+    bottom: calc(12px + var(--bnav-space));
+  }
+  .dy-selbar,
+  .bd-bulk,
+  .bd-link-hint {
+    bottom: calc(14px + var(--bnav-space));
+  }
+
+  /* ───────── Ventanas: suben desde abajo, a todo el ancho ───────── */
+  .sheet-backdrop > .sheet:not(.cap-fly) {
+    width: 100%;
+    max-width: none;
+    border-radius: 24px 24px 0 0;
+  }
+  /* Agarradera: arrastrarla hacia abajo cierra la ventana (ver Sheet.tsx). */
+  .sheet-grab {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    z-index: 8;
+    display: block;
+    width: 132px;
+    height: 24px;
+    margin-left: -66px;
+    touch-action: none;
+    cursor: grab;
+  }
+  .sheet-grab::before {
+    content: '';
+    position: absolute;
+    top: 7px;
+    left: 50%;
+    width: 38px;
+    height: 5px;
+    margin-left: -19px;
+    border-radius: 999px;
+    background: rgba(70, 82, 60, 0.24);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+  }
+
+  /* «¿Qué quieres guardar?» (el «+»): tres por fila, solo ícono y nombre, todo a la vista. */
+  .cp-picker header p {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .cp-picker header {
+    margin-bottom: 16px;
+  }
+  .cp-tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .cp-tile {
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    padding: 14px 6px 12px;
+    border-radius: 16px;
+    text-align: center;
+  }
+  .cp-tile-icon {
+    width: 44px;
+    height: 44px;
+    margin-bottom: 6px;
+  }
+  .cp-tile strong {
+    max-width: 100%;
+    font-size: 13px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+  .cp-tile-hint,
+  .cp-tile kbd,
+  .cp-quick kbd,
+  .cp-picker-tip {
+    display: none;
+  }
+  .cp-picker-foot {
+    justify-content: center;
+    margin-top: 12px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .cp-quick {
+    justify-content: center;
+    width: 100%;
+    height: 46px;
+    padding: 0 14px;
+    border-radius: 14px;
+    font-size: 14px;
+  }
+}
+
+/* Al tocar (sin puntero fino), sin el salto de «hover» que se queda pegado. */
+@media (max-width: 720px) and (hover: none) {
+  .cp-tile:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  .cp-tile:hover .cp-tile-icon {
+    transform: none;
+  }
+  .cp-tile:active {
+    transform: scale(0.97);
+    border-color: var(--accent);
+    background: var(--soft);
+  }
+}
+
+/* ════════ Perfil (la última pestaña de la barra) ════════ */
+.bn-acc-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 28px 14px 12px 20px;
+}
+.bn-acc-face {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #e4e9da;
+  box-shadow:
+    0 0 0 3px #fff,
+    0 0 0 4.5px #dfe7d4;
+  font:
+    750 18px 'Manrope',
+    sans-serif;
+  color: #3a4c30;
+}
+.bn-acc-who {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.bn-acc-who strong {
+  overflow: hidden;
+  font:
+    800 18px/1.25 'Manrope',
+    sans-serif;
+  letter-spacing: -0.3px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #1f2a1c;
+}
+.bn-acc-who small {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #8a9381;
+}
+.bn-acc-x {
+  display: grid;
+  flex: none;
+  align-self: flex-start;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: #7b8573;
+}
+.bn-acc-x:hover,
+.bn-acc-x:active {
+  background: #f1f4ec;
+}
+.bn-acc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  padding: 6px 10px calc(14px + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.bn-acc-list > button {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 58px;
+  padding: 8px 10px;
+  border-radius: 15px;
+  text-align: left;
+  transition: background 0.15s;
+}
+.bn-acc-list > button:active {
+  background: #f3f6ee;
+}
+@media (hover: hover) {
+  .bn-acc-list > button:hover {
+    background: #f3f6ee;
+  }
+}
+.bn-acc-ico {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  background: #eef3e7;
+  color: #4f6b3d;
+}
+.bn-acc-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.bn-acc-text b {
+  font-size: 15px;
+  font-weight: 650;
+  color: #27301f;
+}
+.bn-acc-text small {
+  overflow: hidden;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #8a9381;
+}
+.bn-acc-chev {
+  flex: none;
+  color: #b3baa9;
+}
+.bn-acc-sep {
+  height: 1px;
+  margin: 6px 10px;
+  background: #eef1e8;
+}
+.bn-acc-list > button.danger .bn-acc-ico {
+  background: #fbebe6;
+  color: #b8412f;
+}
+.bn-acc-list > button.danger b {
+  color: #a8442f;
+}
+
+/* ════════ Configuración → Barra inferior ════════ */
+.panel.mnav-set {
+  --accent: #5f8247;
+}
+.panel.mnav-set > svg {
+  color: #95aa7c;
+}
+.panel.mnav-set > p {
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #7f8976;
+}
+/* Vista previa: la barra tal como la verás, con los dos botones que se pueden cambiar. */
+.mnav-preview {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: center;
+  height: 64px;
+  margin-bottom: 14px;
+  padding: 0 4px;
+  border: 1px solid #e3e8da;
+  border-radius: 18px;
+  background: #fafbf8;
+  box-shadow: inset 0 -10px 20px -18px rgba(40, 55, 30, 0.35);
+}
+.mnav-fixed,
+.mnav-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  height: 100%;
+  color: #a2aa98;
+}
+.mnav-fixed small,
+.mnav-slot small {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mnav-fixed.add > span {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  background: #b9c5ad;
+  color: #fff;
+}
+.mnav-face {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #e4e9da;
+  font-size: 9px;
+  font-weight: 700;
+  color: #7b8573;
+}
+/* Los editables: con su color y un borde punteado que invita a tocarlos. */
+.mnav-slot {
+  position: relative;
+  margin: 6px 2px;
+  height: calc(100% - 12px);
+  border: 1.5px dashed #b9c9a6;
+  border-radius: 13px;
+  background: #f1f6ea;
+  color: #2f4a28;
+  transition:
+    background 0.15s,
+    transform 0.15s;
+}
+.mnav-slot:active {
+  transform: scale(0.96);
+  background: #e6efdb;
+}
+.mnav-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mnav-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 12px;
+  border: 1px solid #e7ebdf;
+  border-radius: 16px;
+  background: #fff;
+  text-align: left;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.mnav-row:active {
+  border-color: #cfdac2;
+  background: #f8faf5;
+}
+.mnav-row-ico {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  background: #eef3e7;
+  color: #4f6b3d;
+}
+.mnav-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.mnav-row-text small {
+  font:
+    700 10px 'Manrope',
+    sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #9aa391;
+}
+.mnav-row-text strong {
+  overflow: hidden;
+  font-size: 14.5px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #27301f;
+}
+.mnav-row-go {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: #5f8247;
+}
+.mnav-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 8px 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #7b8573;
+}
+.mnav-reset:hover {
+  color: #3a4433;
+}
+
+/* El selector de accesos */
+.sheet-backdrop > .sheet.mnav-pick {
+  height: min(86vh, 760px);
+  height: min(86dvh, 760px);
+}
+.mnav-pick-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 26px 14px 4px 20px;
+}
+.mnav-pick-head h3 {
+  font:
+    800 21px 'Manrope',
+    sans-serif;
+  letter-spacing: -0.4px;
+  color: #1f2a1c;
+}
+.mnav-pick-head p {
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #7b8573;
+}
+.mnav-search {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 9px;
+  height: 46px;
+  margin: 10px 16px 4px;
+  padding: 0 14px;
+  border: 1px solid #e3e8da;
+  border-radius: 14px;
+  background: #fff;
+  color: #a3ab99;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.mnav-search:focus-within {
+  border-color: #5f8247;
+  box-shadow: 0 0 0 3px #eaf1e0;
+}
+.mnav-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  /* 16 px: el celular no hace zoom al tocar el campo. */
+  font-size: 16px;
+  color: #1f2a1c;
+}
+.mnav-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.mnav-pick-body {
+  flex: 1;
+  min-height: 0;
+  padding: 2px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.mnav-pick-body h4 {
+  margin: 16px 4px 8px;
+  font:
+    700 10.5px 'Manrope',
+    sans-serif;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: #9aa391;
+}
+.mnav-none {
+  padding: 28px 8px;
+  text-align: center;
+  font-size: 13.5px;
+  color: #8a9381;
+}
+.mnav-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.mnav-opt {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 58px;
+  padding: 9px 10px;
+  border: 1px solid #e9ede2;
+  border-radius: 15px;
+  background: #fff;
+  text-align: left;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    transform 0.15s;
+}
+.mnav-opt:active {
+  transform: scale(0.98);
+  background: #f6f8f2;
+}
+.mnav-opt.on {
+  border-color: #5f8247;
+  background: #f3f7ec;
+  box-shadow: inset 0 0 0 1px #5f8247;
+}
+.mnav-opt-ico {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: #eef3e7;
+  color: #4f6b3d;
+}
+.mnav-opt.on .mnav-opt-ico {
+  background: #5f8247;
+  color: #fff;
+}
+.mnav-opt-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.mnav-opt-text strong {
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #27301f;
+}
+.mnav-opt-text small {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: #8a9381;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.mnav-opt-check {
+  flex: none;
+  color: #5f8247;
+}
+.mnav-opt em {
+  position: absolute;
+  top: -8px;
+  right: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #e8eedf;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  color: #5f6f50;
+}
+@media (max-width: 360px) {
+  .mnav-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bnav,
+  .bnav-ico,
+  .bnav-add-orb,
+  .bnav-add svg,
+  .sidebar,
+  .sidebar.mobile-open {
+    transition: none;
+  }
+}

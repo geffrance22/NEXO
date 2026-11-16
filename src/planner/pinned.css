@@ -175,3 +175,25 @@
     transform: translateY(3px);
   }
 }
+
+/* Celular: el área que responde al toque es más grande que el círculo que se ve. */
+@media (max-width: 720px) {
+  .hpin-check {
+    position: relative;
+    width: 22px;
+    height: 22px;
+    margin-top: 9px;
+  }
+  .hpin-check::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+  }
+  .hpin-main {
+    padding: 8px;
+  }
+  .hpin-more {
+    margin-left: 31px;
+    padding: 8px 0;
+  }
+}

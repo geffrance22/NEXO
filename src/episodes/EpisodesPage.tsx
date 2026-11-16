@@ -54,6 +54,7 @@ import {
 } from '../lib/episodes';
 import { friendlyDate, money, normalizeText, shortDate, todayInputValue } from '../lib/format';
 import { daysBetween } from '../lib/people';
+import { landingTab, useLanded } from '../lib/landing';
 import { updateKinds } from '../lib/updates';
 import { Avatar } from '../people/Avatar';
 import { agoLabel, excerpt } from '../instants/model';
@@ -163,10 +164,14 @@ function EpisodesList() {
     activo: rows.filter((r) => r.ep.status === 'activo').length,
     cerrado: rows.filter((r) => r.ep.status === 'cerrado').length,
   };
-  // Abre en «En curso»; si no hay nada en curso pero sí cerrados, en «Cerrados».
-  const [tab, setTab] = useState<Tab>(() =>
-    !counts.activo && counts.cerrado ? 'cerrado' : 'activo',
-  );
+  // Abre en la pestaña pedida (la barra inferior del celular) o en «En curso»; si no hay nada en
+  // curso pero sí cerrados, en «Cerrados».
+  const [tab, setTab] = useState<Tab>(() => {
+    const asked = landingTab('Episodios');
+    if (asked === 'activo' || asked === 'cerrado') return asked;
+    return !counts.activo && counts.cerrado ? 'cerrado' : 'activo';
+  });
+  useLanded('Episodios');
   const [query, setQuery] = useState('');
   const [kindFilter, setKindFilter] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>('fecha');

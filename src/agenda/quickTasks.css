@@ -228,6 +228,40 @@
     opacity: 0.55;
   }
 }
+/* Celular: casilla y botones del renglón del tamaño del dedo (lo que se ve no cambia tanto). */
+@media (max-width: 720px) {
+  .qt-item {
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+  .qt-check {
+    position: relative;
+    width: 20px;
+    height: 20px;
+    margin-top: 0;
+    border-radius: 6px;
+  }
+  .qt-check::after {
+    content: '';
+    position: absolute;
+    inset: -9px;
+  }
+  .qt-act {
+    width: 32px;
+    height: 32px;
+    margin: -6px 0;
+    border-radius: 9px;
+  }
+  .qt-act + .qt-act {
+    margin-left: -4px;
+  }
+  /* En el centro de Mi espacio no hay tarjeta: el pie no se estira hasta el borde de la pantalla. */
+  .home-main .qt-block .qt-note {
+    margin: 8px 0 0;
+    padding-right: 0;
+    padding-left: 0;
+  }
+}
 /* El «+» queda en la misma columna que las casillas (centro a 16 px del borde). */
 .qt-add {
   display: flex;

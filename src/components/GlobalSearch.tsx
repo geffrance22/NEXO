@@ -1,11 +1,13 @@
 import {
   useCallback,
+  useEffect,
   useId,
   useMemo,
   useRef,
   useState,
   type KeyboardEvent,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   BookOpen,
   Columns3,
@@ -16,11 +18,13 @@ import {
   Search,
   SquareCheck,
   StickyNote,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useApp } from "../AppContext";
 import { kindMeta } from "../composer/kinds";
 import { useDismiss } from "../hooks/useDismiss";
+import { MOBILE_QUERY, useMobile } from "../hooks/useMobile";
 import { kindLabel, signedAmount } from "../lib/entries";
 import { episodeKindOf } from "../lib/episodes";
 import { friendlyDate, shortDate } from "../lib/format";
@@ -210,7 +214,28 @@ export function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const root = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
   const listId = useId();
+  // En el celular el buscador es un ícono: al tocarlo, el campo cubre el encabezado.
+  const mobile = useMobile();
+  const [expanded, setExpanded] = useState(false);
+  const compact = mobile && !expanded;
+  const expand = useCallback(() => {
+    // Al instante (no en el siguiente render): así el teclado del celular se abre con el toque.
+    if (window.matchMedia(MOBILE_QUERY).matches) flushSync(() => setExpanded(true));
+    input.current?.focus();
+  }, []);
+  const collapse = useCallback(() => {
+    setExpanded(false);
+    setOpen(false);
+    setQuery("");
+  }, []);
+  // Otros lugares (la barra inferior del celular) pueden pedir el buscador.
+  useEffect(() => {
+    window.addEventListener("nexo:search", expand);
+    return () => window.removeEventListener("nexo:search", expand);
+  }, [expand]);
+  useDismiss(mobile && expanded, root, collapse);
   const reading = useReadingSearch(open ? query : "");
   const notes = useNoteSearch(open ? query : "");
   const captures = useCaptureSearch(open ? query : "");
@@ -252,6 +277,7 @@ export function GlobalSearch() {
   const pick = (hit: Hit) => {
     setOpen(false);
     setQuery("");
+    setExpanded(false);
     switch (hit.type) {
       case "instant":
         return openInstant(hit.instant.id);
@@ -303,11 +329,26 @@ export function GlobalSearch() {
   };
 
   let index = 0;
+  if (compact)
+    return (
+      <div className="gsearch m-closed" ref={root}>
+        <button
+          type="button"
+          className="icon-button gs-trigger"
+          aria-label="Buscar en todo el espacio"
+          title="Buscar"
+          onClick={expand}
+        >
+          <Search size={20} />
+        </button>
+      </div>
+    );
   return (
-    <div className="gsearch" ref={root}>
+    <div className={"gsearch" + (mobile ? " m-open" : "")} ref={root}>
       <label className="gs-field">
         <Search size={15} aria-hidden="true" />
         <input
+          ref={input}
           className="gs-input"
           role="combobox"
           aria-label="Buscar en todo el espacio"
@@ -331,8 +372,19 @@ export function GlobalSearch() {
             ensureFresh();
           }}
           onKeyDown={onKeyDown}
+          enterKeyHint="search"
         />
       </label>
+      {mobile && (
+        <button
+          type="button"
+          className="gs-cancel"
+          aria-label="Cerrar el buscador"
+          onClick={collapse}
+        >
+          <X size={20} />
+        </button>
+      )}
       {shown && (
         <div className="pp-dropdown gs-panel" role="listbox" id={listId}>
           {groups.length === 0 && (

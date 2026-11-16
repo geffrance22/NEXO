@@ -76,6 +76,7 @@ import { LearnDialog } from "./LearnDialog";
 import { FeedsDialog } from "./FeedsDialog";
 import { syncFeeds } from "./feeds";
 import { toHash } from "../lib/route";
+import { landingTab, useLanded } from "../lib/landing";
 import "./readings.css";
 
 type Article = {
@@ -192,6 +193,8 @@ function selectionSpan(root: HTMLElement, r: Range): Span | null {
   return end > start ? { start, end } : null;
 }
 const isWordChar = (c: string | undefined) => !!c && /[\p{L}\p{N}]/u.test(c);
+/** Colecciones con las que Lecturas puede abrir directamente (ver `landOn`). */
+const LANDING_VIEWS = ["inbox", "read", "favorites", "archive", "marks"];
 /**
  * Ajusta un tramo seleccionado a palabras completas y sin espacios en los bordes: arrastrar con
  * prisa no deja media palabra fuera del resaltado.
@@ -219,9 +222,14 @@ export function Readings({
   // Artículo pedido por enlace (p. ej. la recomendación del inicio): al cargarlo se muestra su
   // colección; si ya no existe, se abre Lecturas sin error.
   const linked = useRef(openId ?? "");
-  const [view, setView] = useState("inbox"),
+  // La colección pedida (p. ej. un acceso de la barra inferior del celular) o «Por leer».
+  const [view, setView] = useState(() => {
+      const asked = landingTab("Lecturas");
+      return asked && LANDING_VIEWS.includes(asked) ? asked : "inbox";
+    }),
     [query, search] = useState(""),
     [adding, add] = useState(addLink);
+  useLanded("Lecturas");
   const [busy, working] = useState(false),
     [error, fail] = useState(""),
     [folder, setFolder] = useState("");

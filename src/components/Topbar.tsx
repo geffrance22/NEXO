@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { Menu, Moon, Plus, Sun } from 'lucide-react';
+import { Menu, Moon, Plus, Sun, X } from 'lucide-react';
 import { useApp } from '../AppContext';
+import { useMobile } from '../hooks/useMobile';
 import { useTheme } from '../hooks/useTheme';
 import { GlobalSearch } from './GlobalSearch';
 import { UserMenu } from './UserMenu';
@@ -19,9 +20,12 @@ const busy = (target: EventTarget | null) =>
 const covered = () =>
   Boolean(document.querySelector('[aria-modal="true"], .nx-pop, .cap-lb, .chat-panel'));
 
-export function Topbar({ onToggleMenu }: { onToggleMenu: () => void }) {
+export function Topbar({ menuOpen, onToggleMenu }: { menuOpen: boolean; onToggleMenu: () => void }) {
   const { page, openEntry, openCapture, openInstants } = useApp();
   const { dark, toggle } = useTheme();
+  // En el celular, «+» y el perfil viven en la barra inferior: aquí quedan el menú, el nombre de
+  // la sección, el buscador y el modo oscuro.
+  const mobile = useMobile();
   const themeLabel = dark ? 'Desactivar modo oscuro' : 'Activar modo oscuro';
 
   // Atajos desde cualquier sección: «N» abre «¿Qué quieres guardar?»; «P» (o «W») escribe un
@@ -56,26 +60,34 @@ export function Topbar({ onToggleMenu }: { onToggleMenu: () => void }) {
 
   return (
     <header className="topbar">
-      <button className="icon-button mobile-menu" onClick={onToggleMenu} aria-label="Abrir menú">
-        <Menu size={21} />
+      <button
+        className="icon-button mobile-menu"
+        onClick={onToggleMenu}
+        aria-label={menuOpen ? 'Cerrar menú' : 'Abrir menú'}
+        aria-expanded={menuOpen}
+      >
+        {menuOpen ? <X size={21} /> : <Menu size={21} />}
       </button>
       <div className="breadcrumb">
-        Mi universo <span>/</span> <strong>{page}</strong>
+        <span className="crumb-root">Mi universo</span> <span className="crumb-sep">/</span>{' '}
+        <strong>{page}</strong>
       </div>
       <div className="top-actions">
         <GlobalSearch />
+        {!mobile && (
+          <button
+            type="button"
+            className="top-new"
+            title="Nuevo recuerdo (N)"
+            aria-label="Nuevo recuerdo"
+            aria-keyshortcuts="N"
+            onClick={() => openEntry()}
+          >
+            <Plus size={18} strokeWidth={2.4} />
+          </button>
+        )}
         <button
-          type="button"
-          className="top-new"
-          title="Nuevo recuerdo (N)"
-          aria-label="Nuevo recuerdo"
-          aria-keyshortcuts="N"
-          onClick={() => openEntry()}
-        >
-          <Plus size={18} strokeWidth={2.4} />
-        </button>
-        <button
-          className="icon-button"
+          className="icon-button top-theme"
           title={themeLabel}
           aria-label={themeLabel}
           aria-pressed={dark}
@@ -83,7 +95,7 @@ export function Topbar({ onToggleMenu }: { onToggleMenu: () => void }) {
         >
           {dark ? <Moon size={19} /> : <Sun size={19} />}
         </button>
-        <UserMenu />
+        {!mobile && <UserMenu />}
       </div>
     </header>
   );

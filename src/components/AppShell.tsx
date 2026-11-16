@@ -53,7 +53,9 @@ import { QuickDialog } from "../people/QuickDialog";
 import { PlacesPage } from "../pages/PlacesPage";
 import { PlaceSheet } from "../places/PlaceSheet";
 import { useAssistant } from "../hooks/useAssistant";
+import { useMobile } from "../hooks/useMobile";
 import { useToast } from "../hooks/useToast";
+import { BottomNav } from "../mobile/BottomNav";
 import { useWorkspace } from "../hooks/useWorkspace";
 import { useMyProfile } from "../hooks/useMyProfile";
 import { MyProfileSheet } from "../people/MyProfileSheet";
@@ -160,7 +162,10 @@ export function AppShell({ user }: { user: AppUser }) {
     ...parseHash(window.location.hash),
     visit: 0,
   }));
+  // `mobile`: el menú lateral abierto en pantallas pequeñas. `phone`: la pantalla es de celular
+  // (barra inferior en lugar del «+» y el avatar del encabezado).
   const [mobile, setMobile] = useState(false);
+  const phone = useMobile();
   const [modal, setModal] = useState<ModalState>(null);
   const [chat, setChat] = useState(false);
   const [viewer, setViewer] = useState<{
@@ -509,6 +514,16 @@ export function AppShell({ user }: { user: AppUser }) {
     }));
   }, [data.loaded, workspace.episodes, route.page, route.episodeId]);
 
+  // El menú lateral del celular se cierra con Escape (y tocando fuera, en su velo).
+  useEffect(() => {
+    if (!mobile) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobile(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [mobile]);
+
   function go(next: Page, item: { id: string } | null = null) {
     const target = toHash(next, item?.id ?? null);
     if (window.location.hash === target) {
@@ -642,7 +657,11 @@ export function AppShell({ user }: { user: AppUser }) {
     openBrief: (person, mode, entry) =>
       setModal({ type: "brief", personId: person.id, mode, entry }),
     experiencesMissing: data.experiencesMissing,
-    openChat: () => setChat(true),
+    // Desde el menú lateral del celular: el menú se cierra para que el chat quede solo.
+    openChat: () => {
+      setMobile(false);
+      setChat(true);
+    },
     me: mine.me,
     meMissing: mine.meMissing,
     meLoaded: mine.meLoaded,
@@ -735,8 +754,18 @@ export function AppShell({ user }: { user: AppUser }) {
     <AppProvider value={context}>
       <div className="app">
         <Sidebar mobileOpen={mobile} />
+        {mobile && (
+          <div
+            className="sidebar-scrim"
+            aria-hidden="true"
+            onClick={() => setMobile(false)}
+          />
+        )}
         <div className="main-shell">
-          <Topbar onToggleMenu={() => setMobile((open) => !open)} />
+          <Topbar
+            menuOpen={mobile}
+            onToggleMenu={() => setMobile((open) => !open)}
+          />
           <main>
             {data.error && (
               <div className="database-error" role="alert">
@@ -831,6 +860,7 @@ export function AppShell({ user }: { user: AppUser }) {
             </footer>
           </main>
         </div>
+        {phone && <BottomNav />}
         <Toasts items={toasts} onClose={dismiss} />
         {outcome && outcomeTarget && (
           <OutcomePopover

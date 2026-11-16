@@ -154,15 +154,36 @@ main:has(.page-heading.greet) {
   }
 }
 @media (max-width: 720px) {
+  .page-heading.greet {
+    margin-bottom: 16px;
+  }
   .page-heading.greet h1 {
     max-width: none;
     font-size: 26px;
+    overflow-wrap: anywhere;
   }
   .greet .greet-text {
     font-size: 14.5px;
   }
   .greet-actions {
     gap: 6px;
+  }
+  /* Accesos del saludo: del alto de un dedo; un texto largo parte línea en vez de salirse. */
+  .greet-chip {
+    height: auto;
+    min-height: 38px;
+    max-width: 100%;
+    padding: 7px 12px 7px 13px;
+    line-height: 1.25;
+    text-align: left;
+  }
+  .page-heading.greet .amb {
+    height: 112px;
+  }
+}
+@media (max-width: 380px) {
+  .page-heading.greet h1 {
+    font-size: 24px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

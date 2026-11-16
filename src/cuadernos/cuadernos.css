@@ -568,7 +568,8 @@ body:has(.nx-peek) .sheet-backdrop:has(> .sheet.cz-peek) {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  height: calc(100dvh - var(--topbar-h) - var(--main-pt) - 16px);
+  /* `--bnav-space`: la barra inferior del celular (0 en escritorio). */
+  height: calc(100dvh - var(--topbar-h) - var(--main-pt) - 16px - var(--bnav-space, 0px));
   min-height: 420px;
 }
 .cz-back {
@@ -1166,7 +1167,7 @@ body:has(.nx-peek) .sheet-backdrop:has(> .sheet.cz-peek) {
 /* ───────── Pantallas pequeñas ───────── */
 @media (max-width: 760px) {
   .cz-page {
-    height: calc(100dvh - var(--topbar-h) - var(--main-pt) - 12px);
+    height: calc(100dvh - var(--topbar-h) - var(--main-pt) - 12px - var(--bnav-space, 0px));
   }
   .cz-bar-end {
     width: 100%;

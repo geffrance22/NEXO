@@ -20,6 +20,7 @@ import {
 import { useApp } from "../AppContext";
 import type { Entry, Person, Place } from "../data";
 import { GraphCanvas } from "../components/GraphCanvas";
+import { landingTab, useLanded } from "../lib/landing";
 import { placeKinds, placeStats } from "../lib/places";
 import {
   egoGraph,
@@ -47,6 +48,31 @@ export type ConnectionsTab =
   "social" | "conexiones" | "relaciones" | "arbol" | "comparar" | "wrapped";
 type Tab = ConnectionsTab;
 type Year = number | "todo";
+
+/** Las pestañas de Conexiones (también se ofrecen como accesos de la barra inferior del celular). */
+export const connectionTabs: {
+  id: Tab;
+  label: string;
+  icon: typeof Orbit;
+  hint: string;
+}[] = [
+  {
+    id: "social",
+    label: "Grafo social",
+    icon: Orbit,
+    hint: "Todas las personas con las que has interactuado, por cercanía",
+  },
+  {
+    id: "conexiones",
+    label: "Conexiones",
+    icon: Network,
+    hint: "Solo quienes aparecen juntos en un mismo recuerdo",
+  },
+  { id: "relaciones", label: "Relaciones", icon: Share2, hint: "" },
+  { id: "arbol", label: "Árbol familiar", icon: TreePine, hint: "" },
+  { id: "comparar", label: "Comparar", icon: GitCompareArrows, hint: "" },
+  { id: "wrapped", label: "Tu año", icon: Sparkles, hint: "" },
+];
 
 /** Ficha flotante: no tapa el lienzo, se puede seguir navegando mientras está abierta. */
 export function FloatCard({
@@ -326,7 +352,12 @@ export function ConnectionsPage({
   initialTab?: Tab;
 }) {
   const { workspace, me } = useApp();
-  const [tab, setTab] = useState<Tab>(initialTab);
+  // Abre en la pestaña pedida (p. ej. un acceso de la barra inferior del celular), si hay una.
+  const [tab, setTab] = useState<Tab>(() => {
+    const asked = landingTab("Conexiones");
+    return connectionTabs.find((t) => t.id === asked)?.id ?? initialTab;
+  });
+  useLanded("Conexiones");
   const years = useMemo(
     () => yearsWithData(workspace.entries),
     [workspace.entries],
@@ -377,25 +408,7 @@ export function ConnectionsPage({
   const placesShown = graph.nodes.filter((n) => n.shape === "place").length;
   // Relaciones y árbol no dependen del año: muestran la estructura completa.
   const structural = tab === "relaciones" || tab === "arbol";
-
-  const tabs: { id: Tab; label: string; icon: typeof Orbit; hint: string }[] = [
-    {
-      id: "social",
-      label: "Grafo social",
-      icon: Orbit,
-      hint: "Todas las personas con las que has interactuado, por cercanía",
-    },
-    {
-      id: "conexiones",
-      label: "Conexiones",
-      icon: Network,
-      hint: "Solo quienes aparecen juntos en un mismo recuerdo",
-    },
-    { id: "relaciones", label: "Relaciones", icon: Share2, hint: "" },
-    { id: "arbol", label: "Árbol familiar", icon: TreePine, hint: "" },
-    { id: "comparar", label: "Comparar", icon: GitCompareArrows, hint: "" },
-    { id: "wrapped", label: "Tu año", icon: Sparkles, hint: "" },
-  ];
+  const tabs = connectionTabs;
 
   return (
     // Con mapa, el panel ocupa el alto disponible y la página no se desplaza; «Tu año» y

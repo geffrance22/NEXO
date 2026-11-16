@@ -34,7 +34,8 @@ import '../finance/finance-plus.css';
  * Pestañas en una sola línea: «Resumen» va solo con su ícono; con poco espacio se usan los nombres
  * cortos y, más estrecho aún, solo los íconos (el nombre queda en el título y para lectores).
  */
-const tabList: { key: FinTab; label: string; short?: string; icon: typeof Plus; iconOnly?: boolean }[] = [
+/** Las pestañas de Finanzas (también se ofrecen como accesos de la barra inferior del celular). */
+export const tabList: { key: FinTab; label: string; short?: string; icon: typeof Plus; iconOnly?: boolean }[] = [
   { key: 'resumen', label: 'Resumen', icon: LayoutDashboard, iconOnly: true },
   { key: 'movimientos', label: 'Movimientos', icon: ListOrdered },
   { key: 'apuntes', label: 'Apuntes', icon: NotebookPen },

@@ -299,6 +299,11 @@ body.dl-grabbing * {
   flex: 1;
   min-width: 0;
 }
+/* La foto de la persona también es un <span>: sin esto se estiraba como un óvalo. */
+.hk-people span.pp-avatar {
+  display: inline-grid;
+  flex: none;
+}
 .hk-people strong,
 .hk-text strong {
   overflow: hidden;
@@ -1523,6 +1528,7 @@ body.dl-grabbing * {
 @media (max-width: 720px) {
   .sheet-backdrop > .sheet.hbs {
     height: 92vh;
+    height: 92dvh;
   }
   .hbs-head,
   .hbs-body,
@@ -1554,5 +1560,81 @@ body.dl-grabbing * {
   }
   .hbs-foot .hbs-btn.primary {
     margin-left: auto;
+  }
+  .hbs-foot {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .hbs-foot .hbs-btn,
+  .hbs-actions .hbs-btn.sm {
+    min-height: 40px;
+  }
+  .hbs-chev {
+    width: 38px;
+    height: 38px;
+  }
+  .hbs-stepper button {
+    width: 34px;
+    height: 34px;
+  }
+  .hbs-chips button {
+    min-height: 36px;
+    padding: 6px 13px;
+  }
+  .hbs-grip {
+    width: 30px;
+    height: 40px;
+  }
+
+  /* ── Mi espacio en el celular ── */
+  .hb-tools {
+    margin: -2px 0 -2px;
+  }
+  .hb-tools .pp-icon-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+  }
+  .hb-add {
+    padding: 13px;
+    font-size: 13.5px;
+    opacity: 1;
+  }
+  .hk-list > li > :is(button, .hk-row-static),
+  .hk-people > li > button,
+  .hk-ahead > li > :is(button, .hk-row-static) {
+    min-height: 48px;
+    padding: 8px 6px;
+  }
+  .hk-shortcuts.iconos button {
+    padding: 11px 4px 10px;
+  }
+  .hk-shortcuts.lista button {
+    min-height: 44px;
+  }
+  .hk-folders button {
+    min-height: 34px;
+  }
+  /* Ánimo con muchos días: los puntos bajan a otra fila en vez de achicarse hasta desaparecer. */
+  .hk-moods {
+    grid-template-columns: repeat(auto-fit, minmax(14px, 1fr));
+    gap: 3px;
+  }
+}
+/* Teléfonos angostos: las cifras de dinero en renglones (nombre a la izquierda, monto completo a
+   la derecha) en vez de tres columnas donde el monto se cortaba. */
+@media (max-width: 420px) {
+  .hk-money,
+  .hk-money.two {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .hk-money > div {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .hk-money span {
+    font-size: 12.5px;
   }
 }

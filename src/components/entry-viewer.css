@@ -476,6 +476,7 @@ html[data-theme='dark'] .sheet-backdrop:has(> .sheet.ev) {
   .sheet-backdrop > .sheet.ev.wide {
     max-width: none;
     max-height: 94vh;
+    max-height: 94dvh;
     border-radius: 22px 22px 0 0;
   }
   .ev-scroll {

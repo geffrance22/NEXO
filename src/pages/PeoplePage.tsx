@@ -41,6 +41,7 @@ import { PageHeading } from '../components/PageHeading';
 import { groupKinds, groupsOf } from '../lib/relations';
 import { outcomeHint } from '../lib/commitments';
 import { normalizeText } from '../lib/format';
+import { landingTab, useLanded } from '../lib/landing';
 import {
   interestsOf,
   isReachable,
@@ -344,7 +345,12 @@ export function PeoplePage() {
   const [groupPick, setGroupPick] = useState(false);
   const [manage, setManage] = useState(false);
   const [query, setQuery] = useState('');
-  const [tab, setTab] = useState<TabId>('todos');
+  // Abre en la pestaña pedida (p. ej. un acceso de la barra inferior del celular), si hay una.
+  const [tab, setTab] = useState<TabId>(() => {
+    const asked = landingTab('Personas');
+    return tabs.find((t) => t.id === asked)?.id ?? 'todos';
+  });
+  useLanded('Personas');
   // Solo quienes tienen movimientos de dinero contigo (se combina con las demás pestañas).
   const [moneyOnly, setMoneyOnly] = useState(false);
   const [sort, setSort] = useState<Sort>('reciente');

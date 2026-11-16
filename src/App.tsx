@@ -4,12 +4,16 @@ import { AppShell } from './components/AppShell';
 import { AuthScreen } from './components/AuthScreen';
 import { useAuth } from './hooks/useAuth';
 import { useToast } from './hooks/useToast';
+import { hideSplash } from './lib/splash';
 import { SharedBoard } from './planner/SharedBoard';
 
 /** Enlace de solo lectura de un tablero (?ver=…): se abre sin sesión. */
 const shareToken = new URLSearchParams(window.location.search).get('ver');
 
 export function App() {
+  useEffect(() => {
+    if (shareToken) hideSplash();
+  }, []);
   if (shareToken) return <SharedBoard token={shareToken} />;
   return <SignedApp />;
 }
@@ -21,6 +25,11 @@ function SignedApp() {
   useEffect(() => {
     if (sessionError) notify(sessionError);
   }, [sessionError, notify]);
+
+  // La pantalla de inicio (app.html) se va cuando ya se sabe si hay sesión.
+  useEffect(() => {
+    if (ready) hideSplash();
+  }, [ready]);
 
   if (!ready) {
     return (

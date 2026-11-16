@@ -8,6 +8,10 @@ export function useTheme() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    // La barra del sistema (y la de estado de la app instalada) acompaña al tema.
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', dark ? '#161612' : '#f5f5f0');
     try {
       localStorage.setItem(KEY, dark ? 'dark' : 'light');
     } catch {

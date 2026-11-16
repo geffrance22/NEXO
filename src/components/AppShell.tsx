@@ -62,6 +62,7 @@ import { MyProfileSheet } from "../people/MyProfileSheet";
 import { MergeDialog } from "../people/MergeDialog";
 import { PeopleMoneyDialog } from "../finance/PeopleMoney";
 import { parseHash, toHash, type Route } from "../lib/route";
+import { shareLink, takeIncoming } from "../lib/share";
 import { ConnectionsPage } from "../pages/ConnectionsPage";
 import { Agenda, Libroteca } from "../library/Libroteca";
 import { UploadTray } from "../capturas/UploadTray";
@@ -474,6 +475,20 @@ export function AppShell({ user }: { user: AppUser }) {
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  // Algo compartido hacia Nexo desde otra app (o el acceso directo «Nuevo instante» del ícono).
+  useEffect(() => {
+    const incoming = takeIncoming();
+    if (!incoming) return;
+    if (incoming.kind === "link") {
+      shareLink(incoming.text);
+      go("Lecturas", { id: "nuevo" });
+    } else {
+      const text = incoming.kind === "text" ? incoming.text : undefined;
+      setWriting((w) => w ?? { text, nonce: Date.now() });
+    }
+    // Solo al abrir la app.
   }, []);
 
   // Si la URL apunta a una persona que ya no existe (borrada o de otra cuenta), abre la lista.

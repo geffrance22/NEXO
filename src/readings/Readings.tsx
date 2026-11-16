@@ -78,6 +78,7 @@ import { syncFeeds } from "./feeds";
 import { toHash } from "../lib/route";
 import { landingTab, useLanded } from "../lib/landing";
 import { touchFirst, useMedia } from "../hooks/useMobile";
+import { useWakeLock } from "../hooks/useWakeLock";
 import { ActionMenu, type MenuItem } from "./ActionMenu";
 import { ArrowLeft, EllipsisVertical } from "lucide-react";
 import "./readings.css";
@@ -87,6 +88,8 @@ import "./readings.css";
  * Diccionario o Flashcards). Es el mismo corte que usa readings.css.
  */
 const COMPACT = "(max-width: 760px)";
+/** Sin tocar la pantalla este tiempo, un artículo abierto deja que se apague (con «Escuchar», no). */
+const READ_IDLE_MS = 4 * 60_000;
 /** Estado de la entrada del historial que pone una capa encima de la lista (ver más abajo). */
 type LayerState = { nexoLocal?: string; rdLayer?: boolean } | null;
 
@@ -241,6 +244,8 @@ export function Readings({
     [query, search] = useState(""),
     [adding, add] = useState(addLink);
   useLanded("Lecturas");
+  // Leyendo, la pantalla no se apaga; si pasan unos minutos sin tocarla, vuelve a apagarse sola.
+  useWakeLock(Boolean(article), READ_IDLE_MS);
   const [busy, working] = useState(false),
     [error, fail] = useState(""),
     [folder, setFolder] = useState("");
@@ -2185,6 +2190,7 @@ export function Readings({
                     <>
                       <Listen
                         compact
+                        title={article.title}
                         article={articleRef}
                         pane={() =>
                           document.querySelector<HTMLElement>(".readings > main")
@@ -2370,6 +2376,7 @@ export function Readings({
               </button>
               {!annotations && (
                 <Listen
+                  title={article.title}
                   article={articleRef}
                   pane={() =>
                     document.querySelector<HTMLElement>(".readings > main")

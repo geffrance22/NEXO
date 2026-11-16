@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Headphones, Pause, Play, SlidersHorizontal, Square } from 'lucide-react';
+import { useWakeLock } from '../hooks/useWakeLock';
+import { clearNowPlaying, showNowPlaying, track } from './nowPlaying';
 
 type Piece = { start: number; node: Text };
 type Sentence = { start: number; end: number };
@@ -82,14 +84,19 @@ function voiceLabel(v: SpeechSynthesisVoice) {
 export function Listen({
   article,
   pane,
+  title = '',
   compact = false,
 }: {
   article: RefObject<HTMLElement | null>;
   pane: () => HTMLElement | null;
+  /** Título del artículo (para los controles de la pantalla bloqueada). */
+  title?: string;
   /** Solo el ícono (la barra del celular). */
   compact?: boolean;
 }) {
   const [state, setState] = useState<'off' | 'playing' | 'paused'>('off');
+  // Mientras suena, la pantalla no se apaga (sin límite de tiempo: no hace falta tocarla).
+  useWakeLock(state === 'playing');
   const [rate, setRate] = useState(() => {
     const r = Number(localStorage.getItem(RATE_KEY));
     return RATES.includes(r) ? r : 1;
@@ -127,6 +134,21 @@ export function Listen({
     return () => window.speechSynthesis.removeEventListener('voiceschanged', refresh);
   }, [lang]);
 
+  // Controles fuera de la página (pantalla bloqueada, notificación, teclas multimedia): pausar y
+  // seguir, detener, y la frase siguiente o la anterior.
+  const controls = useRef({ pause, resume, stop, skip });
+  controls.current = { pause, resume, stop, skip };
+  useEffect(() => {
+    if (state === 'off') return;
+    showNowPlaying(title, state, {
+      play: () => controls.current.resume(),
+      pause: () => controls.current.pause(),
+      stop: () => controls.current.stop(),
+      next: () => controls.current.skip(1),
+      previous: () => controls.current.skip(-1),
+    });
+  }, [state, title]);
+
   if (!supported()) return null;
 
   function clearMarks() {
@@ -138,6 +160,7 @@ export function Listen({
     run.current.token++;
     window.speechSynthesis.cancel();
     clearMarks();
+    clearNowPlaying();
     setState('off');
   }
 
@@ -268,6 +291,8 @@ export function Listen({
       voiceRef.current = list.find((v) => v.voiceURI === saved) ?? list[0] ?? null;
       setLang(textLang);
     }
+    // Dentro del toque: así el navegador deja sonar el audio que trae los controles de fuera.
+    track.play();
     setState('playing');
     // Las voces pueden cargar tarde la primera vez.
     if (!window.speechSynthesis.getVoices().length) {
@@ -279,15 +304,35 @@ export function Listen({
     } else speak(token);
   }
 
+  /**
+   * Pausar corta la voz y recuerda la frase; seguir la repite desde su inicio. Así funciona igual en
+   * todas partes: en Android `speechSynthesis.pause()` corta la voz y `resume()` no la retoma.
+   */
+  function pause() {
+    if (state !== 'playing') return;
+    run.current.token++;
+    window.speechSynthesis.cancel();
+    if (canHighlight()) CSS.highlights.delete('rd-tts-word');
+    track.pause();
+    setState('paused');
+  }
+  function resume() {
+    if (state !== 'paused') return;
+    restartSentence();
+  }
+
   function toggle() {
     if (state === 'off') return start();
-    if (state === 'playing') {
-      window.speechSynthesis.pause();
-      setState('paused');
-    } else {
-      window.speechSynthesis.resume();
-      setState('playing');
-    }
+    if (state === 'playing') pause();
+    else resume();
+  }
+
+  /** La frase siguiente (1) o la anterior (-1), desde los controles de fuera de la página. */
+  function skip(delta: number) {
+    if (state === 'off') return;
+    const cur = run.current;
+    cur.index = Math.min(Math.max(0, cur.index + delta), Math.max(0, cur.sentences.length - 1));
+    restartSentence();
   }
 
   /** Repite la frase actual con la nueva velocidad o voz (así se escucha el cambio). */
@@ -296,6 +341,7 @@ export function Listen({
     const token = run.current.token + 1;
     run.current.token = token;
     window.speechSynthesis.cancel();
+    track.play();
     setState('playing');
     window.setTimeout(() => speak(token), 60);
   }

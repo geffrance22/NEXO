@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Minus, RotateCw, Square, X } from "lucide-react";
 import { supabase } from "../backend";
+import { takeSharedLink } from "../lib/share";
 import { ReaderDialog } from "./ReaderDialog";
 import { capture, failure, publicLink } from "./capture";
 import { savePictures } from "./media";
@@ -216,21 +217,30 @@ export function SaveLink({
       ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [items, running]);
 
-  async function submit() {
-    if (busy || !links.length) return;
+  // Lo que llega con «Compartir» del celular: se escribe solo y, si es un enlace, se guarda ya.
+  useEffect(() => {
+    const shared = takeSharedLink();
+    if (!shared) return;
+    const found = findLinks(shared).links.slice(0, MAX);
+    setText(found.join("\n") || shared);
+    if (found.length) void submit(found);
+  }, []);
+
+  async function submit(list = links) {
+    if (busy || !list.length) return;
     fail("");
-    if (links.length > 1) {
-      setItems(links.map((url) => ({ url, status: "queued" })));
-      void run(links);
+    if (list.length > 1) {
+      setItems(list.map((url) => ({ url, status: "queued" })));
+      void run(list);
       return;
     }
     const body = manual.trim();
     setStep("reading");
     try {
       const snap = body
-        ? { title: title.trim() || new URL(links[0]).hostname, content: body }
+        ? { title: title.trim() || new URL(list[0]).hostname, content: body }
         : null;
-      const { row } = await store(links[0], snap, setStep, keepLinks);
+      const { row } = await store(list[0], snap, setStep, keepLinks);
       saved(row);
     } catch (e) {
       fail(failure(e));

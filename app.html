@@ -1,3 +1,187 @@
-<!doctype html><html lang="es"><head><link rel="icon" type="image/svg+xml" href="./nexo-favicon.svg"/><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><meta name="theme-color" content="#f5f5f0"/><meta name="description" content="Nexo. Tu memoria personal, conectada."/><title>Nexo — Tu universo personal</title><script>document.documentElement.dataset.theme = localStorage.getItem('nexo-theme') || '';
-/* iPhone y iPad: sin el zoom automático al tocar un campo (descuadra la página). iOS ignora este límite al pellizcar, así que el zoom con dos dedos sigue funcionando. */
-if (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) document.querySelector('meta[name=viewport]').content = 'width=device-width,initial-scale=1.0,maximum-scale=1.0'</script></head><body><div id="root"></div><script type="module" src="./src/main.tsx"></script></body></html>
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Nexo — Tu universo personal</title>
+<meta name="description" content="Nexo. Tu memoria personal, conectada."/>
+<meta name="theme-color" content="#f5f5f0"/>
+<link rel="icon" type="image/svg+xml" href="./nexo-favicon.svg"/>
+<link rel="manifest" href="./manifest.webmanifest"/>
+<link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-title" content="Nexo"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<!-- Las mismas fuentes que importa style.css, pedidas desde ya y sin bloquear: la pantalla de inicio ya escribe «Nexo» con su letra. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&amp;family=Manrope:wght@400;500;600;650;700;750;800&amp;family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&amp;display=swap" media="print" onload="this.media='all'"/>
+<script>
+(function () {
+  var d = document, theme = '';
+  try { theme = localStorage.getItem('nexo-theme') || ''; } catch (e) {}
+  d.documentElement.dataset.theme = theme;
+  // Modo oscuro: la barra del sistema (y la de estado de la app instalada) con el color de la página invertida.
+  if (theme === 'dark') d.querySelector('meta[name=theme-color]').content = '#161612';
+  var meta = d.querySelector('meta[name=viewport]');
+  var base = 'width=device-width,initial-scale=1.0';
+  /* iPhone y iPad: sin el zoom automático al tocar un campo (descuadra la página). iOS ignora este límite al pellizcar, así que el zoom con dos dedos sigue funcionando. */
+  var ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  // Instalada en el celular: la página llega hasta los bordes (la barra inferior ya respeta la zona del gesto de inicio).
+  var app = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  var phone = matchMedia('(max-width: 720px)');
+  var fit = function () {
+    meta.content = base + (ios ? ',maximum-scale=1.0' : '') + (app && phone.matches ? ',viewport-fit=cover' : '');
+  };
+  fit();
+  if (app && phone.addEventListener) phone.addEventListener('change', fit);
+})();
+</script>
+<style>
+/*
+ * Pantalla de inicio: se pinta antes que la app y se va sola cuando la sesión está lista
+ * (src/lib/splash.ts). Todo se mueve solo con translate, rotate, scale y opacity: el navegador
+ * los anima en la tarjeta gráfica, así siguen fluidos mientras la app arranca y ocupa el
+ * procesador. Se anima aunque el sistema pida menos movimiento (dura un par de segundos).
+ */
+html[data-theme='dark']{filter:invert(1) hue-rotate(180deg) contrast(.9)}
+#nexo-splash{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;overflow:hidden;background:#f8f9f6;-webkit-user-select:none;user-select:none;touch-action:none}
+#nexo-splash i,#nexo-splash b{position:absolute;display:block}
+.ns-aura{left:50%;top:44%;width:64vmax;height:64vmax;margin:-32vmax 0 0 -32vmax;border-radius:50%;background:radial-gradient(circle,rgba(214,227,185,.75) 0,rgba(214,227,185,0) 66%);animation:ns-drift 7s ease-in-out infinite alternate}
+.ns-aura.b{width:46vmax;height:46vmax;margin:-23vmax 0 0 -23vmax;background:radial-gradient(circle,rgba(169,189,140,.32) 0,rgba(169,189,140,0) 64%);animation-duration:9s;animation-direction:alternate-reverse}
+.ns-stage{--s:min(320px,78vw,46vh);position:relative;display:flex;flex-direction:column;align-items:center;margin-top:-4vh}
+.ns-art{position:relative;width:var(--s);height:var(--s)}
+.ns-x,.ns-mx,.ns-orbit,.ns-stars{position:absolute;inset:0}
+.ns-orbit{animation:ns-spin 32s linear infinite}
+.ns-stars{animation:ns-scatter 1.3s cubic-bezier(.1,.8,.3,1) .36s both,ns-spin 80s linear infinite reverse}
+.ns-stars i{left:calc(var(--x) * 100%);top:calc(var(--y) * 100%);width:3px;height:3px;margin:-1.5px 0 0 -1.5px;border-radius:50%;background:#9fb57f;opacity:.25;animation:ns-twinkle 2.4s ease-in-out calc(1.3s + var(--t) * 1s) infinite}
+.ns-ring{inset:6%;border-radius:50%;border:1.5px dashed rgba(159,181,127,.5);opacity:0;animation:ns-in .9s ease .5s forwards,ns-spin 50s linear infinite}
+.ns-ring.in{inset:23%;border:2px solid transparent;border-top-color:rgba(109,134,80,.55);border-right-color:rgba(109,134,80,.16);animation:ns-in .6s ease 1s forwards,ns-spin 2.2s cubic-bezier(.5,.15,.5,.85) infinite}
+.ns-ln{left:calc(var(--x,.5) * 100%);top:calc(var(--y,.5) * 100%);width:calc(var(--l) * var(--s));height:1.5px;margin-top:-.75px;border-radius:2px;transform-origin:0 50%;rotate:var(--a);scale:0 1}
+.ns-spk{background:linear-gradient(90deg,rgba(109,134,80,0) 12%,rgba(109,134,80,.42));animation:ns-grow .42s cubic-bezier(.3,.8,.3,1) calc(.55s + var(--i) * .035s) forwards}
+.ns-rim{background:rgba(143,166,111,.55);animation:ns-grow .26s ease-out calc(.82s + var(--i) * .07s) forwards}
+/* La información viaja por cada conexión hacia el ícono (se encoge al llegar: la absorbe). */
+.ns-ln b{left:0;top:50%;width:100%;height:0;transform-origin:0 0;opacity:0}
+.ns-spk b{animation:ns-flow 1.9s cubic-bezier(.5,0,.85,.5) calc(1.35s + var(--i) * .32s) infinite}
+.ns-spk b::before{content:'';position:absolute;right:-3.5px;top:-3.5px;width:7px;height:7px;border-radius:50%;background:#6d8650;box-shadow:0 0 0 3px rgba(109,134,80,.14),0 0 12px 3px rgba(109,134,80,.45)}
+/* Una luz recorre el contorno, conexión tras conexión, sin parar. */
+.ns-rim b{height:3px;margin-top:-1.5px;border-radius:3px;background:linear-gradient(90deg,rgba(93,119,68,0),#5d7744);transform-origin:0 50%;animation:ns-chase 2.4s linear calc(1.5s + var(--i) * .4s) infinite}
+.ns-nd{inset:0;animation:ns-burst .7s cubic-bezier(.2,1.45,.4,1) calc(.36s + var(--i) * .035s) both}
+.ns-nd b{left:calc(var(--x) * 100%);top:calc(var(--y) * 100%);width:calc(var(--d) * var(--s));height:calc(var(--d) * var(--s));translate:-50% -50%;border-radius:50%;background:var(--c);box-shadow:0 0 0 calc(var(--d) * var(--s) * .75) var(--h);animation:ns-breathe 3s ease-in-out calc(1.4s + var(--i) * .4s) infinite}
+.ns-core,.ns-wave,.ns-glow{left:50%;top:50%;border-radius:50%}
+.ns-core{width:calc(var(--s) * .07);height:calc(var(--s) * .07);margin:calc(var(--s) * -.035) 0 0 calc(var(--s) * -.035);background:radial-gradient(circle,#fff 0,#dfe9c9 45%,#8fa66f 100%);box-shadow:0 0 18px 6px rgba(169,189,140,.6);animation:ns-core .8s cubic-bezier(.3,.7,.3,1) .04s both}
+.ns-wave{width:calc(var(--s) * .3);height:calc(var(--s) * .3);margin:calc(var(--s) * -.15) 0 0 calc(var(--s) * -.15);border:1.5px solid rgba(109,134,80,.45);opacity:0;animation:ns-wave 2.8s cubic-bezier(.15,.6,.35,1) 1.3s infinite}
+.ns-wave.two{animation-delay:2.7s}
+.ns-wave.bang{border-width:2.5px;border-color:rgba(109,134,80,.55);animation:ns-bang .9s cubic-bezier(.1,.7,.3,1) .36s both}
+.ns-glow{width:calc(var(--s) * .72);height:calc(var(--s) * .72);margin:calc(var(--s) * -.36) 0 0 calc(var(--s) * -.36);background:radial-gradient(circle,rgba(228,237,206,.95) 0,rgba(228,237,206,.5) 38%,rgba(228,237,206,0) 70%);opacity:0;animation:ns-in .7s ease .5s forwards,ns-pulse 2.8s ease-in-out 1.3s infinite}
+.ns-tile{position:absolute;left:50%;top:50%;width:calc(var(--s) * .28);height:calc(var(--s) * .28);margin:calc(var(--s) * -.14) 0 0 calc(var(--s) * -.14);border-radius:30%;overflow:hidden;background:linear-gradient(150deg,#e2ebc9 0,#d6e3b9 48%,#c8d8a6 100%);box-shadow:0 14px 28px -10px rgba(52,72,50,.38),0 2px 6px rgba(52,72,50,.08),inset 0 1px 0 rgba(255,255,255,.65);rotate:-8deg;animation:ns-pop .95s cubic-bezier(.2,1.4,.35,1) .42s both,ns-bob 3.4s ease-in-out 1.4s infinite alternate}
+.ns-tile::after{content:'';position:absolute;inset:-30%;background:linear-gradient(110deg,rgba(255,255,255,0) 40%,rgba(255,255,255,.6) 50%,rgba(255,255,255,0) 60%);translate:-100% 0;animation:ns-sheen 3.2s cubic-bezier(.45,0,.3,1) 1.2s infinite}
+.ns-n{position:absolute;inset:0;width:100%;height:100%;fill:#344832;animation:ns-ink .65s cubic-bezier(.2,1.5,.4,1) .8s both}
+.ns-text{position:relative;display:flex;flex-direction:column;align-items:center;margin-top:calc(var(--s) * -.05)}
+.ns-word{display:flex;color:#2c3729;font:750 34px/1.15 Manrope,'DM Sans',system-ui,-apple-system,'Segoe UI',sans-serif;letter-spacing:-1.4px}
+.ns-word span{display:inline-block;animation:ns-rise .7s cubic-bezier(.2,1.4,.35,1) calc(.95s + var(--i) * .065s) both}
+.ns-tag{margin:8px 0 0;color:#7d8775;font:500 12.5px/1.3 'DM Sans',system-ui,-apple-system,'Segoe UI',sans-serif;letter-spacing:.5px;animation:ns-fade .6s ease 1.2s both}
+/* Salida: el universo se recoge en el ícono, el ícono toma impulso y se abre hacia ti. */
+#nexo-splash.out{opacity:0;pointer-events:none;transition:opacity .5s ease .25s}
+#nexo-splash.out .ns-x{scale:.12;opacity:0;transition:scale .5s cubic-bezier(.6,0,.85,.35),opacity .35s ease .15s}
+#nexo-splash.out .ns-mx{animation:ns-exit .8s cubic-bezier(.6,0,.35,1) forwards}
+#nexo-splash.out .ns-text{opacity:0;translate:0 12px;transition:opacity .25s ease,translate .35s ease}
+#nexo-splash.out .ns-aura{opacity:0;transition:opacity .4s ease}
+@keyframes ns-in{to{opacity:1}}
+@keyframes ns-spin{to{rotate:360deg}}
+@keyframes ns-drift{from{translate:-10vmax -7vmax;scale:.85}to{translate:9vmax 6vmax;scale:1.12}}
+@keyframes ns-scatter{from{scale:.2;opacity:0}to{scale:1;opacity:1}}
+@keyframes ns-twinkle{50%{opacity:.85;scale:1.6}}
+@keyframes ns-grow{to{scale:1 1}}
+@keyframes ns-flow{0%{scale:1;opacity:0}14%,70%{opacity:1}100%{scale:.3;opacity:0}}
+@keyframes ns-chase{0%{scale:0 1;opacity:1}16.6%{scale:1 1;opacity:1}34%,100%{scale:1 1;opacity:0}}
+@keyframes ns-burst{from{scale:0;opacity:0}30%{opacity:1}to{scale:1;opacity:1}}
+@keyframes ns-breathe{50%{scale:1.3}}
+@keyframes ns-core{0%{scale:0;opacity:0}32%{scale:1;opacity:1}42%{scale:.72;opacity:1}100%{scale:4.5;opacity:0}}
+@keyframes ns-bang{0%{scale:.15;opacity:0}3%{opacity:1}100%{scale:3.6;opacity:0}}
+@keyframes ns-wave{0%{scale:.95;opacity:.6}100%{scale:2.8;opacity:0}}
+@keyframes ns-pulse{50%{scale:1.12}}
+@keyframes ns-pop{from{scale:0;rotate:150deg;opacity:0}25%{opacity:1}to{scale:1;rotate:-8deg;opacity:1}}
+@keyframes ns-bob{from{translate:0 2px}to{translate:0 -4px}}
+@keyframes ns-sheen{0%{translate:-100% 0}38%,100%{translate:100% 0}}
+@keyframes ns-ink{from{scale:.25;translate:0 35%;rotate:-30deg;opacity:0}30%{opacity:1}to{scale:1;translate:0 0;rotate:0deg;opacity:1}}
+@keyframes ns-rise{from{opacity:0;translate:0 75%;rotate:14deg;scale:.5}to{opacity:1;translate:0 0;rotate:0deg;scale:1}}
+@keyframes ns-fade{from{opacity:0;translate:0 8px}to{opacity:1;translate:0 0}}
+@keyframes ns-exit{0%{scale:1}30%{scale:.86}100%{scale:3;opacity:0}}
+@media print{#nexo-splash{display:none}}
+</style>
+</head>
+<body>
+<!--
+  Un punto se carga de luz y estalla en tu universo: personas, ideas y recuerdos (los nodos) salen
+  disparados, se conectan con el centro y entre sí, y en el centro aparece Nexo. Mientras carga, la
+  información viaja por las conexiones hacia el ícono y un cometa recorre el contorno.
+-->
+<div id="nexo-splash" role="status" aria-label="Cargando Nexo">
+  <i class="ns-aura"></i><i class="ns-aura b"></i>
+  <div class="ns-stage">
+    <div class="ns-art" aria-hidden="true">
+      <div class="ns-x">
+        <i class="ns-ring"></i>
+        <i class="ns-ring in"></i>
+        <div class="ns-stars">
+          <i style="--x:.93;--y:.44;--t:0"></i><i style="--x:.76;--y:.11;--t:.6"></i>
+          <i style="--x:.44;--y:.045;--t:1.3"></i><i style="--x:.105;--y:.285;--t:.3"></i>
+          <i style="--x:.055;--y:.61;--t:1.7"></i><i style="--x:.27;--y:.905;--t:.9"></i>
+          <i style="--x:.64;--y:.95;--t:2.1"></i><i style="--x:.905;--y:.73;--t:1.1"></i>
+          <i style="--x:.98;--y:.6;--t:.45"></i><i style="--x:.02;--y:.45;--t:1.5"></i>
+          <i style="--x:.5;--y:.985;--t:.75"></i><i style="--x:.86;--y:.16;--t:1.9"></i>
+        </div>
+        <div class="ns-orbit">
+          <i class="ns-ln ns-spk" style="--i:0;--a:-100deg;--l:.35"><b></b></i>
+          <i class="ns-ln ns-spk" style="--i:1;--a:-35deg;--l:.32"><b></b></i>
+          <i class="ns-ln ns-spk" style="--i:2;--a:25deg;--l:.37"><b></b></i>
+          <i class="ns-ln ns-spk" style="--i:3;--a:95deg;--l:.33"><b></b></i>
+          <i class="ns-ln ns-spk" style="--i:4;--a:150deg;--l:.36"><b></b></i>
+          <i class="ns-ln ns-spk" style="--i:5;--a:-150deg;--l:.31"><b></b></i>
+          <i class="ns-ln ns-rim" style="--i:0;--x:.439;--y:.1555;--a:26.5deg;--l:.361"><b></b></i>
+          <i class="ns-ln ns-rim" style="--i:1;--x:.762;--y:.3165;--a:77.8deg;--l:.348"><b></b></i>
+          <i class="ns-ln ns-rim" style="--i:2;--x:.8355;--y:.6565;--a:154.7deg;--l:.403"><b></b></i>
+          <i class="ns-ln ns-rim" style="--i:3;--x:.471;--y:.8285;--a:-152.3deg;--l:.32"><b></b></i>
+          <i class="ns-ln ns-rim" style="--i:4;--x:.188;--y:.68;--a:-82.6deg;--l:.338"><b></b></i>
+          <i class="ns-ln ns-rim" style="--i:5;--x:.2315;--y:.345;--a:-42.4deg;--l:.281"><b></b></i>
+          <i class="ns-nd" style="--i:0;--x:.439;--y:.1555;--d:.05;--c:#6d8650;--h:rgba(109,134,80,.16)"><b></b></i>
+          <i class="ns-nd" style="--i:1;--x:.762;--y:.3165;--d:.036;--c:#a9bd8c;--h:rgba(169,189,140,.22)"><b></b></i>
+          <i class="ns-nd" style="--i:2;--x:.8355;--y:.6565;--d:.044;--c:#344832;--h:rgba(52,72,50,.14)"><b></b></i>
+          <i class="ns-nd" style="--i:3;--x:.471;--y:.8285;--d:.034;--c:#8fa66f;--h:rgba(143,166,111,.2)"><b></b></i>
+          <i class="ns-nd" style="--i:4;--x:.188;--y:.68;--d:.052;--c:#6d8650;--h:rgba(109,134,80,.16)"><b></b></i>
+          <i class="ns-nd" style="--i:5;--x:.2315;--y:.345;--d:.038;--c:#b9cc96;--h:rgba(185,204,150,.26)"><b></b></i>
+        </div>
+        <i class="ns-wave bang"></i><i class="ns-wave"></i><i class="ns-wave two"></i>
+        <i class="ns-core"></i>
+      </div>
+      <div class="ns-mx">
+        <i class="ns-glow"></i>
+        <div class="ns-tile">
+          <svg class="ns-n" viewBox="4 4 56 56"><path d="M21 46V23h7v3c2-3 5-4 8-4 7 0 10 4 10 11v13h-7V34c0-4-1-6-5-6s-6 3-6 7v11z"/></svg>
+        </div>
+      </div>
+    </div>
+    <div class="ns-text">
+      <div class="ns-word" aria-hidden="true"><span style="--i:0">N</span><span style="--i:1">e</span><span style="--i:2">x</span><span style="--i:3">o</span></div>
+      <p class="ns-tag">Tu universo personal</p>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var s = document.getElementById('nexo-splash');
+  s.dataset.born = String(performance.now());
+  // Respaldo: si la app no llegara a avisar, la pantalla de inicio no se queda para siempre.
+  setTimeout(function () {
+    if (!s.isConnected) return;
+    s.classList.add('out');
+    setTimeout(function () { s.remove(); }, 900);
+  }, 12000);
+})();
+</script>
+<div id="root"></div>
+<script type="module" src="./src/main.tsx"></script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 import { formats, readableSlice } from "./formatting";
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState, useRef } from "react";
 import { MarkToolbar, boxOfRange, type Box } from "./MarkToolbar";
 import {
   AI_MARK,
@@ -62,7 +62,7 @@ import { LayeredReader } from "./LayeredReader";
 import { CardEditor, type CardSeed } from "./CardEditor";
 import { heal, type Cut } from "./anchors";
 import { saveTrim, undoTrim } from "./trim";
-import { ReadingRow, type RowActions } from "./ReadingRow";
+import { ReadingRow, type RowActions, type SwipeKind } from "./ReadingRow";
 import { Dictionary } from "./Dictionary";
 import { Flashcards } from "./Flashcards";
 import { TimePick } from "./TimePick";
@@ -77,7 +77,18 @@ import { FeedsDialog } from "./FeedsDialog";
 import { syncFeeds } from "./feeds";
 import { toHash } from "../lib/route";
 import { landingTab, useLanded } from "../lib/landing";
+import { touchFirst, useMedia } from "../hooks/useMobile";
+import { ActionMenu, type MenuItem } from "./ActionMenu";
+import { ArrowLeft, EllipsisVertical } from "lucide-react";
 import "./readings.css";
+
+/**
+ * Lecturas en una sola columna (celular): la lista o lo que abras encima (un artículo, Cuadernos,
+ * Diccionario o Flashcards). Es el mismo corte que usa readings.css.
+ */
+const COMPACT = "(max-width: 760px)";
+/** Estado de la entrada del historial que pone una capa encima de la lista (ver más abajo). */
+type LayerState = { nexoLocal?: string; rdLayer?: boolean } | null;
 
 type Article = {
   id: string;
@@ -566,12 +577,77 @@ export function Readings({
       live = false;
     };
   }, [id]);
-  // La URL sigue al artículo abierto: recargar la página lo vuelve a abrir.
+  /*
+   * Celular: lo que abres encima de la lista (un artículo, Cuadernos, Diccionario, Flashcards o
+   * la selección de tarjetas) es un paso del historial. «Atrás» del teléfono o del navegador lo
+   * cierra y vuelves a la lista tal como la dejaste; cerrarlo con su botón quita ese paso.
+   * La entrada de la lista queda marcada para que la app no vuelva a montar Lecturas al volver.
+   */
+  const compact = useMedia(COMPACT);
+  const stacked = Boolean(id) || books || dict || flash || picked.size > 0;
+  const pushed = useRef((history.state as LayerState)?.rdLayer === true);
+  useEffect(() => {
+    if (!compact) return;
+    if (stacked && !pushed.current) {
+      const here = (history.state ?? {}) as Record<string, unknown>;
+      history.replaceState({ ...here, nexoLocal: "Lecturas" }, "");
+      history.pushState({ nexoLocal: "Lecturas", rdLayer: true }, "");
+      pushed.current = true;
+    } else if (!stacked && pushed.current) {
+      pushed.current = false;
+      history.back();
+    }
+  }, [stacked, compact]);
+  const closeLayers = useRef(() => {});
+  closeLayers.current = () => {
+    if (picked.size) {
+      setPicked(new Set());
+      lastPick.current = "";
+    }
+    if (id || books || dict || flash) open();
+  };
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      const state = e.state as LayerState;
+      // Adelante, otra vez a un paso de capa: queda marcado (al abrir algo no se repite).
+      if (state?.rdLayer) {
+        pushed.current = true;
+        return;
+      }
+      pushed.current = false;
+      // Otra entrada (otra sección): la app se encarga.
+      if (state?.nexoLocal !== "Lecturas") return;
+      closeLayers.current();
+      // De vuelta en la lista, la dirección también (si Lecturas se abrió ya en un artículo,
+      // esa primera entrada lo nombraba).
+      const list = toHash("Lecturas");
+      if (window.location.hash !== list)
+        history.replaceState(history.state, "", list);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  // La URL sigue al artículo abierto: recargar la página lo vuelve a abrir. Se conserva el estado
+  // de la entrada (las marcas del historial de arriba).
   useEffect(() => {
     if (!window.location.hash.startsWith(toHash("Lecturas"))) return;
     const target = toHash("Lecturas", id || null);
-    if (window.location.hash !== target) history.replaceState(null, "", target);
+    if (window.location.hash !== target)
+      history.replaceState(history.state, "", target);
   }, [id]);
+  /*
+   * Al volver a la lista en el celular, queda donde estabas: la lista se oculta mientras lees y
+   * al ocultarse el navegador olvida cuánto habías bajado.
+   */
+  const listRef = useRef<HTMLElement>(null);
+  const listScroll = useRef(0);
+  const covering = Boolean(article) || books || dict || flash;
+  useLayoutEffect(() => {
+    if (covering || !compact) return;
+    const list = listRef.current;
+    if (list && listScroll.current && list.scrollTop !== listScroll.current)
+      list.scrollTop = listScroll.current;
+  }, [covering, compact]);
   const sentinel = useRef<HTMLDivElement>(null);
   // Al buscar, la lista vuelve arriba (los resultados nuevos reemplazan a los que había).
   useEffect(() => {
@@ -738,6 +814,7 @@ export function Readings({
     setAnswered("");
     setLearning(false);
     setFeedback("");
+    setMoreAt(null);
     select(a?.id ?? "");
     setEditing(null);
     setMoving(false);
@@ -847,8 +924,13 @@ export function Readings({
     let pressed = false;
     let timer = 0;
     let frame = 0;
+    // Último toque en la barra de resaltado: en el celular, tocarla puede deseleccionar el texto
+    // antes de que llegue el toque al botón, y la barra no debe irse por eso.
+    let toolbarAt = 0;
     const down = (e: PointerEvent) => {
-      pressed = Boolean(articleRef.current?.contains(e.target as Node));
+      const target = e.target as Element | null;
+      if (target?.closest?.(".rd-marktools")) toolbarAt = performance.now();
+      pressed = Boolean(articleRef.current?.contains(target));
     };
     const up = () => {
       if (!pressed) return;
@@ -856,10 +938,21 @@ export function Readings({
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => live.current.readSelection());
     };
+    /*
+     * Con el dedo, la pulsación larga que selecciona texto la toma el sistema: llega
+     * `pointercancel` en lugar de `pointerup`. Sin esto la barra nunca aparecía en el celular.
+     */
+    const cancel = () => {
+      if (!pressed) return;
+      pressed = false;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => live.current.readSelection(), 160);
+    };
     const change = () => {
       window.clearTimeout(timer);
       const s = window.getSelection();
       if (!s?.rangeCount || s.isCollapsed) {
+        if (performance.now() - toolbarAt < 800) return;
         const inside = document.activeElement?.closest(".rd-marktools");
         const writing =
           live.current.noteOpen ||
@@ -890,6 +983,7 @@ export function Readings({
     };
     document.addEventListener("pointerdown", down, true);
     document.addEventListener("pointerup", up, true);
+    document.addEventListener("pointercancel", cancel, true);
     document.addEventListener("selectionchange", change);
     window.addEventListener("scroll", follow, true);
     window.addEventListener("resize", follow);
@@ -899,6 +993,7 @@ export function Readings({
       cancelAnimationFrame(moving);
       document.removeEventListener("pointerdown", down, true);
       document.removeEventListener("pointerup", up, true);
+      document.removeEventListener("pointercancel", cancel, true);
       document.removeEventListener("selectionchange", change);
       window.removeEventListener("scroll", follow, true);
       window.removeEventListener("resize", follow);
@@ -1561,7 +1656,7 @@ export function Readings({
       .eq("id", card.id);
     if (error) {
       notify("No se pudo completar: " + error.message);
-      return;
+      return false;
     }
     batchDone("folder" in changes ? "move" : "archive", [card.id], changes);
     notify(
@@ -1572,6 +1667,62 @@ export function Readings({
         run: () => void relocate({ ...card, ...changes }, undo, "Listo, como estaba."),
       },
     );
+    return true;
+  }
+  /** Elimina una tarjeta (desde el deslizamiento): siempre pregunta antes. */
+  async function removeCard(card: Card) {
+    const ok = await confirm({
+      title: "Eliminar artículo",
+      message: `Se eliminarán «${card.title.slice(0, 80)}» y sus resaltados y notas.`,
+      confirmLabel: "Eliminar",
+      icon: "trash",
+      danger: true,
+    });
+    if (!ok) return false;
+    const { error } = await supabase.from("readings").delete().eq("id", card.id);
+    if (error) {
+      notify("No se pudo eliminar: " + error.message);
+      return false;
+    }
+    batchDone("delete", [card.id]);
+    notify("Artículo eliminado.");
+    return true;
+  }
+  /** Mover a carpeta desde el deslizamiento (una ventana con tus carpetas a un toque). */
+  const [folderFor, setFolderFor] = useState<Card | null>(null);
+  const [cardFolder, setCardFolder] = useState("");
+  function moveCard(folder: string) {
+    const card = folderFor;
+    setFolderFor(null);
+    if (!card || folder === card.folder) return;
+    void relocate(
+      card,
+      { folder },
+      folder ? `Movido a «${folder.slice(0, 40)}».` : "Ya no está en ninguna carpeta.",
+      { folder: card.folder },
+    );
+  }
+  /** Lo que pide un deslizamiento: `true` si la tarjeta sale de la lista. */
+  function swipeCard(card: Card, kind: SwipeKind): Promise<boolean> {
+    switch (kind) {
+      case "archive":
+        return relocate(
+          card,
+          { archived: !card.archived },
+          card.archived ? "Desarchivado." : "Archivado.",
+          { archived: card.archived },
+        );
+      case "delete":
+        return removeCard(card);
+      case "pin":
+        togglePin(card);
+        notify(card.pinned_at ? "Ya no está fijado." : "Fijado arriba.");
+        return Promise.resolve(false);
+      case "folder":
+        setCardFolder("");
+        setFolderFor(card);
+        return Promise.resolve(false);
+    }
   }
   /** Entró o salió de un cuaderno desde el menú de destino. */
   function sentToNotebook(card: Card, book: Shelf, added: boolean) {
@@ -1597,10 +1748,11 @@ export function Readings({
   }
   // Las tarjetas reciben siempre las mismas funciones (leen lo último al pulsarse): así no se
   // vuelven a pintar todas con cada cambio del lector.
-  const rowLive = useRef({ open, togglePin, refetch, pick, toggleFavorite });
-  rowLive.current = { open, togglePin, refetch, pick, toggleFavorite };
+  const rowLive = useRef({ open, togglePin, refetch, pick, toggleFavorite, swipeCard });
+  rowLive.current = { open, togglePin, refetch, pick, toggleFavorite, swipeCard };
   const rowActions = useMemo<RowActions>(
     () => ({
+      swipe: (card, kind) => rowLive.current.swipeCard(card, kind),
       open: (card) => rowLive.current.open(card),
       pin: (card) => rowLive.current.togglePin(card),
       refetch: (card) => void rowLive.current.refetch(card),
@@ -1615,6 +1767,81 @@ export function Readings({
     }),
     [],
   );
+  // «Más opciones» del artículo en el celular: lo que no cabe en su barra.
+  const [moreAt, setMoreAt] = useState<HTMLElement | null>(null);
+  const articleMenu = (a: Article): MenuItem[] => [
+    {
+      key: "original",
+      label: "Ver el original",
+      hint: new URL(a.url).hostname.replace(/^www\./, ""),
+      icon: ExternalLink,
+      run: () => window.open(a.url, "_blank", "noopener,noreferrer"),
+    },
+    {
+      key: "marks",
+      label: annotations ? "Volver al texto" : `Anotaciones (${mine.length})`,
+      icon: Highlighter,
+      on: annotations,
+      run: () => {
+        setAnnotations(!annotations);
+        setFeedback("");
+      },
+    },
+    {
+      key: "tags",
+      label: "Etiquetas",
+      hint: a.tags?.length ? a.tags.join(", ") : "Sin etiquetas",
+      icon: Tag,
+      on: tagOpen,
+      run: () => setTagOpen(!tagOpen),
+    },
+    {
+      key: "folder",
+      label: "Mover a carpeta",
+      hint: a.folder || "Sin carpeta",
+      icon: Folder,
+      run: () => setMoving(true),
+    },
+    {
+      key: "speed",
+      label: "Lectura rápida",
+      icon: Zap,
+      run: () => setSpeed(true),
+    },
+    {
+      key: "layers",
+      label: "En capas",
+      hint: "Mapa, ideas clave y lectura guiada",
+      icon: ListTree,
+      run: () => {
+        closeEditor(true);
+        setLayered(true);
+      },
+    },
+    {
+      key: "trim",
+      label: "Limpiar el artículo",
+      hint: "Quitar líneas que sobran",
+      icon: Pencil,
+      on: trimming,
+      run: () => {
+        closeEditor(true);
+        setAnnotations(false);
+        setShowSummary(false);
+        setTrimming(!trimming);
+      },
+    },
+    {
+      key: "delete",
+      label: "Eliminar artículo",
+      icon: Trash2,
+      danger: true,
+      run: () => {
+        fail("");
+        setDeleting(true);
+      },
+    },
+  ];
   // La tarjeta del menú, al día (p. ej. si cambió su favorito mientras estaba abierto).
   const destCard = dest
     ? (listed.find((c) => c.id === dest.card.id) ?? dest.card)
@@ -1628,7 +1855,14 @@ export function Readings({
       data-align={reader.prefs.align}
       style={reader.style}
     >
-      <aside>
+      <aside
+        ref={listRef}
+        onScroll={(e) => {
+          // Oculta (mientras lees en el celular) no cuenta: el navegador la deja en cero.
+          if (e.currentTarget.clientHeight)
+            listScroll.current = e.currentTarget.scrollTop;
+        }}
+      >
         {/* Encabezado fijo: colección, cuadernos, guardar enlace y buscador. */}
         <div className="rd-side-head">
           <div className="read-tools">
@@ -1818,6 +2052,47 @@ export function Readings({
             imported={() => bump((v) => v + 1)}
           />
         )}
+        {folderFor && (
+          <ReaderDialog
+            title="Mover a carpeta"
+            className="rd-move-dlg"
+            close={() => setFolderFor(null)}
+          >
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (cardFolder.trim()) moveCard(cardFolder.trim());
+              }}
+            >
+              <small className="rd-move-of">«{folderFor.title}»</small>
+              {(filters.folders.length > 0 || folderFor.folder) && (
+                <div className="rd-batch-chips rd-move-chips">
+                  {folderFor.folder && (
+                    <button type="button" onClick={() => moveCard("")}>
+                      <X size={13} /> Sin carpeta
+                    </button>
+                  )}
+                  {filters.folders
+                    .filter((f) => f !== folderFor.folder)
+                    .map((f) => (
+                      <button type="button" key={f} onClick={() => moveCard(f)}>
+                        <Folder size={13} /> {f}
+                      </button>
+                    ))}
+                </div>
+              )}
+              <input
+                data-initial-focus
+                value={cardFolder}
+                maxLength={80}
+                placeholder="O escribe una carpeta nueva"
+                aria-label="Carpeta nueva"
+                onChange={(e) => setCardFolder(e.target.value)}
+              />
+              <button disabled={!cardFolder.trim()}>Mover</button>
+            </form>
+          </ReaderDialog>
+        )}
         {view === "marks" && (
           <MarkGroups
             query={query}
@@ -1875,6 +2150,123 @@ export function Readings({
           />
         ) : article ? (
           <>
+            {compact ? (
+              /*
+               * Celular: una sola fila sin desplazarse de lado. Volver, Escuchar, el tamaño del
+               * texto, favorito, archivar y el resumen a la vista; lo demás en «Más opciones».
+               */
+              <div
+                className="read-tools rd-articlebar rd-bar-compact"
+                role="group"
+                aria-label="Acciones del artículo"
+              >
+                <button
+                  type="button"
+                  className="rd-bar-back"
+                  aria-label="Volver a la lista"
+                  title="Volver a la lista"
+                  onClick={() => open()}
+                >
+                  <ArrowLeft size={21} />
+                </button>
+                <span className="rd-bar-acts">
+                  {annotations ? (
+                    <button
+                      type="button"
+                      className="rd-bar-text"
+                      onClick={() => {
+                        setAnnotations(false);
+                        setFeedback("");
+                      }}
+                    >
+                      <Highlighter size={16} /> Volver al texto
+                    </button>
+                  ) : (
+                    <>
+                      <Listen
+                        compact
+                        article={articleRef}
+                        pane={() =>
+                          document.querySelector<HTMLElement>(".readings > main")
+                        }
+                      />
+                      <ReaderSettings api={reader} />
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    aria-label="Favorito"
+                    title="Favorito"
+                    aria-pressed={article.favorite}
+                    onClick={() =>
+                      void run(() => update({ favorite: !article.favorite }))
+                    }
+                  >
+                    <Heart
+                      size={19}
+                      fill={article.favorite ? "currentColor" : "none"}
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    title={article.archived ? "Desarchivar" : "Archivar"}
+                    aria-label={article.archived ? "Desarchivar" : "Archivar"}
+                    onClick={() =>
+                      void run(() => update({ archived: !article.archived }))
+                    }
+                  >
+                    <Archive size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    title="Resumir con IA"
+                    aria-label="Resumen"
+                    aria-pressed={showSummary}
+                    onClick={() => {
+                      if (summaries[id]) setShowSummary(!showSummary);
+                      else
+                        void run(async () => {
+                          const { summary } = await readingAI(id, "summary");
+                          setSummaries((v) => ({ ...v, [id]: summary }));
+                          setShowSummary(true);
+                        });
+                    }}
+                  >
+                    {busy && !summaries[id] ? (
+                      <LoaderCircle size={18} className="spin" />
+                    ) : (
+                      <Sparkles size={18} />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="rd-bar-more"
+                    aria-label="Más opciones"
+                    title="Más opciones"
+                    aria-haspopup="menu"
+                    aria-expanded={Boolean(moreAt)}
+                    onClick={(e) => {
+                      const el = e.currentTarget;
+                      setMoreAt((m) => (m ? null : el));
+                    }}
+                  >
+                    <EllipsisVertical size={19} />
+                  </button>
+                </span>
+                {moreAt && (
+                  <ActionMenu
+                    anchor={moreAt}
+                    label="Más acciones del artículo"
+                    onClose={() => setMoreAt(null)}
+                    items={articleMenu(article)}
+                  />
+                )}
+              </div>
+            ) : (
+            <>
             <button className="read-back" onClick={() => open()}>
               ← Lista
             </button>
@@ -2009,6 +2401,8 @@ export function Readings({
                 <Trash2 size={16} />
               </button>
             </div>
+            </>
+            )}
             {deleting && (
               <ReaderDialog
                 title="Eliminar artículo"
@@ -2048,7 +2442,7 @@ export function Readings({
                   }}
                 >
                   <input
-                    autoFocus
+                    autoFocus={!touchFirst()}
                     maxLength={48}
                     placeholder="Nueva etiqueta"
                     aria-label="Nueva etiqueta"
@@ -2193,8 +2587,9 @@ export function Readings({
             <h2>{article.title}</h2>
             {!annotations && (
               <small>
-                Selecciona texto para resaltarlo, anotarlo o preguntarle a la
-                IA.
+                {touchFirst()
+                  ? "Mantén pulsado el texto para resaltarlo, anotarlo o preguntarle a la IA."
+                  : "Selecciona texto para resaltarlo, anotarlo o preguntarle a la IA."}
               </small>
             )}
             {span && box && (
@@ -2262,6 +2657,14 @@ export function Readings({
                 onNote={setNote}
                 onSaveNote={() => highlightNow()}
                 onDelete={editing ? () => removeMark(editing) : undefined}
+                onCopy={() => {
+                  const text = readableSlice(article.content, span.start, span.end).trim();
+                  closeEditor(true);
+                  void navigator.clipboard?.writeText(text).then(
+                    () => notify("Copiado."),
+                    () => notify("El navegador no permitió copiar el texto."),
+                  );
+                }}
                 onClose={() => closeEditor(true)}
               />
             )}
@@ -2292,6 +2695,18 @@ export function Readings({
               <>
                 <article
                   ref={articleRef}
+                  onContextMenu={(e) => {
+                    /*
+                     * Con el dedo, mantener pulsado es para seleccionar y resaltar con la barra de
+                     * Nexo: sin el menú del navegador sobre enlaces e imágenes ni, donde el sistema
+                     * lo permite, el de copiar (la barra trae «Copiar»).
+                     */
+                    if (!touchFirst()) return;
+                    const target = e.target as HTMLElement;
+                    const s = window.getSelection();
+                    if (target.closest?.("a, img") || (s && !s.isCollapsed))
+                      e.preventDefault();
+                  }}
                   onClick={(e) => {
                     const collapsed =
                       window.getSelection()?.isCollapsed !== false;

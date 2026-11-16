@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { Brackets, LoaderCircle, MessageCircleQuestion } from "lucide-react";
+import { touchFirst } from "../hooks/useMobile";
 import { errorMessage } from "../lib/format";
 import { AiText } from "./AiText";
 import {
@@ -54,6 +55,8 @@ export function CardEditor({
   close: () => void;
   saved: (cards: Flashcard[], edited: boolean) => void;
 }) {
+  // Con el dedo no se abre el teclado solo: se escribe al tocar el campo.
+  const [touch] = useState(touchFirst);
   const startCloze = card ? isCloze(card.front) : seed?.kind === "cloze";
   const [kind, setKind] = useState<CardKind>(startCloze ? "cloze" : "qa");
   const [front, setFront] = useState(card?.front ?? seed?.front ?? "");
@@ -182,7 +185,7 @@ export function CardEditor({
             <label>
               Pregunta
               <textarea
-                autoFocus
+                autoFocus={!touch}
                 rows={3}
                 maxLength={FRONT_MAX}
                 value={front}
@@ -193,7 +196,7 @@ export function CardEditor({
             <label>
               Respuesta
               <textarea
-                autoFocus={Boolean(front) && !back}
+                autoFocus={!touch && Boolean(front) && !back}
                 rows={4}
                 maxLength={BACK_MAX}
                 value={back}
@@ -208,7 +211,7 @@ export function CardEditor({
               Texto
               <textarea
                 ref={text}
-                autoFocus
+                autoFocus={!touch}
                 rows={5}
                 maxLength={FRONT_MAX}
                 value={front}

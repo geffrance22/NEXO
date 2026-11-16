@@ -22,7 +22,11 @@ import {
   Trash2,
   UserRound,
 } from 'lucide-react';
+import { touchFirst, useMedia } from '../hooks/useMobile';
 import { AiText } from './AiText';
+
+/** Cuándo la barra va abajo, a todo el ancho (el mismo corte de la columna única de Lecturas). */
+const DOCK = '(max-width: 760px)';
 
 /** Caja de la selección (o del resaltado) en coordenadas de la ventana. */
 export type Box = { top: number; bottom: number; left: number; right: number };
@@ -118,6 +122,7 @@ export function MarkToolbar({
   onWord,
   wordSaved = false,
   onCard,
+  onCopy,
 }: {
   box: Box;
   palette: Record<string, Swatch>;
@@ -151,9 +156,16 @@ export function MarkToolbar({
   wordSaved?: boolean;
   /** Convierte el fragmento en una flashcard (de huecos o de pregunta). */
   onCard?: () => void;
+  /** Copia el fragmento (en el celular, donde la barra reemplaza al menú del sistema). */
+  onCopy?: () => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ x: number; y: number; side: 'top' | 'bottom'; arrow: number }>();
+  /*
+   * Celular: la barra va abajo, a todo el ancho y encima de la barra inferior (o del teclado). Así
+   * no tapa el texto ni las agarraderas de la selección, y no choca con el menú del sistema.
+   */
+  const dock = useMedia(DOCK);
   const [ask, setAsk] = useState<Ask>(freshAsk);
   const patch = (p: Partial<Ask>) => setAsk((a) => ({ ...a, ...p }));
   const pending = Boolean(ask.answer) && !ask.saved;
@@ -162,22 +174,32 @@ export function MarkToolbar({
   const outside = useRef(() => {});
   outside.current = () => (pending ? patch({ confirming: true }) : onClose());
   useEffect(() => {
-    const onDown = (e: PointerEvent) => {
-      const t = e.target as HTMLElement;
-      if (root.current?.contains(t)) return;
+    const away = (t: HTMLElement) =>
+      !root.current?.contains(t) &&
       // Ventanas abiertas encima (confirmaciones, la ficha de alguien…): no cuentan como fuera.
-      if (t.closest?.('.confirm-backdrop, .sheet-backdrop, .nx-peek, .nx-peek-backdrop, .toast'))
-        return;
-      outside.current();
+      !t.closest?.('.confirm-backdrop, .sheet-backdrop, .nx-peek, .nx-peek-backdrop, .toast');
+    const onDown = (e: PointerEvent) => {
+      // Con el dedo cuenta el toque (abajo, `click`): deslizar para leer no cierra la barra.
+      if (e.pointerType !== 'mouse') return;
+      if (away(e.target as HTMLElement)) outside.current();
+    };
+    const onTap = (e: MouseEvent) => {
+      if ((e as PointerEvent).pointerType === 'mouse') return;
+      if (away(e.target as HTMLElement)) outside.current();
     };
     document.addEventListener('pointerdown', onDown, true);
-    return () => document.removeEventListener('pointerdown', onDown, true);
+    document.addEventListener('click', onTap, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('click', onTap, true);
+    };
   }, []);
 
   // Se mide antes de pintar y cada vez que cambia de tamaño (nota, respuesta de la IA…).
   useLayoutEffect(() => {
     const el = root.current;
     if (!el) return;
+    const vv = window.visualViewport;
     const place = () => {
       const w = el.offsetWidth;
       const h = el.offsetHeight;
@@ -186,6 +208,15 @@ export function MarkToolbar({
       const topbar =
         parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topbar-h')) || 0;
       const minTop = topbar + EDGE;
+      if (dock) {
+        // Lo que se ve de la pantalla (sin el teclado) y, si está, encima de la barra inferior.
+        const visible = vv ? vv.offsetTop + vv.height : vh;
+        const nav = document.querySelector<HTMLElement>('.bnav');
+        const navTop = nav && !nav.classList.contains('kb') ? vh - nav.offsetHeight : vh;
+        const floor = Math.min(visible, navTop) - EDGE;
+        setPos({ x: EDGE, y: Math.max(minTop, floor - h), side: 'bottom', arrow: 0 });
+        return;
+      }
       const center = (box.left + box.right) / 2;
       const x = Math.min(Math.max(center - w / 2, EDGE), Math.max(EDGE, vw - w - EDGE));
       // En pantallas táctiles el menú del sistema sale encima: la barra va debajo.
@@ -201,8 +232,19 @@ export function MarkToolbar({
     place();
     const ro = new ResizeObserver(place);
     ro.observe(el);
-    return () => ro.disconnect();
-  }, [box]);
+    // Abajo, sigue al teclado del celular cuando aparece o se va.
+    if (dock) {
+      vv?.addEventListener('resize', place);
+      vv?.addEventListener('scroll', place);
+      window.addEventListener('resize', place);
+    }
+    return () => {
+      ro.disconnect();
+      vv?.removeEventListener('resize', place);
+      vv?.removeEventListener('scroll', place);
+      window.removeEventListener('resize', place);
+    };
+  }, [box, dock]);
 
   const send = async (prompt: string) => {
     if (ask.loading) return;
@@ -224,7 +266,12 @@ export function MarkToolbar({
   return createPortal(
     <div
       ref={root}
-      className={'rd-marktools' + (pos ? ' ' + pos.side : '') + (askOpen ? ' asking' : '')}
+      className={
+        'rd-marktools' +
+        (pos ? ' ' + pos.side : '') +
+        (askOpen ? ' asking' : '') +
+        (dock ? ' dock' : '')
+      }
       role="toolbar"
       aria-label={editing ? 'Editar resaltado' : 'Resaltar selección'}
       style={
@@ -257,6 +304,8 @@ export function MarkToolbar({
                 onClick={() => onPick(key)}
               >
                 {on && <Check size={12} strokeWidth={3} />}
+                {/* En el celular no hay cursor para ver la pista: el color dice su nombre. */}
+                {dock && <span className="rd-mt-name">{sw.label}</span>}
                 <Tip title={sw.label} hint={on ? `${sw.hint} · actual` : sw.hint} dot={key} />
               </button>
             );
@@ -271,6 +320,7 @@ export function MarkToolbar({
           onClick={onToggleAsk}
         >
           <Sparkles size={15} />
+          {dock && <span className="rd-mt-label">Preguntar</span>}
           <Tip title="Preguntar a la IA" hint="Explicar, resumir o traducir" />
         </button>
         <button
@@ -281,6 +331,7 @@ export function MarkToolbar({
           onClick={onToggleNote}
         >
           <StickyNote size={15} />
+          {dock && <span className="rd-mt-label">Nota</span>}
           <Tip title={note.trim() ? 'Editar la nota' : 'Añadir una nota'} hint="Por qué te importa" />
         </button>
         {onWord && (
@@ -292,6 +343,7 @@ export function MarkToolbar({
             onClick={onWord}
           >
             {wordSaved ? <BookCheck size={15} /> : <BookA size={15} />}
+            {dock && <span className="rd-mt-label">Diccionario</span>}
             <Tip
               title={wordSaved ? 'En tu diccionario' : 'Añadir al diccionario'}
               hint={wordSaved ? 'Toca para quitarla' : 'Con su definición, para aprenderla'}
@@ -306,6 +358,7 @@ export function MarkToolbar({
             onClick={onCard}
           >
             <Layers size={15} />
+            {dock && <span className="rd-mt-label">Flashcard</span>}
             <Tip title="Crear flashcard" hint="Entra a tu repaso" />
           </button>
         )}
@@ -318,6 +371,7 @@ export function MarkToolbar({
             onClick={onToggleShare}
           >
             <UserRound size={15} />
+            {dock && <span className="rd-mt-label">Compartir</span>}
             {shareHint > 0 && !shareOpen && <i className="rd-mt-dot" aria-hidden="true" />}
             <Tip
               title="¿A quién le sirve?"
@@ -331,6 +385,12 @@ export function MarkToolbar({
             />
           </button>
         )}
+        {dock && onCopy && (
+          <button type="button" className="rd-mt-btn" aria-label="Copiar" onClick={onCopy}>
+            <Copy size={15} />
+            <span className="rd-mt-label">Copiar</span>
+          </button>
+        )}
         {onDelete && (
           <button
             type="button"
@@ -340,6 +400,7 @@ export function MarkToolbar({
             onClick={onDelete}
           >
             <Trash2 size={15} />
+            {dock && <span className="rd-mt-label">Quitar</span>}
             <Tip title="Quitar el resaltado" hint="También su nota" />
           </button>
         )}
@@ -465,7 +526,7 @@ export function MarkToolbar({
                 }}
               >
                 <textarea
-                  autoFocus
+                  autoFocus={!touchFirst()}
                   rows={1}
                   maxLength={1500}
                   aria-label="Pregunta o indicación para la IA"

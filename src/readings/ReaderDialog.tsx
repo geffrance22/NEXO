@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { touchFirst } from '../hooks/useMobile';
 export function ReaderDialog({
   title,
   close,
@@ -17,7 +18,13 @@ export function ReaderDialog({
   useEffect(() => {
     const dialog = ref.current!;
     dialog.showModal();
-    dialog.querySelector<HTMLElement>('[data-initial-focus]')?.focus({ preventScroll: true });
+    if (touchFirst()) {
+      // Con el dedo, el teclado sale cuando tocas el campo, no al abrir la ventana: el foco queda
+      // en la ventana misma (ni en el campo ni en la ✕).
+      dialog.tabIndex = -1;
+      dialog.focus({ preventScroll: true });
+    } else
+      dialog.querySelector<HTMLElement>('[data-initial-focus]')?.focus({ preventScroll: true });
     return () => dialog.close();
   }, []);
   return (

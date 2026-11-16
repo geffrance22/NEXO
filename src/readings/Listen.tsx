@@ -82,9 +82,12 @@ function voiceLabel(v: SpeechSynthesisVoice) {
 export function Listen({
   article,
   pane,
+  compact = false,
 }: {
   article: RefObject<HTMLElement | null>;
   pane: () => HTMLElement | null;
+  /** Solo el ícono (la barra del celular). */
+  compact?: boolean;
 }) {
   const [state, setState] = useState<'off' | 'playing' | 'paused'>('off');
   const [rate, setRate] = useState(() => {
@@ -311,7 +314,17 @@ export function Listen({
   }
 
   if (state === 'off')
-    return (
+    return compact ? (
+      <button
+        type="button"
+        className="rd-listen icon-only"
+        title="Escuchar el artículo"
+        aria-label="Escuchar el artículo"
+        onClick={start}
+      >
+        <Headphones size={19} />
+      </button>
+    ) : (
       <button type="button" className="rd-listen" title="Escuchar el artículo" onClick={start}>
         <Headphones size={16} /> Escuchar
       </button>

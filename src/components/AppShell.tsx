@@ -460,9 +460,14 @@ export function AppShell({ user }: { user: AppUser }) {
 
   useEffect(() => {
     const onHashChange = () => {
+      const next = parseHash(window.location.hash);
+      // Una sección que lleva su propio historial (Lecturas en el celular: artículo abierto →
+      // «atrás» → la lista) marca sus entradas: volver a una de ellas no la monta de nuevo.
+      const local =
+        (history.state as { nexoLocal?: string } | null)?.nexoLocal === next.page;
       setRoute((r) => ({
-        ...parseHash(window.location.hash),
-        visit: r.visit + 1,
+        ...next,
+        visit: local && r.page === next.page ? r.visit : r.visit + 1,
       }));
       setWeekly(false);
       setProgress(null);

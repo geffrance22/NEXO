@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { supabase } from '../backend';
+import { touchFirst } from '../hooks/useMobile';
 import { errorMessage, shortDate } from '../lib/format';
 import { AiText, MarkNote } from './AiText';
 import { inkOf } from './ArticleMarks';
@@ -782,7 +783,7 @@ export function Notebooks({
                   <label className="bk-search">
                     <Search size={15} aria-hidden="true" />
                     <input
-                      autoFocus
+                      autoFocus={!touchFirst()}
                       value={needle}
                       placeholder="Buscar en tus lecturas por título…"
                       aria-label="Buscar un artículo para añadir"

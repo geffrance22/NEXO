@@ -7,6 +7,7 @@ import {
   Lightbulb,
   Map as MapIcon,
 } from "lucide-react";
+import { touchFirst } from "../hooks/useMobile";
 import { layersOf, wordsIn, type Paragraph } from "./layers";
 import { WORDS_PER_MINUTE } from "./media";
 
@@ -270,7 +271,7 @@ export function LayeredReader({
                 </small>
                 <h3>Antes de seguir: ¿qué te llevas de esta parte?</h3>
                 <textarea
-                  autoFocus
+                  autoFocus={!touchFirst()}
                   rows={3}
                   value={recall[pause] ?? ""}
                   placeholder="En una o dos frases, con tus palabras (no se guarda)"

@@ -12,6 +12,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
+import { touchFirst } from '../hooks/useMobile';
 import { AiText } from './AiText';
 import type { ReadingAnswer } from './ask';
 
@@ -258,7 +259,7 @@ export function QuestionFab({
                   }}
                 >
                   <textarea
-                    autoFocus
+                    autoFocus={!touchFirst()}
                     rows={2}
                     value={draft}
                     maxLength={1500}

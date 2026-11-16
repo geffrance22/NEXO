@@ -5246,3 +5246,765 @@
     animation: none;
   }
 }
+
+/* ════════════════ Lecturas en el celular ════════════════
+   Todo lo de abajo solo cambia pantallas de una columna (≤ 760 px) o táctiles; en escritorio
+   Lecturas se ve igual. */
+
+/* ── Menú «Más opciones» (los tres puntos): va en un portal, filas grandes para el dedo ── */
+.rd-menu {
+  position: fixed;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid rgba(30, 45, 35, 0.1);
+  border-radius: 16px;
+  background: var(--surface, #fff);
+  color: var(--text, #1f2a1f);
+  box-shadow:
+    0 22px 48px -16px rgba(16, 28, 20, 0.42),
+    0 3px 10px rgba(16, 28, 20, 0.08);
+  font-family: 'DM Sans', sans-serif;
+  transform-origin: top right;
+  animation: rd-dest-in 0.14s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+.rd-menu.up {
+  transform-origin: bottom right;
+}
+.rd-menu button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 10px 6px 7px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.rd-menu button:active,
+.rd-menu button:focus-visible {
+  background: #f1f5ee;
+  outline: none;
+}
+@media (hover: hover) {
+  .rd-menu button:hover:not(:disabled) {
+    background: #f1f5ee;
+  }
+}
+.rd-menu button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.rd-menu-ico {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #eef4ef;
+  color: #365c52;
+}
+.rd-menu-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.rd-menu-text b {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.rd-menu-text small {
+  overflow: hidden;
+  font-size: 12px;
+  color: #7b8573;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rd-menu-check {
+  flex: none;
+  color: #365c52;
+}
+.rd-menu button.on[aria-checked],
+.rd-menu button.on .rd-menu-ico {
+  background: #e3eee6;
+}
+.rd-menu .danger .rd-menu-ico {
+  background: #fbebe6;
+  color: #b8412f;
+}
+.rd-menu .danger b {
+  color: #a8442f;
+}
+
+/* ── Tarjetas: tres puntos en lugar de los íconos que asoman con el cursor ── */
+.readings .rd-kebab,
+.rd-favmark,
+.rd-pinmark {
+  display: none;
+}
+@media (max-width: 760px), (hover: none) {
+  .readings .rd-acts {
+    display: none;
+  }
+  .readings .rd-kebab {
+    position: absolute;
+    top: 6px;
+    right: 0;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 50%;
+    color: color-mix(in srgb, currentColor 58%, transparent);
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  .readings .rd-row.has-thumb .rd-kebab {
+    top: 10px;
+    right: 6px;
+    width: 34px;
+    height: 34px;
+    background: color-mix(in srgb, var(--surface, #fff) 92%, transparent);
+    box-shadow: 0 1px 4px rgba(20, 35, 25, 0.18);
+  }
+  .readings .rd-kebab:active,
+  .readings .rd-row.menu-open .rd-kebab,
+  .readings .rd-row.dest-open .rd-kebab {
+    background: var(--rd-soft);
+    color: var(--rd-accent);
+  }
+  .rd-row:not(.has-thumb) .read-row strong,
+  .rd-row.favorite:not(.has-thumb) .read-row strong {
+    padding-right: 36px;
+  }
+  .rd-favmark,
+  .rd-pinmark {
+    display: inline-grid;
+    flex: none;
+  }
+  .rd-favmark {
+    color: #d6456a;
+  }
+  .rd-pinmark {
+    color: var(--rd-accent);
+  }
+  /* Mantener pulsada una tarjeta la selecciona: sin el menú ni la selección de texto del sistema. */
+  .readings .rd-row {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .readings .rd-row img {
+    -webkit-user-drag: none;
+  }
+  /* El círculo de selección aparece solo al seleccionar, dentro de la tarjeta y del tamaño del dedo. */
+  .readings .rd-check {
+    display: none;
+  }
+  .readings .rd-row.selecting .rd-check {
+    left: 10px;
+    display: grid;
+    width: 24px;
+    height: 24px;
+    margin-top: -12px;
+    opacity: 1;
+    transform: none;
+  }
+  .readings .rd-row.selecting .read-row {
+    padding-left: 46px;
+    transition: padding 0.18s ease;
+  }
+  .readings .rd-row.selecting .rd-thumb {
+    display: none;
+  }
+  /* Acciones con la selección: botones del tamaño del dedo. */
+  .rd-batch {
+    height: 48px;
+    padding: 0 4px 0 12px;
+    border-radius: 14px;
+  }
+  .readings .rd-batch-all {
+    width: 24px;
+    height: 24px;
+  }
+  .rd-batch-n {
+    font-size: 15px;
+  }
+  .readings .rd-batch-acts > button,
+  .readings .rd-batch > .rd-batch-x {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+  }
+}
+
+/* ── Artículo: mantener pulsado es para seleccionar (sin el menú de enlaces e imágenes) ── */
+@media (hover: none), (pointer: coarse) {
+  .readings article a,
+  .readings article img {
+    -webkit-touch-callout: none;
+  }
+  .readings article img {
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+}
+
+/* ── Una sola columna ── */
+@media (max-width: 760px) {
+  /* De borde a borde, pegado al encabezado de la app: sin marco ni hueco por el que se vea el texto. */
+  .main-shell:has(.readings) > main {
+    padding: 0;
+  }
+  .readings {
+    border: 0;
+    border-radius: 0;
+  }
+  .readings > aside {
+    padding: 0 14px 28px;
+    border-right: 0;
+    overscroll-behavior-y: none;
+  }
+  .rd-side-head {
+    margin: 0 -14px 6px;
+    padding: 10px 14px;
+  }
+  .readings > main,
+  .readings:has(article) > main {
+    padding: 0 18px 120px;
+    overscroll-behavior-y: none;
+    /* En el celular la barra de desplazamiento flota: sin reservarle sitio. */
+    scrollbar-gutter: auto;
+  }
+  .readings > aside {
+    scrollbar-gutter: auto;
+  }
+  .readings .read-row {
+    padding: 14px 10px;
+  }
+
+  /* Barra del artículo: pegada arriba, de lado a lado y sin desplazarse en horizontal. */
+  .readings > main .rd-articlebar.rd-bar-compact {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 2px;
+    min-height: 54px;
+    margin: 0 -18px 16px;
+    padding: 6px 6px 6px 4px;
+    overflow: visible;
+    white-space: normal;
+  }
+  /* Los botones van a la derecha de la flecha; si no caben (mientras suena «Escuchar»), los
+     últimos bajan a una segunda línea. */
+  .rd-bar-acts {
+    display: flex;
+    flex: 1 1 0;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+    min-width: 0;
+  }
+  .readings .rd-bar-acts .rd-listen-bar {
+    gap: 0;
+    padding: 2px;
+  }
+  .readings .rd-bar-compact button,
+  .readings .rd-bar-compact a {
+    font-size: 0.9rem;
+  }
+  .readings .rd-bar-compact .rd-bar-back,
+  .readings .rd-bar-acts > button:not(.rd-bar-text),
+  .readings .rd-bar-acts > .rd-listen.icon-only {
+    flex: none;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border-radius: 12px;
+  }
+  .readings .rd-bar-compact button:last-child {
+    margin-left: 0;
+  }
+  .readings .rd-bar-compact .rd-bar-back {
+    color: #27301f;
+  }
+  .readings .rd-bar-acts > button[aria-pressed='true']:not([aria-label='Favorito']),
+  .readings .rd-bar-acts > .rd-bar-more[aria-expanded='true'] {
+    background: var(--rd-tint);
+    color: var(--rd-accent);
+  }
+  .readings .rd-bar-acts > .rd-bar-text {
+    height: 42px;
+    padding: 0 12px;
+    border-radius: 12px;
+    background: var(--rd-tint);
+    font-weight: 600;
+  }
+  .readings .rd-bar-acts .rd-listen-bar button {
+    min-height: 38px;
+  }
+  /* Debajo de la barra (que mide unos 54 px), no encima. */
+  .readings .rd-tagbox {
+    top: 62px;
+  }
+  .readings main > h2 {
+    font-size: clamp(1.6rem, 7vw, 2rem);
+    overflow-wrap: break-word;
+  }
+}
+
+/* ── Barra de resaltado en el celular: abajo, a todo el ancho, con nombres ── */
+.rd-marktools.dock {
+  right: 8px;
+  max-width: none;
+  max-height: calc(100dvh - var(--topbar-h, 54px) - 24px);
+  padding: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 18px;
+  animation-name: rd-mt-dock;
+}
+@keyframes rd-mt-dock {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+.rd-marktools.dock::after {
+  display: none;
+}
+.rd-marktools.dock .rd-mt-row {
+  flex-wrap: wrap;
+  gap: 6px 2px;
+}
+.rd-marktools.dock .rd-mt-colors {
+  display: grid;
+  flex: 1 0 100%;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0;
+}
+.rd-marktools.dock .rd-mt-swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: auto;
+  min-width: 0;
+  height: 38px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.rd-marktools.dock .rd-mt-swatch:hover:not(:disabled) {
+  transform: none;
+}
+.rd-marktools.dock .rd-mt-swatch:active {
+  transform: scale(0.96);
+}
+.rd-mt-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rd-marktools.dock .rd-mt-sep {
+  display: none;
+}
+.rd-marktools.dock .rd-mt-btn {
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 3px;
+  width: auto;
+  min-width: 0;
+  height: 54px;
+  padding: 0 1px;
+  border-radius: 12px;
+}
+/* «Diccionario», la etiqueta más larga, cabe junto a otras cinco. */
+.rd-marktools.dock .rd-mt-btn.word {
+  flex-grow: 1.25;
+}
+.rd-mt-label {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: -0.15px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rd-marktools.dock :is(.rd-mt-panel, .rd-mt-ask, .rd-mt-share) {
+  width: auto;
+}
+.rd-marktools.dock textarea {
+  font-size: 16px;
+}
+
+/* ── Diccionario, Flashcards y Cuadernos: encabezado en dos filas, sin montarse ── */
+@media (max-width: 760px) {
+  .readings .dc,
+  .readings .bk {
+    padding-top: 14px;
+  }
+  /* Arriba el título y la ✕; debajo, los botones. */
+  .readings .dc-head,
+  .readings .bk-head {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+  .readings .dc-head::after,
+  .readings .bk-head::after {
+    content: '';
+    order: 1;
+    flex-basis: 100%;
+    height: 0;
+  }
+  .readings .dc-head > .dc-title,
+  .readings .bk-head > .bk-title {
+    flex: 1 1 0;
+  }
+  .readings .dc-title h2,
+  .readings .bk-title h2 {
+    overflow-wrap: break-word;
+    text-wrap: balance;
+  }
+  .readings .dc-head > .dc-icon,
+  .readings .bk-head > .bk-close {
+    order: 1;
+    align-self: flex-start;
+    width: 40px;
+    height: 40px;
+  }
+  .readings .dc .dc-head > .dc-btn {
+    order: 2;
+    flex: 1 1 0;
+    justify-content: center;
+    height: 42px;
+    padding: 0 12px;
+    font-size: 0.88rem;
+  }
+  .readings .bk-head > .bk-tools {
+    order: 2;
+    gap: 6px;
+  }
+  .readings .bk .bk-head .bk-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--bk-soft);
+  }
+  .readings .bk .bk-head .bk-close {
+    background: none;
+  }
+  /* Pestañas: reparten el ancho y, si no cabe el nombre, bajan a dos líneas. */
+  .readings .dc-tools {
+    gap: 10px;
+  }
+  .readings .dc-tabs {
+    width: 100%;
+  }
+  .readings .dc .dc-tabs button {
+    display: block;
+    flex: 1 1 0;
+    min-width: 0;
+    height: auto;
+    min-height: 36px;
+    padding: 6px 4px;
+    font-size: 0.8rem;
+    line-height: 1.25;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+  .readings .dc .dc-head > .dc-btn,
+  .readings .dc .dc-head > .dc-btn.primary {
+    padding: 0 12px;
+    font-size: 0.88rem;
+  }
+  .readings .dc-search {
+    flex-basis: 100%;
+  }
+  /* La lista nunca se ensancha por un texto largo. */
+  .readings .dc-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .readings .dc-item {
+    min-width: 0;
+  }
+  .readings .dc-meta {
+    max-width: 100%;
+  }
+  .readings .dc-meta span {
+    min-width: 0;
+  }
+  .readings .dc-meta span:first-child:not(:last-child) {
+    max-width: 100%;
+  }
+  .readings .dc .dc-check {
+    width: 26px;
+    height: 26px;
+  }
+  /* Tus cuadernos: todos a la vista, en varias líneas. */
+  .readings .bk-shelf {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+}
+/* Teléfonos angostos: las acciones de cada palabra van debajo y la palabra no se parte. */
+@media (max-width: 420px) {
+  .readings .dc-item {
+    flex-wrap: wrap;
+  }
+  .readings .dc-item > .dc-acts {
+    order: 3;
+    justify-content: flex-end;
+    width: 100%;
+    margin-top: -6px;
+    opacity: 1;
+  }
+  .readings .dc-term {
+    overflow-wrap: break-word;
+  }
+}
+/* «Guardar enlaces» en el celular: el aviso va en su propia línea, debajo de los botones. */
+@media (max-width: 460px) {
+  .reader-dialog .rd-sl-form > .rd-sl-foot {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .reader-dialog .rd-sl-form > .rd-sl-foot > small {
+    order: 3;
+    flex-basis: 100%;
+  }
+  .reader-dialog .rd-sl-form > .rd-sl-foot > .rd-sl-btn.primary {
+    margin-left: auto;
+  }
+}
+/* Teléfonos de 320–360 px: los botones de la barra del artículo, un poco más juntos. */
+@media (max-width: 360px) {
+  .readings .rd-bar-compact .rd-bar-back,
+  .readings .rd-bar-acts > button:not(.rd-bar-text),
+  .readings .rd-bar-acts > .rd-listen.icon-only {
+    width: 39px;
+  }
+  .readings > main .rd-articlebar.rd-bar-compact {
+    padding-right: 4px;
+  }
+  .rd-bar-acts {
+    gap: 1px;
+  }
+}
+/* En los más angostos, la barra de resaltar muestra solo los íconos (los nombres no cabrían). */
+@media (max-width: 350px) {
+  .rd-marktools.dock .rd-mt-label {
+    display: none;
+  }
+  .rd-marktools.dock .rd-mt-btn {
+    height: 44px;
+  }
+}
+
+/* ════════ Deslizar una tarjeta (celular) ════════
+   Derecha: archivar y, más lejos, eliminar. Izquierda: fijar y, más lejos, mover a una carpeta.
+   ReadingRow pone en la tarjeta `--sx` (cuánto se movió), `--fill` (0–100, cuánto se llenó el
+   ícono) y `data-side`, `data-zone` y `data-armed`. */
+@media (max-width: 760px), (hover: none) {
+  /* El desplazamiento de arriba abajo sigue siendo de la lista; de lado, de la tarjeta. */
+  .readings .rd-row {
+    touch-action: pan-y;
+  }
+}
+/* La tarjeta se desliza dentro de su hueco: nunca ensancha la lista ni la desplaza de lado. */
+.rd-row.swiping {
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 12px;
+}
+@media (max-width: 760px) {
+  .readings > aside {
+    overflow-x: hidden;
+  }
+}
+.rd-row.swiping > :not(.rd-swipe) {
+  transform: translate3d(var(--sx, 0px), 0, 0);
+  will-change: transform;
+}
+.rd-row.swiping[data-settle] > :not(.rd-swipe) {
+  transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+/* La tarjeta, opaca y levantada mientras la mueves. */
+.readings .rd-row.swiping .read-row {
+  position: relative;
+  z-index: 1;
+  border-color: var(--rd-line);
+  background: var(--surface, #fff);
+  box-shadow: 0 10px 26px -14px rgba(20, 35, 25, 0.45);
+}
+.rd-swipe {
+  --sw-bg: #9aa596;
+  position: absolute;
+  inset: 1px 0;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--sw-bg);
+  color: #fff;
+  transition: background-color 0.18s ease;
+}
+.rd-sw-side {
+  display: none;
+  flex: 1;
+  align-items: center;
+  height: 100%;
+  padding: 0 22px;
+}
+.rd-row[data-side='right'] .rd-sw-side.right {
+  display: flex;
+  justify-content: flex-start;
+}
+.rd-row[data-side='left'] .rd-sw-side.left {
+  display: flex;
+  justify-content: flex-end;
+}
+.rd-sw-act {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-width: 64px;
+}
+.rd-row[data-zone='archive'] .rd-sw-act[data-kind='archive'],
+.rd-row[data-zone='delete'] .rd-sw-act[data-kind='delete'],
+.rd-row[data-zone='pin'] .rd-sw-act[data-kind='pin'],
+.rd-row[data-zone='folder'] .rd-sw-act[data-kind='folder'] {
+  display: flex;
+  animation: rd-sw-in 0.18s ease-out;
+}
+.rd-sw-act b {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  opacity: 0.75;
+  transition: opacity 0.15s;
+}
+/* El ícono se llena desde abajo a medida que deslizas (como una caneca que se llena). */
+.rd-sw-ico {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  transform: scale(calc(0.82 + var(--fill, 0) * 0.0018));
+  transition: background 0.18s;
+}
+.rd-sw-ico svg {
+  grid-area: 1 / 1;
+}
+.rd-sw-base {
+  opacity: 0.7;
+}
+.rd-sw-fill {
+  clip-path: inset(calc(100% - var(--fill, 0) * 1%) 0 0 0);
+}
+/* Armada: color pleno, el ícono da un salto y el nombre se ve entero. */
+.rd-row[data-armed='1'] .rd-sw-ico {
+  background: rgba(255, 255, 255, 0.26);
+  animation: rd-sw-pop 0.26s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.rd-row[data-armed='1'] .rd-sw-act b {
+  opacity: 1;
+}
+.rd-row[data-zone='archive'] .rd-swipe {
+  --sw-bg: #7fa592;
+}
+.rd-row[data-zone='archive'][data-armed='1'] .rd-swipe {
+  --sw-bg: #2f7d62;
+}
+.rd-row[data-zone='delete'] .rd-swipe {
+  --sw-bg: #d9806f;
+}
+.rd-row[data-zone='delete'][data-armed='1'] .rd-swipe {
+  --sw-bg: #c23b33;
+}
+.rd-row[data-zone='pin'] .rd-swipe {
+  --sw-bg: #8aa0bf;
+}
+.rd-row[data-zone='pin'][data-armed='1'] .rd-swipe {
+  --sw-bg: #3d64a8;
+}
+.rd-row[data-zone='folder'] .rd-swipe {
+  --sw-bg: #d3aa6a;
+}
+.rd-row[data-zone='folder'][data-armed='1'] .rd-swipe {
+  --sw-bg: #b9781f;
+}
+@keyframes rd-sw-pop {
+  45% {
+    transform: scale(1.18);
+  }
+}
+@keyframes rd-sw-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rd-row.swiping[data-settle] > :not(.rd-swipe) {
+    transition-duration: 0.12s;
+  }
+  .rd-row[data-armed='1'] .rd-sw-ico,
+  .rd-sw-act {
+    animation: none !important;
+  }
+}
+
+/* «Mover a carpeta» desde el deslizamiento: tus carpetas a un toque. */
+.reader-dialog .rd-move-of {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.reader-dialog .rd-move-chips {
+  max-height: 40vh;
+  overflow-y: auto;
+}
+@media (max-width: 760px), (hover: none) {
+  .reader-dialog .rd-move-chips button {
+    min-height: 38px;
+    padding: 6px 13px;
+    font-size: 13.5px;
+  }
+  .reader-dialog .rd-move-chips button:active {
+    background: var(--rd-tint);
+  }
+}

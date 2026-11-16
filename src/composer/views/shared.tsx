@@ -1,7 +1,11 @@
 import { DocAttach } from '../PhotoBlocks';
 import type { ComposerApi } from '../useComposer';
 
-export type ViewProps = { c: ComposerApi };
+export type ViewProps = {
+  c: ComposerApi;
+  /** Cierra el formulario sin guardar (p. ej. cuando lo escrito se fue a otra parte). */
+  onClose?: () => void;
+};
 
 /** Documento adjunto (PDF o texto). Solo aparece donde tiene sentido, o si el recuerdo ya tiene uno. */
 export function DocBlock({ c }: ViewProps) {

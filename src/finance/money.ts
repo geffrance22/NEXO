@@ -471,3 +471,39 @@ export function entryAsInput(e: Entry): EntryInput {
     episodeId: e.episode_id ?? undefined,
   };
 }
+
+// ───────────────────────── ¿Valió la pena? ─────────────────────────
+
+export type WorthTone = 'great' | 'good' | 'meh' | 'doubt' | 'bad';
+/** Cinco respuestas, de la mejor a la peor. Los valores 1 y -1 son los de antes (no cambian). */
+export const worthScale: { value: number; label: string; hint: string; tone: WorthTone }[] = [
+  { value: 1, label: 'Me hizo feliz', hint: 'Lo disfruté mucho: lo volvería a comprar', tone: 'great' },
+  { value: 0.5, label: 'Valió la pena', hint: 'Útil y a buen precio: cumplió', tone: 'good' },
+  { value: 0, label: 'Ni bien ni mal', hint: 'Lo necesario, sin más', tone: 'meh' },
+  { value: -0.5, label: 'Pudo esperar', hint: 'No hacía falta todavía o había algo más barato', tone: 'doubt' },
+  { value: -1, label: 'Me arrepiento', hint: 'No lo volvería a comprar', tone: 'bad' },
+];
+export const worthOf = (v: number | undefined) => (v === undefined ? undefined : worthScale.find((w) => w.value === v));
+
+// ───────────────────────── Lo que sale de un ingreso ─────────────────────────
+
+/**
+ * Los gastos (y el ahorro) que anexaste a un ingreso, lo que suman y lo que queda de él. Los
+ * totales generales no cambian: es solo para seguirle la pista a esa plata.
+ */
+export function incomeUse(income: Pick<Entry, 'id' | 'amount'>, entries: readonly Entry[]) {
+  const spends = entries
+    .filter((e) => e.kind === 'Movimiento' && e.details.fromIncome === income.id && !e.details.pending)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const used = spends.reduce((s, e) => s + costOf(e), 0);
+  const total = Number(income.amount) || 0;
+  return { spends, used, left: total - used, pct: total ? used / total : 0 };
+}
+
+/** Los ingresos recientes (los últimos 4 meses), del más nuevo al más viejo, para anexarles gastos. */
+export function recentIncomes(entries: readonly Entry[], today = todayInputValue(), days = 120) {
+  const since = addDays(today, -days);
+  return entries
+    .filter((e) => e.kind === 'Movimiento' && flowOf(e) === 'ingreso' && !e.details.pending && dayOf(e) >= since)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+}

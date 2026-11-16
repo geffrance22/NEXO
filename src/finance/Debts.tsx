@@ -19,7 +19,7 @@ import {
 } from './model';
 import { daysBetween, moneyShort } from './money';
 import { createItem, removeItem, restoreItem, settingsOf, updateItem, useFinance } from './store';
-import { Empty, Field, FinSheet, MoneyField, moneyInput, PersonInput, relDays } from './ui';
+import { AccountChips, Empty, Field, FinSheet, MoneyField, moneyInput, PersonInput, relDays } from './ui';
 
 const first = (name: string) => name.split(' ')[0] || name;
 
@@ -203,19 +203,35 @@ export function DebtsTab() {
   );
 }
 
-function DebtSheet({ item, onClose }: { item: FinItem<'deuda'> | null; onClose: () => void }) {
+/** Lo que ya traía el formulario de movimiento al convertirlo en deuda. */
+export type DebtPrefill = { dir?: Debt['dir']; amount?: number; title?: string; date?: string; personId?: string; name?: string };
+
+export function DebtSheet({
+  item,
+  onClose,
+  prefill,
+  onSaved,
+  className,
+}: {
+  item: FinItem<'deuda'> | null;
+  onClose: () => void;
+  prefill?: DebtPrefill;
+  /** Cuando la deuda queda guardada (antes de cerrar). */
+  onSaved?: () => void;
+  className?: string;
+}) {
   const { workspace, notify, createEntry } = useApp();
   const fin = useFinance();
   const accounts = (settingsOf(fin.items).accounts.length ? settingsOf(fin.items).accounts : defaultAccounts).map((a) => a.name);
   const d = item?.data;
-  const [dir, setDir] = useState<Debt['dir']>(d?.dir ?? 'meDeben');
+  const [dir, setDir] = useState<Debt['dir']>(d?.dir ?? prefill?.dir ?? 'meDeben');
   const [who, setWho] = useState<{ personId?: string; name: string }>({
-    personId: d?.personId,
-    name: d?.who ?? '',
+    personId: d?.personId ?? prefill?.personId,
+    name: d?.who ?? prefill?.name ?? '',
   });
-  const [amount, setAmount] = useState(d?.amount ?? 0);
-  const [title, setTitle] = useState(item?.title ?? '');
-  const [date, setDate] = useState(d?.date ?? todayInputValue());
+  const [amount, setAmount] = useState(d?.amount ?? prefill?.amount ?? 0);
+  const [title, setTitle] = useState(item?.title ?? prefill?.title ?? '');
+  const [date, setDate] = useState(d?.date ?? prefill?.date ?? todayInputValue());
   const [due, setDue] = useState(d?.due ?? '');
   const [register, setRegister] = useState(false);
   const [method, setMethod] = useState('');
@@ -258,13 +274,16 @@ function DebtSheet({ item, onClose }: { item: FinItem<'deuda'> | null; onClose: 
     const r = item ? await updateItem(item, { title: label, data }) : await createItem('deuda', label, data);
     setBusy(false);
     if (typeof r === 'string') return notify(r);
-    notify(item ? 'Deuda actualizada.' : 'Deuda anotada.');
+    notify(item ? 'Deuda actualizada.' : 'Deuda anotada: la ves en Cobros y deudas.');
+    onSaved?.();
     onClose();
   };
 
   return (
     <FinSheet
       title={item ? 'Editar deuda' : 'Nueva deuda'}
+      sub={item ? undefined : 'No es gasto ni ingreso: queda pendiente hasta que se pague.'}
+      className={className}
       onClose={onClose}
       footer={
         <>
@@ -291,7 +310,7 @@ function DebtSheet({ item, onClose }: { item: FinItem<'deuda'> | null; onClose: 
           <PersonInput people={workspace.people} personId={who.personId} name={who.name} onChange={setWho} />
         </Field>
         <Field label="¿Cuánto?">
-          <MoneyField value={amount} onChange={setAmount} autoFocus={!item} />
+          <MoneyField value={amount} onChange={setAmount} autoFocus={!item && !prefill?.amount} />
         </Field>
         <Field label="¿De qué?" hint="Opcional" wide>
           <input className="fz-input" value={title} maxLength={200} placeholder="La cena, el tiquete, un préstamo…" onChange={(e) => setTitle(e.target.value)} />
@@ -310,13 +329,8 @@ function DebtSheet({ item, onClose }: { item: FinItem<'deuda'> | null; onClose: 
         </label>
       )}
       {!item && register && (
-        <Field label="Cuenta">
-          <select className="fz-input" value={method} onChange={(e) => setMethod(e.target.value)}>
-            <option value="">Sin cuenta</option>
-            {accounts.map((a) => (
-              <option key={a}>{a}</option>
-            ))}
-          </select>
+        <Field label={dir === 'meDeben' ? '¿De qué cuenta salió?' : '¿A qué cuenta entró?'} hint="Opcional" group>
+          <AccountChips accounts={accounts} value={method} onChange={setMethod} />
         </Field>
       )}
     </FinSheet>
@@ -403,13 +417,8 @@ function PaySheet({ item, onClose }: { item: FinItem<'deuda'>; onClose: () => vo
         Registrar el movimiento ({theyPay ? 'te entró la plata' : 'salió de tu cuenta'}; no cuenta como ingreso ni gasto)
       </label>
       {register && (
-        <Field label="Cuenta">
-          <select className="fz-input" value={method} onChange={(e) => setMethod(e.target.value)}>
-            <option value="">Sin cuenta</option>
-            {accounts.map((a) => (
-              <option key={a}>{a}</option>
-            ))}
-          </select>
+        <Field label={theyPay ? '¿A qué cuenta entró?' : '¿De qué cuenta salió?'} hint="Opcional" group>
+          <AccountChips accounts={accounts} value={method} onChange={setMethod} />
         </Field>
       )}
     </FinSheet>

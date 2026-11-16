@@ -188,6 +188,36 @@ export function Field({
   );
 }
 
+/** Elegir una cuenta con fichas (las tarjetas con su ícono). Tocar la elegida la quita. */
+export function AccountChips({
+  accounts,
+  value,
+  onChange,
+  label = 'Cuenta',
+}: {
+  accounts: string[];
+  value: string;
+  onChange: (v: string) => void;
+  label?: string;
+}) {
+  return (
+    <div className="fz-chips fz-acc-chips" role="radiogroup" aria-label={label}>
+      {accounts.map((a) => (
+        <button
+          type="button"
+          role="radio"
+          aria-checked={value === a}
+          key={a}
+          className={value === a ? 'on' : ''}
+          onClick={() => onChange(value === a ? '' : a)}
+        >
+          {a}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Campo de plata: acepta «50k», «1,5 millones» o una cuenta («120.000+35.000»). */
 export function MoneyField({
   value,

@@ -244,12 +244,18 @@ export function useComposer(
 
   /** Categoría de un movimiento: la primera etiqueta que sea una categoría conocida. */
   const category = tags.find(isMoneyCategory);
+  /** Todas sus categorías: la primera es la principal (la que cuenta en presupuestos y gráficos). */
+  const categories = useMemo(() => tags.filter(isMoneyCategory), [tags]);
   const setCategory = useCallback((name: string | undefined) => {
     setTouched(true);
     setTagsRaw((list) => {
       const rest = list.filter((t) => !isMoneyCategory(t));
       return name ? [name, ...rest] : rest;
     });
+  }, []);
+  const setCategories = useCallback((names: string[]) => {
+    setTouched(true);
+    setTagsRaw((list) => [...new Set(names), ...list.filter((t) => !isMoneyCategory(t))]);
   }, []);
 
   const cleaned = cleanDetails(kind, details);
@@ -348,6 +354,8 @@ export function useComposer(
     setTags,
     category,
     setCategory,
+    categories,
+    setCategories,
     date,
     setDate,
     amount,

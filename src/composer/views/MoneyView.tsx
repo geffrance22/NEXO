@@ -1,22 +1,29 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type SyntheticEvent } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertTriangle,
   ArrowRight,
   BriefcaseBusiness,
   ChevronDown,
   CornerDownLeft,
-  Frown,
+  Handshake,
   History,
+  LoaderCircle,
+  Paperclip,
   Plus,
-  Receipt,
   Repeat,
+  RotateCw,
   ShieldCheck,
-  Smile,
   Sparkles,
+  X,
 } from 'lucide-react';
 import { useApp } from '../../AppContext';
 import type { MoneyFlow } from '../../data';
+import { CategoryField } from '../../finance/CategoryPicker';
+import { worthIcons } from '../../finance/catIcons';
+import { DebtSheet } from '../../finance/Debts';
 import { currencies, rateToCop, type Currency } from '../../finance/fx';
+import { IncomeField } from '../../finance/IncomeLinks';
 import { cardMethod, chargeStats, defaultAccounts, isOpenCharge, itemsOf } from '../../finance/model';
 import {
   categoryAverage,
@@ -27,6 +34,8 @@ import {
   isMoney,
   learnedFor,
   monthKey,
+  worthOf,
+  worthScale,
   type MoneyTemplate,
 } from '../../finance/money';
 import { evalAmount, isExpression, parseQuickLine } from '../../finance/parse';
@@ -37,9 +46,13 @@ import { AutoTextarea, ChoiceChips, Label, Segmented } from '../controls';
 import { DateChips } from '../DateChips';
 import { PeopleField, PlaceField, useLinks } from '../LinkFields';
 import { expenseCategories, incomeCategories, savingCategories } from '../logic';
-import { CoverDrop } from '../PhotoBlocks';
+import type { ImageUploads } from '../useImageUploads';
+import { IncomeAllot, IncomeSpends } from './IncomeExtras';
 import type { ViewProps } from './shared';
 import '../../finance/money-form.css';
+
+/** Lo que pasa en una ventana encima del formulario no le llega al formulario (Enter, pegar…). */
+const keep = (e: SyntheticEvent) => e.stopPropagation();
 
 const quick = [5000, 10000, 20000, 50000, 100000];
 const MAX_AMOUNT = 999_999_999_999;
@@ -83,7 +96,7 @@ function AmountBox({
 }
 
 /** Movimiento: el monto manda; lo demás se llena solo o con un toque. */
-export function MoneyView({ c }: ViewProps) {
+export function MoneyView({ c, onClose }: ViewProps) {
   const { workspace } = useApp();
   const fin = useFinance();
   const settings = settingsOf(fin.items);
@@ -129,15 +142,24 @@ export function MoneyView({ c }: ViewProps) {
     if (f === 'reembolso') c.setCategory('Reembolso');
     else if (f === 'ahorro') c.setCategory(c.category && savingCategories.includes(c.category) ? c.category : 'Ahorro');
     else if (f === 'transferencia' || f === 'prestamo') c.setCategory(undefined);
-    else if (c.category) {
-      const list = f === 'ingreso' ? incomeCategories : expenseCategories;
-      if (!list.includes(c.category) && ![...settings.extraOut, ...settings.extraIn].includes(c.category))
-        c.setCategory(undefined);
-      if (c.category === 'Ahorro' || c.category === 'Reembolso') c.setCategory(undefined);
+    else if (c.categories.length) {
+      // Solo quedan las categorías que existen en el tipo nuevo (de gasto o de ingreso).
+      const allowed = f === 'ingreso' ? [...incomeCategories, ...settings.extraIn] : [...expenseCategories, ...settings.extraOut];
+      const kept = c.categories.filter((x) => allowed.includes(x) && x !== 'Ahorro' && x !== 'Reembolso');
+      if (kept.length !== c.categories.length) c.setCategories(kept);
     }
     if (f !== 'gasto' && f !== 'ingreso') c.setDetail('pending', undefined);
     if (f !== 'gasto') c.setDetail('split', undefined);
+    if (f !== 'ingreso') {
+      c.setDetail('allotNew', undefined);
+      c.setDetail('spendsNew', undefined);
+    }
   };
+  // Los gastos que se anexan a un ingreso usan las categorías de gasto.
+  const spendCategories = useMemo(
+    () => [...expenseCategories.filter((x) => x !== 'Ahorro' && x !== 'Otro'), ...settings.extraOut, 'Otro'],
+    [settings.extraOut],
+  );
 
   // ── Monto: acepta «50k», «20 mil» o una cuenta («12.000+8.500»).
   const shownNumber = foreign ? (c.details.original ?? 0) : c.amount;
@@ -331,9 +353,41 @@ export function MoneyView({ c }: ViewProps) {
 
   // ── Más detalles: abierto si ya hay algo ahí.
   const hasMore = Boolean(
-    c.details.repeat || c.details.asset || c.details.worth || c.details.deductible || c.body || c.uploads.items.length,
+    c.details.repeat ||
+      c.details.asset ||
+      c.details.worth !== undefined ||
+      c.details.deductible ||
+      c.details.spendsNew?.length ||
+      c.body ||
+      c.uploads.items.length,
   );
   const [more, setMore] = useState(hasMore);
+  const worth = worthOf(c.details.worth);
+
+  // ── Tus categorías más usadas en este tipo (para elegir con un toque).
+  const frequent = useMemo(() => {
+    const count = new Map<string, number>();
+    let n = 0;
+    for (const e of entries) {
+      if (!isMoney(e) || flowOf(e) !== flow) continue;
+      const t = e.tags[0];
+      if (t && t !== 'Otro') count.set(t, (count.get(t) ?? 0) + 1);
+      if (++n >= 300) break;
+    }
+    return [...count.entries()].sort((a, b) => b[1] - a[1]).map((x) => x[0]);
+  }, [entries, flow]);
+
+  // ── De qué ingreso sale (solo un gasto o lo que guardas).
+  const canFromIncome = flow === 'gasto' || (flow === 'ahorro' && c.direction === 'egreso');
+  useEffect(() => {
+    if (!canFromIncome && c.details.fromIncome) c.setDetail('fromIncome', undefined);
+  }, [canFromIncome]);
+
+  // ── Escribirlo en una línea (se abre al pedirlo) y convertirlo en deuda.
+  const [lineOpen, setLineOpen] = useState(false);
+  const [debtOpen, setDebtOpen] = useState(false);
+  const firstPerson = [...chosen][0];
+  const firstName = firstPerson ? workspace.people.find((p) => p.id === firstPerson)?.name : undefined;
 
   // ── Avisos útiles.
   const notes = useMemo(() => {
@@ -399,33 +453,6 @@ export function MoneyView({ c }: ViewProps) {
 
   return (
     <div className="fm">
-      {!c.editing && (
-        <div className="fm-line">
-          <label className="fm-line-input">
-            <Sparkles size={16} />
-            <input
-              value={line}
-              maxLength={200}
-              placeholder="Escríbelo como lo dirías: «almuerzo con Laura 38 mil nequi»"
-              aria-label="Escribir el movimiento en una línea"
-              onChange={(e) => setLine(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && line.trim()) {
-                  e.preventDefault();
-                  applyLine();
-                }
-              }}
-            />
-            {line.trim() && (
-              <button type="button" onClick={applyLine} aria-label="Llenar el formulario">
-                <CornerDownLeft size={14} /> Llenar
-              </button>
-            )}
-          </label>
-          {filled && <p className="fm-filled">{filled}</p>}
-        </div>
-      )}
-
       <div className={'fm-type' + (flow === 'gasto' || flow === 'ingreso' ? '' : ' other')}>
         <Segmented
           label="Tipo de movimiento"
@@ -450,540 +477,470 @@ export function MoneyView({ c }: ViewProps) {
               {flowMeta[f].label}
             </button>
           ))}
-        </div>
-      </div>
-
-      <label className="fm-amount" data-enter-saves>
-        <span className="fm-sign">
-          {income ? '+' : '−'}
-          {cur === 'EUR' ? '€' : cur === 'USD' ? 'US$' : '$'}
-        </span>
-        <input
-          inputMode="decimal"
-          size={Math.max(typed.length, 1)}
-          value={typed}
-          placeholder="0"
-          onFocus={() => setRaw(typed)}
-          onBlur={() => setRaw(null)}
-          onChange={(e) => onAmount(e.target.value)}
-          aria-label="Monto"
-          data-autofocus
-        />
-        <select
-          className="fm-cur"
-          value={cur}
-          aria-label="Moneda"
-          onChange={(e) => void setCurrency(e.target.value as Currency)}
-        >
-          {currencies.map((x) => (
-            <option key={x}>{x}</option>
-          ))}
-        </select>
-      </label>
-      {preview !== null && <p className="fm-calc">= {money(preview)}</p>}
-      {foreign && (
-        <p className="fm-fx">
-          ≈ <b>{money(c.amount)}</b> · 1 {cur} ={' '}
-          <input
-            inputMode="decimal"
-            aria-label="Tasa en pesos"
-            value={c.details.fx ? thousands(c.details.fx) : ''}
-            placeholder={fxBusy ? 'buscando…' : 'tasa'}
-            onChange={(e) => setFx(evalAmount(e.target.value) ?? 0)}
-          />{' '}
-          COP {cur === 'USD' && <small>TRM del día</small>}
-        </p>
-      )}
-
-      <div className="fm-quick">
-        {quick.map((n) => (
-          <button
-            type="button"
-            key={n}
-            onClick={() => {
-              setRaw(null);
-              applyNumber(shownNumber + (foreign ? n / 1000 : n));
-            }}
-          >
-            +{foreign ? n / 1000 : thousands(n)}
-          </button>
-        ))}
-        {c.amount > 0 && (
-          <button
-            type="button"
-            className="clear"
-            onClick={() => {
-              setRaw(null);
-              applyNumber(0);
-            }}
-          >
-            Borrar
-          </button>
-        )}
-      </div>
-
-      {!c.editing && (templates.length > 0 || last) && (
-        <div className="fm-templates" aria-label="Lo de siempre">
-          {templates.map((t) => (
-            <button type="button" key={t.key} onClick={() => fillFrom(t)} title={`${t.n} veces`}>
-              <span>{t.title}</span>
-              <b>{money(t.amount)}</b>
-            </button>
-          ))}
-          {last && (
+          {!c.editing && (
             <button
               type="button"
-              className="again"
-              onClick={() =>
-                fillFrom({
-                  title: last.title,
-                  amount: last.amount,
-                  flow: flowOf(last),
-                  direction: last.direction,
-                  category: last.tags[0],
-                  method: last.details.method,
-                })
-              }
+              className="fm-flow-debt"
+              title="Alguien te debe o le debes y aún no se mueve plata: no es gasto ni ingreso, queda en Deudas"
+              onClick={() => setDebtOpen(true)}
             >
-              <History size={13} /> Repetir el último
+              <Handshake size={13} /> Deuda
             </button>
           )}
         </div>
-      )}
-
-      <Label hint="Opcional">{flow === 'prestamo' ? '¿Para qué?' : '¿En qué?'}</Label>
-      <input
-        className="cp-ghost-input"
-        value={c.title}
-        maxLength={180}
-        placeholder={c.suggestedTitle}
-        onChange={(e) => c.setTitle(e.target.value)}
-        onBlur={learnFromTitle}
-        aria-label="Concepto"
-      />
-
-      {categories.length > 0 && (
-        <>
-          <Label>Categoría</Label>
-          <ChoiceChips label="Categoría" options={categories} clearable value={c.category} onChange={c.setCategory} />
-        </>
-      )}
-
-      {flow === 'ahorro' && (
-        <>
-          <Label>¿Guardaste o sacaste?</Label>
-          <Segmented
-            label="Ahorro"
-            value={c.direction}
-            onChange={c.setDirection}
-            options={[
-              { value: 'egreso', label: 'Guardé' },
-              { value: 'ingreso', label: 'Saqué' },
-            ]}
-          />
-          {goals.length > 0 && (
-            <>
-              <Label hint="Opcional">¿Para qué meta?</Label>
-              <ChoiceChips
-                label="Meta"
-                clearable
-                options={goals.map((g) => ({ value: g.id, label: g.title }))}
-                value={c.details.goalId}
-                onChange={(v) => c.setDetail('goalId', v)}
-              />
-            </>
-          )}
-        </>
-      )}
-
-      {showPockets && (
-        <>
-          <Label hint="Opcional">{pocketLabel}</Label>
-          <ChoiceChips
-            label="Bolsillo"
-            clearable
-            options={pockets.map((p) => ({ value: p.id, label: `${p.data.emoji ? p.data.emoji + ' ' : ''}${p.title}` }))}
-            value={c.details.pocketId}
-            onChange={pickPocket}
-          />
-        </>
-      )}
-
-      {flow === 'prestamo' && (
-        <>
-          <Label>¿Quién a quién?</Label>
-          <Segmented
-            label="Préstamo"
-            value={c.direction}
-            onChange={c.setDirection}
-            options={[
-              { value: 'egreso', label: 'Yo presté' },
-              { value: 'ingreso', label: 'Me prestaron' },
-            ]}
-          />
-        </>
-      )}
-
-      {flow === 'transferencia' ? (
-        <div className="cp-two">
-          <div>
-            <Label>De</Label>
-            <ChoiceChips
-              label="Cuenta de origen"
-              options={accountNames}
-              value={c.details.method}
-              onChange={(v) => c.setDetail('method', v)}
-            />
-          </div>
-          <div>
-            <Label>A</Label>
-            <ChoiceChips
-              label="Cuenta de destino"
-              options={accountNames.filter((a) => a !== c.details.method)}
-              value={c.details.toMethod}
-              onChange={(v) => c.setDetail('toMethod', v)}
-            />
-          </div>
-        </div>
-      ) : (
-        <div className="cp-two">
-          <div>
-            <Label>{pending ? (income ? '¿Cuándo te pagan?' : '¿Cuándo vence?') : 'Fecha'}</Label>
-            <DateChips
-              label="Fecha"
-              options={pending ? ['today', 'tomorrow', 'nextweek'] : ['today', 'yesterday']}
-              value={c.date}
-              onChange={(v) => {
-                c.setDate(v);
-                if (pending) c.setDetail('due', v);
-              }}
-            />
-          </div>
-          <div>
-            <Label>{income ? '¿A dónde llegó?' : 'Medio de pago'}</Label>
-            <ChoiceChips
-              label="Medio de pago"
-              options={accountNames}
-              clearable
-              value={c.details.method}
-              onChange={(v) => c.setDetail('method', v)}
-            />
-          </div>
-        </div>
-      )}
-
-      {showStatus && (
-        <div className="fm-status">
-          <Segmented
-            label="Estado"
-            value={pending ? 'pendiente' : 'listo'}
-            onChange={(v) => {
-              c.setDetail('pending', v === 'pendiente' ? true : undefined);
-              if (v === 'pendiente') {
-                const due = c.date < today ? addDays(today, 1) : c.date;
-                c.setDate(due);
-                c.setDetail('due', due);
-              } else if (c.date > today) c.setDate(today);
-            }}
-            options={[
-              { value: 'listo', label: income ? 'Cobrado' : 'Pagado' },
-              { value: 'pendiente', label: pendingLabel },
-            ]}
-          />
-          {pending && (
-            <small>No cuenta en tus totales hasta que lo marques {income ? 'cobrado' : 'pagado'}.</small>
-          )}
-        </div>
-      )}
-
-      {flow === 'ingreso' && (
-        <label className={'fm-toggle' + (abonoOn ? ' on' : '')}>
-          <input type="checkbox" checked={abonoOn} onChange={(e) => toggleAbono(e.target.checked)} />
-          <span className="fm-switch" aria-hidden="true" />
-          <span>
-            <b>
-              <BriefcaseBusiness size={13} /> Es el abono de un trabajo
-            </b>
-            <small>
-              {linked && linkedStats
-                ? `Con este llevas ${money(linkedStats.received + (pending ? 0 : c.amount))} abonado de ${money(linked.data.total)} · pendiente ${money(Math.max(0, linkedStats.left - (pending ? 0 : c.amount)))}.`
-                : draft && draft.total > 0
-                  ? draft.total > c.amount
-                    ? `Quedarán pendientes ${money(draftLeft)} de ${money(draft.total)}: queda en Trabajos por cobrar.`
-                    : 'El valor del trabajo debe ser mayor que este abono.'
-                  : 'Un trabajo que te pagan por partes (por ejemplo, la mitad al empezar): define cuánto vale y cuándo llega lo demás.'}
-            </small>
-          </span>
-        </label>
-      )}
-      {abonoOn && (
-        <div className="fm-charge">
-          {charges.length > 0 && (
-            <ChoiceChips
-              label="¿De qué trabajo?"
-              options={[
-                ...charges.map((x) => {
-                  const s = chargeStats(x, entries.filter((e) => e.id !== c.entry?.id));
-                  return { value: x.id, label: `${x.title} · pendiente ${money(s.left)}` };
-                }),
-                { value: 'new', label: 'Nuevo trabajo', icon: <Plus size={13} /> },
-              ]}
-              value={c.details.chargeId ?? (draft ? 'new' : undefined)}
-              onChange={chooseCharge}
-            />
-          )}
-          {linked && linkedStats?.next && (
-            <p className="fm-charge-note">
-              Esperabas {money(linkedStats.next.amount)} {friendlyDate(linkedStats.next.due).toLowerCase()}
-              {Math.abs(linkedStats.next.amount - c.amount) <= linkedStats.next.amount * 0.15
-                ? ': este abono la cumple.'
-                : '.'}
-            </p>
-          )}
-          {draft && (
-            <>
-              <div className="fm-charge-grid">
-                <AmountBox label="Valor del trabajo" value={draft.total} onChange={(total) => setDraft({ total })} />
-                <label className="fm-box">
-                  <span>¿Cuándo llega lo demás?</span>
-                  <input
-                    type="date"
-                    className="fm-box-date"
-                    min={c.date}
-                    value={draft.nextOn ?? ''}
-                    onChange={(e) => setDraft({ nextOn: e.target.value || undefined, task: draft.task ?? Boolean(e.target.value) })}
-                  />
-                </label>
-                {draft.nextOn && (
-                  <AmountBox
-                    label="¿Cuánto ese día?"
-                    value={draft.nextAmount ?? 0}
-                    onChange={(nextAmount) => setDraft({ nextAmount: nextAmount || undefined })}
-                    placeholder={draftLeft ? thousands(draftLeft) : '0'}
-                  />
-                )}
-              </div>
-              <input
-                className="cp-ghost-input fm-charge-title"
-                value={draft.title ?? ''}
-                maxLength={120}
-                placeholder={`Nombre del trabajo (opcional): ${c.title || 'Página web, diseño de logo…'}`}
-                onChange={(e) => setDraft({ title: e.target.value || undefined })}
-                aria-label="Nombre del trabajo"
-              />
-              {draft.nextOn && (
-                <label className="fm-check">
-                  <input type="checkbox" checked={draft.task !== false} onChange={(e) => setDraft({ task: e.target.checked })} />
-                  Crear un pendiente para no olvidar cobrarlo
-                </label>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {flow === 'prestamo' && (
-        <>
-          <Label hint="Opcional">{income ? '¿Para cuándo lo devuelves?' : '¿Para cuándo te lo devuelven?'}</Label>
-          <DateChips
-            label="Fecha de devolución"
-            options={['nextweek', 'none']}
-            value={c.details.due ?? ''}
-            onChange={(v) => c.setDetail('due', v || undefined)}
-          />
-        </>
-      )}
-
-      <div className="cp-two fm-links">
-        <div>
-          <Label hint={flow === 'prestamo' ? undefined : 'Opcional'}>
-            {flow === 'prestamo' ? (income ? '¿Quién te prestó?' : '¿A quién?') : 'Con quién'}
-          </Label>
-          <PeopleField c={c} links={links} compact />
-        </div>
-        {flow !== 'transferencia' && flow !== 'prestamo' && (
-          <div>
-            <Label hint="Opcional">Dónde</Label>
-            <PlaceField c={c} links={links} />
-          </div>
-        )}
       </div>
 
-      {flow === 'gasto' && chosen.size > 0 && !split && (
-        <label className={'fm-toggle' + (paidTo ? ' on' : '')}>
-          <input
-            type="checkbox"
-            checked={paidTo}
-            onChange={(e) => c.setDetail('paidTo', e.target.checked)}
-          />
-          <span className="fm-switch" aria-hidden="true" />
-          <span>
-            <b>Se lo pagué a {payees}</b>
-            <small>
-              {paidTo
-                ? 'Un pago, un regalo, un trabajo o un servicio: la plata fue para ' +
-                  (chosen.size === 1 ? 'esa persona.' : 'esas personas.')
-                : 'Si no, cuenta como un gasto que hicieron juntos.'}
-            </small>
+      <div className="fm-hero">
+        <label className="fm-amount" data-enter-saves>
+          <span className="fm-sign">
+            {income ? '+' : '−'}
+            {cur === 'EUR' ? '€' : cur === 'USD' ? 'US$' : '$'}
           </span>
-        </label>
-      )}
-
-      {flow === 'gasto' && (
-        <label className={'fm-toggle' + (split ? ' on' : '')}>
           <input
-            type="checkbox"
-            checked={Boolean(split)}
-            onChange={(e) => c.setDetail('split', e.target.checked ? { n: parts, mine: share } : undefined)}
+            inputMode="decimal"
+            size={Math.max(typed.length, 1)}
+            value={typed}
+            placeholder="0"
+            onFocus={() => setRaw(typed)}
+            onBlur={() => setRaw(null)}
+            onChange={(e) => onAmount(e.target.value)}
+            aria-label="Monto"
+            data-autofocus
           />
-          <span className="fm-switch" aria-hidden="true" />
-          <span>
-            <b>Pagué yo y lo dividimos</b>
-            <small>
-              {split
-                ? chosen.size
-                  ? `${parts} partes: tu parte ${money(share)} · cada uno te debe ${money(share)} (queda en Deudas)`
-                  : 'Agrega con quién lo dividiste.'
-                : 'Quedará lo que cada uno te debe.'}
-            </small>
-          </span>
+          <select className="fm-cur" value={cur} aria-label="Moneda" onChange={(e) => void setCurrency(e.target.value as Currency)}>
+            {currencies.map((x) => (
+              <option key={x}>{x}</option>
+            ))}
+          </select>
         </label>
-      )}
-
-      <button type="button" className={'fm-more' + (more ? ' open' : '')} onClick={() => setMore((v) => !v)}>
-        <ChevronDown size={15} />
-        Más detalles
-        <small>se repite · compra duradera · ¿valió la pena? · nota · comprobante</small>
-      </button>
-
-      {more && (
-        <div className="fm-more-body">
-          {(flow === 'gasto' || flow === 'ingreso' || flow === 'ahorro') && (
-            <label className={'fm-toggle' + (c.details.repeat ? ' on' : '')}>
-              <input
-                type="checkbox"
-                checked={Boolean(c.details.repeat)}
-                onChange={(e) =>
-                  c.setDetail(
-                    'repeat',
-                    e.target.checked ? { day: Number(c.date.slice(8)) || 1, every: 'mes' } : undefined,
-                  )
-                }
-              />
-              <span className="fm-switch" aria-hidden="true" />
-              <span>
-                <b>
-                  <Repeat size={13} /> Se repite
-                </b>
-                <small>
-                  {c.details.repeat
-                    ? `Queda en Fijos: ${c.details.repeat.every === 'año' ? 'cada año' : 'cada mes'} el día ${c.details.repeat.day}. Te avisa cuando toque.`
-                    : 'Arriendo, servicios, suscripciones, sueldo…'}
-                </small>
-              </span>
-            </label>
+        {preview !== null && <p className="fm-calc">= {money(preview)}</p>}
+        {foreign && (
+          <p className="fm-fx">
+            ≈ <b>{money(c.amount)}</b> · 1 {cur} ={' '}
+            <input
+              inputMode="decimal"
+              aria-label="Tasa en pesos"
+              value={c.details.fx ? thousands(c.details.fx) : ''}
+              placeholder={fxBusy ? 'buscando…' : 'tasa'}
+              onChange={(e) => setFx(evalAmount(e.target.value) ?? 0)}
+            />{' '}
+            COP {cur === 'USD' && <small>TRM del día</small>}
+          </p>
+        )}
+        <div className="fm-quick">
+          {quick.map((n) => (
+            <button
+              type="button"
+              key={n}
+              onClick={() => {
+                setRaw(null);
+                applyNumber(shownNumber + (foreign ? n / 1000 : n));
+              }}
+            >
+              +{foreign ? n / 1000 : thousands(n)}
+            </button>
+          ))}
+          {c.amount > 0 && (
+            <button
+              type="button"
+              className="clear"
+              onClick={() => {
+                setRaw(null);
+                applyNumber(0);
+              }}
+            >
+              Borrar
+            </button>
           )}
-          {c.details.repeat && (
-            <div className="fm-warranty">
-              Se repite
-              <select
-                value={c.details.repeat.every}
-                aria-label="Cada cuánto"
-                onChange={(e) =>
-                  c.setDetail('repeat', { ...c.details.repeat!, every: e.target.value as 'mes' | 'año' })
-                }
-              >
-                <option value="mes">cada mes</option>
-                <option value="año">cada año</option>
-              </select>
-              el día
+        </div>
+      </div>
+
+      {!c.editing && (
+        <div className="fm-assist">
+          {lineOpen && (
+            <div className="fm-line">
+              <Sparkles size={15} />
               <input
-                type="number"
-                min={1}
-                max={31}
-                aria-label="Día"
-                value={c.details.repeat.day}
-                onChange={(e) =>
-                  c.setDetail('repeat', {
-                    ...c.details.repeat!,
-                    day: Math.min(31, Math.max(1, Number(e.target.value) || 1)),
-                  })
-                }
+                value={line}
+                autoFocus
+                maxLength={200}
+                placeholder="«Almuerzo con Laura 38 mil nequi», «me pagaron 2 millones ayer»"
+                aria-label="Escribir el movimiento en una línea"
+                onChange={(e) => setLine(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape' && !line) {
+                    e.stopPropagation();
+                    setLineOpen(false);
+                  }
+                  if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && line.trim()) {
+                    e.preventDefault();
+                    applyLine();
+                  }
+                }}
               />
+              {line.trim() ? (
+                <button type="button" className="fm-line-go" onClick={applyLine} aria-label="Llenar el formulario">
+                  <CornerDownLeft size={13} /> Llenar
+                </button>
+              ) : (
+                <button type="button" className="fm-line-x" aria-label="Cerrar" title="Cerrar" onClick={() => setLineOpen(false)}>
+                  <X size={14} />
+                </button>
+              )}
             </div>
           )}
-
-          {flow === 'gasto' && (
-            <>
-              <label className={'fm-toggle' + (c.details.asset ? ' on' : '')}>
-                <input
-                  type="checkbox"
-                  checked={c.details.asset === true}
-                  onChange={(e) => c.setDetail('asset', e.target.checked || undefined)}
-                />
-                <span className="fm-switch" aria-hidden="true" />
-                <span>
-                  <b>
-                    <ShieldCheck size={13} /> Compra duradera
-                  </b>
-                  <small>Un equipo, un mueble, ropa buena: verás cuánto te cuesta por día y su garantía.</small>
-                </span>
-              </label>
-              {c.details.asset && (
-                <div className="fm-warranty">
-                  Garantía hasta
-                  <input
-                    type="date"
-                    value={c.details.warrantyUntil ?? ''}
-                    aria-label="Garantía hasta"
-                    onChange={(e) => c.setDetail('warrantyUntil', e.target.value || undefined)}
-                  />
-                </div>
-              )}
-
-              <div className="fm-worth">
-                <span>¿Valió la pena?</span>
-                <button
-                  type="button"
-                  className={c.details.worth === 1 ? 'on good' : ''}
-                  onClick={() => c.setDetail('worth', c.details.worth === 1 ? undefined : 1)}
-                >
-                  <Smile size={15} /> Me hizo feliz
-                </button>
-                <button
-                  type="button"
-                  className={c.details.worth === -1 ? 'on bad' : ''}
-                  onClick={() => c.setDetail('worth', c.details.worth === -1 ? undefined : -1)}
-                >
-                  <Frown size={15} /> Me arrepiento
-                </button>
-              </div>
-
-              <label className="fm-check">
-                <input
-                  type="checkbox"
-                  checked={c.details.deductible === true}
-                  onChange={(e) => c.setDetail('deductible', e.target.checked || undefined)}
-                />
-                Deducible en la declaración de renta (salud, educación, intereses…)
-              </label>
-            </>
-          )}
-
-          <Label hint="Opcional">Nota</Label>
-          <AutoTextarea
-            className="cp-soft-area"
-            minRows={2}
-            value={c.body}
-            maxLength={4000}
-            placeholder="Algo que quieras recordar de este movimiento"
-            onChange={(e) => c.setBody(e.target.value)}
-          />
-
-          <Label hint="Opcional">Comprobante</Label>
-          <CoverDrop uploads={c.uploads} icon={Receipt} shape="wide" title="Foto del recibo" hint="Toca para subirla" />
+          <div className="fm-templates" aria-label="Atajos">
+            {!lineOpen && (
+              <button type="button" className="fm-line-open" onClick={() => setLineOpen(true)}>
+                <Sparkles size={13} /> Escríbelo en una línea
+              </button>
+            )}
+            {templates.map((t) => (
+              <button type="button" key={t.key} onClick={() => fillFrom(t)} title={`${t.n} veces`}>
+                <span>{t.title}</span>
+                <b>{money(t.amount)}</b>
+              </button>
+            ))}
+            {last && (
+              <button
+                type="button"
+                className="again"
+                onClick={() =>
+                  fillFrom({
+                    title: last.title,
+                    amount: last.amount,
+                    flow: flowOf(last),
+                    direction: last.direction,
+                    category: last.tags[0],
+                    method: last.details.method,
+                  })
+                }
+              >
+                <History size={13} /> Repetir el último
+              </button>
+            )}
+          </div>
+          {filled && <p className="fm-filled">{filled}</p>}
         </div>
       )}
+
+      {/* ── Qué es ── */}
+      <section className="fm-sec">
+        <div className="fm-field">
+          <Label hint="Opcional">{flow === 'prestamo' ? '¿Para qué?' : '¿En qué?'}</Label>
+          <input
+            className="cp-ghost-input"
+            value={c.title}
+            maxLength={180}
+            placeholder={c.suggestedTitle}
+            onChange={(e) => c.setTitle(e.target.value)}
+            onBlur={learnFromTitle}
+            aria-label="Concepto"
+          />
+        </div>
+
+        {categories.length > 0 && (
+          <div className="fm-field">
+            <Label hint={c.categories.length > 1 ? 'la primera es la principal' : undefined}>
+              {c.categories.length > 1 ? 'Categorías' : 'Categoría'}
+            </Label>
+            <CategoryField
+              options={categories}
+              value={c.categories}
+              onChange={c.setCategories}
+              frequent={frequent}
+              multiple={flow !== 'ahorro'}
+              createIn={flow === 'ingreso' ? 'in' : flow === 'gasto' ? 'out' : undefined}
+            />
+          </div>
+        )}
+
+        {flow === 'ahorro' && (
+          <>
+            <div className="fm-field">
+              <Label>¿Guardaste o sacaste?</Label>
+              <Segmented
+                label="Ahorro"
+                value={c.direction}
+                onChange={c.setDirection}
+                options={[
+                  { value: 'egreso', label: 'Guardé' },
+                  { value: 'ingreso', label: 'Saqué' },
+                ]}
+              />
+            </div>
+            {goals.length > 0 && (
+              <div className="fm-field">
+                <Label hint="Opcional">¿Para qué meta?</Label>
+                <ChoiceChips
+                  label="Meta"
+                  clearable
+                  options={goals.map((g) => ({ value: g.id, label: g.title }))}
+                  value={c.details.goalId}
+                  onChange={(v) => c.setDetail('goalId', v)}
+                />
+              </div>
+            )}
+          </>
+        )}
+
+        {flow === 'prestamo' && (
+          <div className="fm-field">
+            <Label>¿Quién a quién?</Label>
+            <Segmented
+              label="Préstamo"
+              value={c.direction}
+              onChange={c.setDirection}
+              options={[
+                { value: 'egreso', label: 'Yo presté' },
+                { value: 'ingreso', label: 'Me prestaron' },
+              ]}
+            />
+          </div>
+        )}
+      </section>
+
+      {/* ── Cuándo y cómo ── */}
+      <section className="fm-sec">
+        {flow === 'transferencia' ? (
+          <div className="cp-two">
+            <div className="fm-field">
+              <Label>De</Label>
+              <ChoiceChips label="Cuenta de origen" options={accountNames} value={c.details.method} onChange={(v) => c.setDetail('method', v)} />
+            </div>
+            <div className="fm-field">
+              <Label>A</Label>
+              <ChoiceChips
+                label="Cuenta de destino"
+                options={accountNames.filter((a) => a !== c.details.method)}
+                value={c.details.toMethod}
+                onChange={(v) => c.setDetail('toMethod', v)}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="cp-two">
+            <div className="fm-field">
+              <Label>{pending ? (income ? '¿Cuándo te pagan?' : '¿Cuándo vence?') : 'Fecha'}</Label>
+              <DateChips
+                label="Fecha"
+                options={pending ? ['today', 'tomorrow', 'nextweek'] : ['today', 'yesterday']}
+                value={c.date}
+                onChange={(v) => {
+                  c.setDate(v);
+                  if (pending) c.setDetail('due', v);
+                }}
+              />
+            </div>
+            <div className="fm-field">
+              <Label>{income ? '¿A dónde llegó?' : 'Medio de pago'}</Label>
+              <ChoiceChips label="Medio de pago" options={accountNames} clearable value={c.details.method} onChange={(v) => c.setDetail('method', v)} />
+            </div>
+          </div>
+        )}
+
+        {showStatus && (
+          <div className="fm-status">
+            <Segmented
+              label="Estado"
+              value={pending ? 'pendiente' : 'listo'}
+              onChange={(v) => {
+                c.setDetail('pending', v === 'pendiente' ? true : undefined);
+                if (v === 'pendiente') {
+                  const due = c.date < today ? addDays(today, 1) : c.date;
+                  c.setDate(due);
+                  c.setDetail('due', due);
+                } else if (c.date > today) c.setDate(today);
+              }}
+              options={[
+                { value: 'listo', label: income ? 'Cobrado' : 'Pagado' },
+                { value: 'pendiente', label: pendingLabel },
+              ]}
+            />
+            {pending && <small>No cuenta en tus totales hasta que lo marques {income ? 'cobrado' : 'pagado'}.</small>}
+          </div>
+        )}
+
+        {flow === 'prestamo' && (
+          <div className="fm-field">
+            <Label hint="Opcional">{income ? '¿Para cuándo lo devuelves?' : '¿Para cuándo te lo devuelven?'}</Label>
+            <DateChips
+              label="Fecha de devolución"
+              options={['nextweek', 'none']}
+              value={c.details.due ?? ''}
+              onChange={(v) => c.setDetail('due', v || undefined)}
+            />
+          </div>
+        )}
+
+        {(showPockets || canFromIncome) && (
+          <div className={'cp-two' + (showPockets && canFromIncome ? '' : ' single')}>
+            {showPockets && (
+              <div className="fm-field">
+                <Label hint="Opcional">{pocketLabel}</Label>
+                <ChoiceChips
+                  label="Bolsillo"
+                  clearable
+                  options={pockets.map((p) => ({ value: p.id, label: `${p.data.emoji ? p.data.emoji + ' ' : ''}${p.title}` }))}
+                  value={c.details.pocketId}
+                  onChange={pickPocket}
+                />
+              </div>
+            )}
+            {canFromIncome && (
+              <div className="fm-field">
+                <Label hint="Opcional">¿De qué ingreso sale?</Label>
+                <IncomeField
+                  value={c.details.fromIncome}
+                  onChange={(id) => c.setDetail('fromIncome', id)}
+                  amount={c.amount}
+                  entryId={c.entry?.id}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {flow === 'ingreso' && (
+          <label className={'fm-toggle' + (abonoOn ? ' on' : '')}>
+            <input type="checkbox" checked={abonoOn} onChange={(e) => toggleAbono(e.target.checked)} />
+            <span className="fm-switch" aria-hidden="true" />
+            <span>
+              <b>
+                <BriefcaseBusiness size={13} /> Es el abono de un trabajo
+              </b>
+              <small>
+                {linked && linkedStats
+                  ? `Con este llevas ${money(linkedStats.received + (pending ? 0 : c.amount))} abonado de ${money(linked.data.total)} · pendiente ${money(Math.max(0, linkedStats.left - (pending ? 0 : c.amount)))}.`
+                  : draft && draft.total > 0
+                    ? draft.total > c.amount
+                      ? `Quedarán pendientes ${money(draftLeft)} de ${money(draft.total)}: queda en Trabajos por cobrar.`
+                      : 'El valor del trabajo debe ser mayor que este abono.'
+                    : 'Un trabajo que te pagan por partes (por ejemplo, la mitad al empezar): define cuánto vale y cuándo llega lo demás.'}
+              </small>
+            </span>
+          </label>
+        )}
+        {abonoOn && (
+          <div className="fm-charge">
+            {charges.length > 0 && (
+              <ChoiceChips
+                label="¿De qué trabajo?"
+                options={[
+                  ...charges.map((x) => {
+                    const s = chargeStats(x, entries.filter((e) => e.id !== c.entry?.id));
+                    return { value: x.id, label: `${x.title} · pendiente ${money(s.left)}` };
+                  }),
+                  { value: 'new', label: 'Nuevo trabajo', icon: <Plus size={13} /> },
+                ]}
+                value={c.details.chargeId ?? (draft ? 'new' : undefined)}
+                onChange={chooseCharge}
+              />
+            )}
+            {linked && linkedStats?.next && (
+              <p className="fm-charge-note">
+                Esperabas {money(linkedStats.next.amount)} {friendlyDate(linkedStats.next.due).toLowerCase()}
+                {Math.abs(linkedStats.next.amount - c.amount) <= linkedStats.next.amount * 0.15 ? ': este abono la cumple.' : '.'}
+              </p>
+            )}
+            {draft && (
+              <>
+                <div className="fm-charge-grid">
+                  <AmountBox label="Valor del trabajo" value={draft.total} onChange={(total) => setDraft({ total })} />
+                  <label className="fm-box">
+                    <span>¿Cuándo llega lo demás?</span>
+                    <input
+                      type="date"
+                      className="fm-box-date"
+                      min={c.date}
+                      value={draft.nextOn ?? ''}
+                      onChange={(e) => setDraft({ nextOn: e.target.value || undefined, task: draft.task ?? Boolean(e.target.value) })}
+                    />
+                  </label>
+                  {draft.nextOn && (
+                    <AmountBox
+                      label="¿Cuánto ese día?"
+                      value={draft.nextAmount ?? 0}
+                      onChange={(nextAmount) => setDraft({ nextAmount: nextAmount || undefined })}
+                      placeholder={draftLeft ? thousands(draftLeft) : '0'}
+                    />
+                  )}
+                </div>
+                <input
+                  className="cp-ghost-input fm-charge-title"
+                  value={draft.title ?? ''}
+                  maxLength={120}
+                  placeholder={`Nombre del trabajo (opcional): ${c.title || 'Página web, diseño de logo…'}`}
+                  onChange={(e) => setDraft({ title: e.target.value || undefined })}
+                  aria-label="Nombre del trabajo"
+                />
+                {draft.nextOn && (
+                  <label className="fm-check">
+                    <input type="checkbox" checked={draft.task !== false} onChange={(e) => setDraft({ task: e.target.checked })} />
+                    Crear un pendiente para no olvidar cobrarlo
+                  </label>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {flow === 'ingreso' && !c.editing && !pending && !fin.missing && <IncomeAllot c={c} />}
+      </section>
+
+      {/* ── Con quién y dónde ── */}
+      <section className="fm-sec">
+        <div className="cp-two fm-links">
+          <div className="fm-field">
+            <Label hint={flow === 'prestamo' ? undefined : 'Opcional'}>
+              {flow === 'prestamo' ? (income ? '¿Quién te prestó?' : '¿A quién?') : 'Con quién'}
+            </Label>
+            <PeopleField c={c} links={links} compact />
+          </div>
+          {flow !== 'transferencia' && flow !== 'prestamo' && (
+            <div className="fm-field">
+              <Label hint="Opcional">Dónde</Label>
+              <PlaceField c={c} links={links} />
+            </div>
+          )}
+        </div>
+
+        {flow === 'gasto' && chosen.size > 0 && !split && (
+          <label className={'fm-toggle' + (paidTo ? ' on' : '')}>
+            <input type="checkbox" checked={paidTo} onChange={(e) => c.setDetail('paidTo', e.target.checked)} />
+            <span className="fm-switch" aria-hidden="true" />
+            <span>
+              <b>Se lo pagué a {payees}</b>
+              <small>
+                {paidTo
+                  ? 'Un pago, un regalo, un trabajo o un servicio: la plata fue para ' + (chosen.size === 1 ? 'esa persona.' : 'esas personas.')
+                  : 'Si no, cuenta como un gasto que hicieron juntos.'}
+              </small>
+            </span>
+          </label>
+        )}
+
+        {flow === 'gasto' && (
+          <label className={'fm-toggle' + (split ? ' on' : '')}>
+            <input
+              type="checkbox"
+              checked={Boolean(split)}
+              onChange={(e) => c.setDetail('split', e.target.checked ? { n: parts, mine: share } : undefined)}
+            />
+            <span className="fm-switch" aria-hidden="true" />
+            <span>
+              <b>Pagué yo y lo dividimos</b>
+              <small>
+                {split
+                  ? chosen.size
+                    ? `${parts} partes: tu parte ${money(share)} · cada uno te debe ${money(share)} (queda en Deudas)`
+                    : 'Agrega con quién lo dividiste.'
+                  : 'Quedará lo que cada uno te debe.'}
+              </small>
+            </span>
+          </label>
+        )}
+      </section>
 
       {notes.length > 0 && (
         <ul className="fm-notes">
@@ -1000,7 +957,249 @@ export function MoneyView({ c }: ViewProps) {
           ))}
         </ul>
       )}
+
+      <button type="button" className={'fm-more' + (more ? ' open' : '')} aria-expanded={more} onClick={() => setMore((v) => !v)}>
+        <span>
+          <b>Más detalles</b>
+          <small>
+            {[
+              (flow === 'gasto' || flow === 'ingreso' || flow === 'ahorro') && 'se repite',
+              flow === 'ingreso' && !pending && 'gastos de este ingreso',
+              flow === 'gasto' && 'compra duradera',
+              flow === 'gasto' && '¿valió la pena?',
+              'comprobante',
+              'nota',
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </small>
+        </span>
+        <ChevronDown size={16} />
+      </button>
+
+      {more && (
+        <section className="fm-sec fm-more-body">
+          {(flow === 'gasto' || flow === 'ingreso' || flow === 'ahorro') && (
+            <div className="fm-toggle-group">
+              <label className={'fm-toggle' + (c.details.repeat ? ' on' : '')}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(c.details.repeat)}
+                  onChange={(e) =>
+                    c.setDetail('repeat', e.target.checked ? { day: Number(c.date.slice(8)) || 1, every: 'mes' } : undefined)
+                  }
+                />
+                <span className="fm-switch" aria-hidden="true" />
+                <span>
+                  <b>
+                    <Repeat size={13} /> Se repite
+                  </b>
+                  <small>
+                    {c.details.repeat
+                      ? `Queda en Fijos: ${c.details.repeat.every === 'año' ? 'cada año' : 'cada mes'} el día ${c.details.repeat.day}. Te avisa cuando toque.`
+                      : 'Arriendo, servicios, suscripciones, sueldo…'}
+                  </small>
+                </span>
+              </label>
+              {c.details.repeat && (
+                <div className="fm-sub">
+                  <div className="fm-mini-seg" role="radiogroup" aria-label="Cada cuánto">
+                    {(['mes', 'año'] as const).map((x) => (
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={c.details.repeat!.every === x}
+                        key={x}
+                        className={c.details.repeat!.every === x ? 'on' : ''}
+                        onClick={() => c.setDetail('repeat', { ...c.details.repeat!, every: x })}
+                      >
+                        {x === 'mes' ? 'Cada mes' : 'Cada año'}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="fm-sub-field">
+                    el día
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      aria-label="Día"
+                      value={c.details.repeat.day}
+                      onChange={(e) =>
+                        c.setDetail('repeat', { ...c.details.repeat!, day: Math.min(31, Math.max(1, Number(e.target.value) || 1)) })
+                      }
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+
+          {flow === 'ingreso' && !pending && <IncomeSpends c={c} options={spendCategories} />}
+
+          {flow === 'gasto' && (
+            <div className="fm-toggle-group">
+              <label className={'fm-toggle' + (c.details.asset ? ' on' : '')}>
+                <input type="checkbox" checked={c.details.asset === true} onChange={(e) => c.setDetail('asset', e.target.checked || undefined)} />
+                <span className="fm-switch" aria-hidden="true" />
+                <span>
+                  <b>
+                    <ShieldCheck size={13} /> Compra duradera
+                  </b>
+                  <small>Un equipo, un mueble, ropa buena: verás cuánto te cuesta por día y su garantía.</small>
+                </span>
+              </label>
+              {c.details.asset && (
+                <div className="fm-sub">
+                  <label className="fm-sub-field">
+                    Garantía hasta
+                    <input
+                      type="date"
+                      value={c.details.warrantyUntil ?? ''}
+                      aria-label="Garantía hasta"
+                      onChange={(e) => c.setDetail('warrantyUntil', e.target.value || undefined)}
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+
+          {flow === 'gasto' && (
+            <div className="fm-field">
+              <Label hint="Opcional">¿Valió la pena?</Label>
+              <div className="fm-worth" role="radiogroup" aria-label="¿Valió la pena?">
+                {worthScale.map((w) => {
+                  const Icon = worthIcons[w.tone];
+                  const on = c.details.worth === w.value;
+                  return (
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      key={w.value}
+                      className={'fm-worth-opt ' + w.tone + (on ? ' on' : '')}
+                      title={w.hint}
+                      onClick={() => c.setDetail('worth', on ? undefined : w.value)}
+                    >
+                      <Icon size={19} strokeWidth={1.9} />
+                      <span>{w.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {worth && <small className={'fm-worth-hint ' + worth.tone}>{worth.hint}</small>}
+            </div>
+          )}
+
+          {flow === 'gasto' && (
+            <label className="fm-check">
+              <input type="checkbox" checked={c.details.deductible === true} onChange={(e) => c.setDetail('deductible', e.target.checked || undefined)} />
+              Deducible en la declaración de renta (salud, educación, intereses…)
+            </label>
+          )}
+
+          <div className="fm-field">
+            <Label hint="Opcional">Comprobante</Label>
+            <ReceiptAttach uploads={c.uploads} />
+          </div>
+
+          <div className="fm-field">
+            <Label hint="Opcional">Nota</Label>
+            <AutoTextarea
+              className="cp-soft-area"
+              minRows={2}
+              value={c.body}
+              maxLength={4000}
+              placeholder="Algo que quieras recordar de este movimiento"
+              onChange={(e) => c.setBody(e.target.value)}
+            />
+          </div>
+        </section>
+      )}
+
       {links.dialogs}
+      {debtOpen &&
+        createPortal(
+          <div onKeyDown={keep} onPaste={keep} onDrop={keep} onDragOver={keep} onSubmit={keep}>
+            <DebtSheet
+              item={null}
+              className="fm-debt-sheet"
+              prefill={{
+                dir: income ? 'meDeben' : 'debo',
+                amount: c.amount || undefined,
+                title: c.title || undefined,
+                date: c.date,
+                personId: firstPerson,
+                name: firstName,
+              }}
+              onSaved={() => onClose?.()}
+              onClose={() => setDebtOpen(false)}
+            />
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
+/** El comprobante: una línea discreta para adjuntar la foto del recibo (o cambiarla y quitarla). */
+function ReceiptAttach({ uploads }: { uploads: ImageUploads }) {
+  const item = uploads.items[0];
+  const input = (
+    <input
+      type="file"
+      accept="image/*"
+      className="cp-sr"
+      onChange={(e) => {
+        const files = Array.from(e.target.files ?? []);
+        e.target.value = '';
+        if (files.length) uploads.add(files.slice(0, 1), true);
+      }}
+    />
+  );
+  if (!item)
+    return (
+      <div className="fm-receipt">
+        <label className="fm-receipt-add">
+          {input}
+          <Paperclip size={14} /> Adjuntar foto del recibo
+        </label>
+        {uploads.notice && <small className="fm-receipt-note">{uploads.notice}</small>}
+      </div>
+    );
+  return (
+    <div className={'fm-receipt has ' + item.status}>
+      <span className="fm-receipt-thumb">
+        <img src={item.preview} alt="" />
+        {item.status === 'uploading' && (
+          <span className="fm-receipt-spin">
+            <LoaderCircle size={14} className="spin" />
+          </span>
+        )}
+      </span>
+      <span className="fm-receipt-info">
+        <b>Comprobante</b>
+        <small>
+          {item.status === 'uploading'
+            ? `Subiendo… ${Math.round(item.progress * 100)} %`
+            : item.status === 'error'
+              ? item.error || 'No se pudo subir.'
+              : 'Listo'}
+        </small>
+      </span>
+      {item.status === 'error' && (
+        <button type="button" className="fm-receipt-btn" onClick={() => uploads.retry(item.id)}>
+          <RotateCw size={13} /> Reintentar
+        </button>
+      )}
+      <label className="fm-receipt-btn">
+        {input}
+        Cambiar
+      </label>
+      <button type="button" className="fm-receipt-x" aria-label="Quitar comprobante" title="Quitar" onClick={() => uploads.remove(item.id)}>
+        <X size={14} />
+      </button>
     </div>
   );
 }

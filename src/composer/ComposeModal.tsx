@@ -634,7 +634,7 @@ export function ComposeModal({
     );
   return (
     <Sheet
-      yieldTo=".mp-picker[open],.reader-dialog[open],.sheet.cz-form-sheet"
+      yieldTo=".mp-picker[open],.reader-dialog[open],.sheet.cz-form-sheet,.sheet.fm-debt-sheet"
       label={c.editing ? "Editar recuerdo" : "Nuevo recuerdo"}
       size={stage === "pick" ? "md" : "lg"}
       onRequestClose={requestClose}
@@ -703,7 +703,7 @@ export function ComposeModal({
           </header>
 
           <div className="cp-scroll">
-            <View key={c.kind} c={c} />
+            <View key={c.kind} c={c} onClose={onClose} />
           </div>
 
           <footer className="cp-foot">

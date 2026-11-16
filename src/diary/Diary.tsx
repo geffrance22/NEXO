@@ -121,7 +121,7 @@ const WEEK = ["L", "M", "X", "J", "V", "S", "D"];
 type Filter = "todas" | "personas" | "fotos" | `m:${number}`;
 type MapMode = "constancia" | "animo";
 
-/** Cómo se ven las entradas: línea de tiempo (la de siempre), tarjetas o lista compacta. */
+/** Cómo se ven las entradas: tarjetas (la de entrada), línea de tiempo o lista compacta. */
 type Layout = "linea" | "tarjetas" | "lista";
 const LAYOUTS: { id: Layout; label: string; Icon: typeof Sun }[] = [
   { id: "linea", label: "Línea de tiempo", Icon: GitCommitVertical },
@@ -132,9 +132,9 @@ const LAYOUT_KEY = "nexo:diary-layout";
 const readLayout = (): Layout => {
   try {
     const v = localStorage.getItem(LAYOUT_KEY);
-    return LAYOUTS.some((l) => l.id === v) ? (v as Layout) : "linea";
+    return LAYOUTS.some((l) => l.id === v) ? (v as Layout) : "tarjetas";
   } catch {
-    return "linea";
+    return "tarjetas";
   }
 };
 

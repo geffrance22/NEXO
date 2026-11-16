@@ -1,8 +1,18 @@
 import type { AppContextValue } from '../AppContext';
-import type { ChargeDraft, Entry, EntryInput, Person } from '../data';
+import { allotAmount } from '../composer/logic';
+import type { AllotDraft, ChargeDraft, Entry, EntryInput, Person, SpendDraft } from '../data';
 import { money, normalizeText } from '../lib/format';
-import { itemsOf, periodKeyOf, type ChargePart, type Debt, type Recurring } from './model';
-import { flowOf } from './money';
+import {
+  addMark,
+  invStats,
+  itemsOf,
+  periodKeyOf,
+  pocketColors,
+  type ChargePart,
+  type Debt,
+  type Recurring,
+} from './model';
+import { flowOf, moneyShort } from './money';
 import { createItem, financeState, loadFinance, updateItem } from './store';
 import { moneyInput } from './ui';
 
@@ -11,6 +21,8 @@ const SUBSCRIPTION =
 
 /** Cobros por partes que nacen con el movimiento que se está guardando (no van a la base). */
 const chargeDrafts = new Map<string, ChargeDraft>();
+/** Lo que se destina y se gasta de un ingreso que se está guardando (tampoco va a la base). */
+const incomeDrafts = new WeakMap<EntryInput, { allot: AllotDraft[]; spends: SpendDraft[] }>();
 
 /**
  * Antes de guardar: el fijo que nace de «se repite» y el cobro por partes que nace de un abono
@@ -25,6 +37,11 @@ export function prepareMoney(input: EntryInput) {
     const id = rest.chargeId ?? crypto.randomUUID();
     chargeDrafts.set(id, draft);
     input.details = { ...rest, chargeId: id };
+  }
+  const { allotNew, spendsNew, ...clean } = input.details;
+  if (allotNew || spendsNew) {
+    incomeDrafts.set(input, { allot: allotNew ?? [], spends: spendsNew ?? [] });
+    input.details = clean;
   }
 }
 
@@ -44,13 +61,109 @@ export async function afterMoneySaved(
   people: Person[],
   extra: Extra = {},
 ): Promise<string | null> {
-  if (!financeState().items) await loadFinance();
-  if (financeState().missing) return null;
-  const items = financeState().items ?? [];
-  const debts = itemsOf(items, 'deuda');
   const said: string[] = [];
   const flow = flowOf({ direction: input.direction, tags: input.tags, details: input.details });
+  const fromIncome = incomeDrafts.get(input);
+  incomeDrafts.delete(input);
+  const method = input.details.method;
+
+  // Gastos que ya hiciste con este ingreso: cada uno queda anexado a él (no necesitan Finanzas).
+  if (fromIncome?.spends.length && flow === 'ingreso' && extra.createEntry) {
+    let n = 0;
+    let sum = 0;
+    for (const s of fromIncome.spends) {
+      const made = await extra.createEntry(
+        moneyInput({
+          title: (s.title.trim() || s.category || 'Gasto').slice(0, 180),
+          amount: s.amount,
+          direction: 'egreso',
+          date: input.date,
+          tags: s.category ? [s.category] : [],
+          details: { flow: 'gasto', fromIncome: entryId, ...(method && { method }) },
+        }),
+        true,
+      );
+      if (made) {
+        n++;
+        sum += s.amount;
+      }
+    }
+    if (n) said.push(`${n === 1 ? 'un gasto anexado' : `${n} gastos anexados`} (${money(sum)})`);
+  }
+
+  if (!financeState().items) await loadFinance();
+  if (financeState().missing) return finish(said);
+  const items = financeState().items ?? [];
+  const debts = itemsOf(items, 'deuda');
   const person = (id: string) => people.find((p) => p.id === id);
+
+  // Destinar una parte: un ahorro anexado al ingreso, en la meta, el bolsillo o la inversión.
+  if (fromIncome?.allot.length && flow === 'ingreso' && !input.details.pending && extra.createEntry) {
+    const went: string[] = [];
+    for (const a of fromIncome.allot) {
+      const amount = allotAmount(a, input.amount);
+      if (!(amount > 0)) continue;
+      const base = { amount, date: input.date, direction: 'egreso' as const };
+      const how = { flow: 'ahorro' as const, fromIncome: entryId, ...(method && { method }) };
+      let made: Entry | null = null;
+      let name = '';
+      if (a.to === 'meta') {
+        const g = itemsOf(items, 'meta').find((x) => x.id === a.id);
+        if (!g) continue;
+        name = g.title;
+        made = await extra.createEntry(
+          moneyInput({
+            ...base,
+            title: `Ahorro para ${g.title}`,
+            tags: ['Meta'],
+            details: { ...how, goalId: g.id },
+            episodeId: g.data.episodeId,
+          }),
+          true,
+        );
+      } else if (a.to === 'bolsillo') {
+        let p = itemsOf(items, 'bolsillo').find((x) => x.id === a.id);
+        if (!p && a.id === 'new') {
+          const r = await createItem('bolsillo', 'Ahorro', {
+            use: 'ahorro',
+            color: pocketColors[0],
+            emoji: '🐷',
+            account: method,
+            initial: 0,
+            log: [],
+          });
+          if (typeof r !== 'string') p = r;
+        }
+        if (!p) continue;
+        name = p.title;
+        made = await extra.createEntry(
+          moneyInput({
+            ...base,
+            title: `Guardé en ${p.title}`,
+            tags: ['Ahorro'],
+            details: { ...how, pocketId: p.id },
+            episodeId: p.data.episodeId,
+          }),
+          true,
+        );
+      } else {
+        const inv = itemsOf(items, 'inversion').find((x) => x.id === a.id);
+        if (!inv) continue;
+        // El aporte suma al último valor (nunca antes de la última actualización).
+        const s = invStats(inv.data);
+        const d = s.last && s.last.d > input.date ? s.last.d : input.date;
+        const r = await updateItem(inv, { data: { log: addMark(inv.data.log, { d, v: s.value + amount, f: amount }) } });
+        if (r !== true) continue;
+        name = inv.title;
+        made = await extra.createEntry(
+          moneyInput({ ...base, title: `Aporte a ${inv.title}`, tags: ['Inversión'], details: how }),
+          true,
+        );
+      }
+      if (made) went.push(`${moneyShort(amount)} a ${name}`);
+    }
+    if (went.length) said.unshift(`destinaste ${went.join(', ')}`);
+  }
 
   // Reparto: cada persona te debe su parte (una sola vez por movimiento y persona).
   const split = input.details.split;
@@ -212,6 +325,11 @@ export async function afterMoneySaved(
     }
   }
 
+  return finish(said);
+}
+
+/** Un aviso corto con todo lo que pasó (o null si no pasó nada). */
+function finish(said: string[]) {
   if (!said.length) return null;
   const text = said.join(' · ');
   return text.charAt(0).toUpperCase() + text.slice(1) + '.';

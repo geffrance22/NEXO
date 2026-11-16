@@ -1093,12 +1093,6 @@ button.fz-pulse-card:hover {
   background: var(--ink);
   color: #fff !important;
 }
-.fz-selects {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.fz-selects select,
 .fz-bulk select {
   max-width: 220px;
   padding: 6px 28px 6px 12px;

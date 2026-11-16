@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, Database, Download, Landmark, PiggyBank, Plus, Scale, Tags, Trash2, Upload, X } from 'lucide-react';
+import { Check, ChevronDown, Database, Download, Landmark, PiggyBank, Plus, Scale, Search, Tags, Trash2, Upload, Wallet, X } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { Segmented } from '../composer/controls';
 import { expenseCategories, incomeCategories } from '../composer/logic';
-import { money, todayInputValue } from '../lib/format';
-import { catColor } from './charts';
+import { Popover } from '../instants/Popover';
+import { money, normalizeText, todayInputValue } from '../lib/format';
+import { CatIcon, catIconKey, catIconSet, isDefaultIcon } from './catIcons';
 import { ImportSheet } from './Import';
+import './categories.css';
+import './settings.css';
 import { defaultAccounts, itemsOf, type Settings } from './model';
 import { accountBalances, byCategory, categoryOf, dayOf, flowMeta, flowOf, isMoney, monthBounds, monthKey, shiftMonth } from './money';
 import { saveSettings, settingsOf, useFinance } from './store';
@@ -28,6 +31,10 @@ function SettingsForm({ initial }: { initial: Settings }) {
   const [newCat, setNewCat] = useState({ out: '', in: '' });
   const [reconcile, setReconcile] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [catTab, setCatTab] = useState<'out' | 'in'>('out');
+  const [iconFor, setIconFor] = useState<{ name: string; anchor: HTMLElement } | null>(null);
+  const outBase = expenseCategories.filter((c) => c !== 'Ahorro');
+  const inBase = incomeCategories;
   const dirty = JSON.stringify(s) !== JSON.stringify(initial);
   const moves = useMemo(() => workspace.entries.filter(isMoney), [workspace.entries]);
   const balances = accountBalances(moves, s.accounts);
@@ -94,38 +101,53 @@ function SettingsForm({ initial }: { initial: Settings }) {
           <small>Con el saldo inicial, Nexo calcula cuánto debería haber en cada una.</small>
         </header>
         {s.accounts.length ? (
-          <ul className="fz-accounts">
+          <ul className="fz-acc-list">
             {s.accounts.map((a, i) => {
               const b = balances.find((x) => x.name === a.name);
+              const bal = b?.balance ?? a.initial;
               return (
-                <li key={a.name}>
-                  <strong>{a.name}</strong>
-                  <label>
-                    <small>Saldo inicial</small>
-                    <MoneyField
-                      value={Math.abs(a.initial)}
-                      onChange={(v) => setS({ ...s, accounts: s.accounts.map((x, j) => (j === i ? { ...x, initial: a.initial < 0 ? -v : v } : x)) })}
-                      ariaLabel={`Saldo inicial de ${a.name}`}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className={'fz-chip ' + (a.initial < 0 ? 'bad' : 'muted')}
-                    title="Saldo inicial en contra (p. ej. una tarjeta de crédito)"
-                    onClick={() => setS({ ...s, accounts: s.accounts.map((x, j) => (j === i ? { ...x, initial: -x.initial } : x)) })}
-                  >
-                    {a.initial < 0 ? 'En contra' : 'A favor'}
-                  </button>
-                  <span className="fz-acc-balance">
-                    <small>Debería haber</small>
-                    <b className={(b?.balance ?? 0) < 0 ? 'out' : ''}>{money(b?.balance ?? a.initial)}</b>
+                <li key={a.name} className="fz-acc">
+                  <span className="fz-acc-ico" aria-hidden="true">
+                    <Wallet size={16} />
                   </span>
-                  <button type="button" className="fz-btn ghost sm" disabled={dirty} title={dirty ? 'Guarda primero los cambios' : undefined} onClick={() => setReconcile(a.name)}>
-                    <Scale size={13} /> Cuadrar
-                  </button>
-                  <button type="button" className="fz-icon" aria-label={`Quitar ${a.name}`} onClick={() => setS({ ...s, accounts: s.accounts.filter((_, j) => j !== i) })}>
-                    <Trash2 size={13} />
-                  </button>
+                  <div className="fz-acc-main">
+                    <strong>{a.name}</strong>
+                    <small>
+                      Debería haber <b className={bal < 0 ? 'out' : ''}>{money(bal)}</b>
+                    </small>
+                  </div>
+                  <div className="fz-acc-initial">
+                    <small>Saldo inicial</small>
+                    <span>
+                      <MoneyField
+                        value={Math.abs(a.initial)}
+                        onChange={(v) => setS({ ...s, accounts: s.accounts.map((x, j) => (j === i ? { ...x, initial: a.initial < 0 ? -v : v } : x)) })}
+                        ariaLabel={`Saldo inicial de ${a.name}`}
+                      />
+                      <button
+                        type="button"
+                        className={'fz-acc-sign' + (a.initial < 0 ? ' neg' : '')}
+                        title="Toca para cambiar: en contra es cuando debes (p. ej. una tarjeta de crédito)"
+                        onClick={() => setS({ ...s, accounts: s.accounts.map((x, j) => (j === i ? { ...x, initial: -x.initial } : x)) })}
+                      >
+                        {a.initial < 0 ? 'En contra' : 'A favor'}
+                      </button>
+                    </span>
+                  </div>
+                  <span className="fz-acc-tools">
+                    <button
+                      type="button"
+                      className="fz-btn ghost sm"
+                      disabled={dirty}
+                      title={dirty ? 'Guarda primero los cambios' : 'Compara con lo que hay de verdad'}
+                      onClick={() => setReconcile(a.name)}
+                    >
+                      <Scale size={13} /> Cuadrar
+                    </button>
+                    <button type="button" className="fz-icon" aria-label={`Quitar ${a.name}`} title="Quitar" onClick={() => setS({ ...s, accounts: s.accounts.filter((_, j) => j !== i) })}>
+                      <Trash2 size={14} />
+                    </button>
+                  </span>
                 </li>
               );
             })}
@@ -135,12 +157,22 @@ function SettingsForm({ initial }: { initial: Settings }) {
             Empezar con Efectivo, Nequi, Débito y Crédito
           </button>
         )}
-        <div className="fz-add">
-          <input className="fz-input" value={newAccount} maxLength={40} placeholder="Otra cuenta (Daviplata, Bancolombia, bolsillo…)" onChange={(e) => setNewAccount(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addAccount()} />
-          <button type="button" className="fz-btn ghost sm" onClick={addAccount}>
-            <Plus size={14} /> Agregar
-          </button>
-        </div>
+        <label className="fz-set-add">
+          <Plus size={15} />
+          <input
+            value={newAccount}
+            maxLength={40}
+            placeholder="Agregar otra cuenta: Daviplata, Bancolombia…"
+            aria-label="Nueva cuenta"
+            onChange={(e) => setNewAccount(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addAccount()}
+          />
+          {newAccount.trim() && (
+            <button type="button" className="fz-btn primary sm" onClick={addAccount}>
+              Agregar
+            </button>
+          )}
+        </label>
       </section>
 
       <section className={'fz-block fz-fold' + (budgetOpen ? ' open' : '')}>
@@ -184,7 +216,7 @@ function SettingsForm({ initial }: { initial: Settings }) {
               {outCats.map((c) => (
                 <li key={c}>
                   <span>
-                    <i style={{ background: catColor(c) }} />
+                    <CatIcon name={c} size={13} iconKey={catIconKey(c, s.catIcons)} />
                     {c}
                   </span>
                   <MoneyField
@@ -209,39 +241,84 @@ function SettingsForm({ initial }: { initial: Settings }) {
       <section className="fz-block">
         <header className="fz-block-head">
           <h3>
-            <Tags size={16} /> Categorías propias
+            <Tags size={16} /> Categorías
           </h3>
+          <div className="fz-set-tabs" role="tablist" aria-label="Tipo de categoría">
+            {(['out', 'in'] as const).map((k) => (
+              <button type="button" role="tab" key={k} aria-selected={catTab === k} className={catTab === k ? 'on' : ''} onClick={() => setCatTab(k)}>
+                {k === 'out' ? 'De gasto' : 'De ingreso'} <i>{(k === 'out' ? outBase.length + s.extraOut.length : inBase.length + s.extraIn.length)}</i>
+              </button>
+            ))}
+          </div>
+          <small>Toca el ícono para cambiarlo. Las tuyas se pueden quitar; las de Nexo, no.</small>
         </header>
-        {(['out', 'in'] as const).map((k) => (
-          <div key={k} className="fz-cat-edit">
-            <span>{k === 'out' ? 'De gasto' : 'De ingreso'}</span>
-            <div className="fz-chips">
-              {(k === 'out' ? s.extraOut : s.extraIn).map((c) => (
-                <span key={c} className="fz-tag">
-                  {c}
+        <ul className="fz-cat-grid">
+          {[...(catTab === 'out' ? outBase : inBase).map((c) => ({ c, own: false })), ...(catTab === 'out' ? s.extraOut : s.extraIn).map((c) => ({ c, own: true }))].map(
+            ({ c, own }) => (
+              <li key={c} className={'fz-cat-tile' + (own ? ' own' : '')}>
+                <button
+                  type="button"
+                  className="fz-cat-tile-ico"
+                  title="Cambiar el ícono"
+                  aria-label={`Cambiar el ícono de ${c}`}
+                  aria-haspopup="dialog"
+                  onClick={(e) => setIconFor(iconFor?.name === c ? null : { name: c, anchor: e.currentTarget })}
+                >
+                  <CatIcon name={c} size={16} iconKey={catIconKey(c, s.catIcons)} />
+                </button>
+                <span>{c}</span>
+                {own && (
                   <button
                     type="button"
+                    className="fz-cat-tile-x"
                     aria-label={`Quitar ${c}`}
-                    onClick={() => setS({ ...s, [k === 'out' ? 'extraOut' : 'extraIn']: (k === 'out' ? s.extraOut : s.extraIn).filter((x) => x !== c) })}
+                    title="Quitar"
+                    onClick={() => {
+                      const key = catTab === 'out' ? 'extraOut' : 'extraIn';
+                      const { [c]: _gone, ...icons } = s.catIcons;
+                      setS({ ...s, [key]: s[key].filter((x) => x !== c), catIcons: icons });
+                    }}
                   >
-                    <X size={11} />
+                    <X size={12} />
                   </button>
-                </span>
-              ))}
+                )}
+              </li>
+            ),
+          )}
+          <li className="fz-cat-tile new">
+            <label>
+              <Plus size={15} />
               <input
-                className="fz-input sm"
-                value={newCat[k]}
+                value={newCat[catTab]}
                 maxLength={30}
-                placeholder={k === 'out' ? 'Mascotas, Belleza…' : 'Arriendos, Clases…'}
-                onChange={(e) => setNewCat({ ...newCat, [k]: e.target.value })}
-                onKeyDown={(e) => e.key === 'Enter' && addCat(k)}
+                placeholder={catTab === 'out' ? 'Nueva: Mascotas…' : 'Nueva: Arriendos…'}
+                aria-label="Nueva categoría"
+                onChange={(e) => setNewCat({ ...newCat, [catTab]: e.target.value })}
+                onKeyDown={(e) => e.key === 'Enter' && addCat(catTab)}
               />
-              <button type="button" className="fz-btn ghost sm" onClick={() => addCat(k)}>
-                <Plus size={13} />
+            </label>
+            {newCat[catTab].trim() && (
+              <button type="button" className="fz-btn primary sm" onClick={() => addCat(catTab)}>
+                Agregar
               </button>
-            </div>
-          </div>
-        ))}
+            )}
+          </li>
+        </ul>
+        {iconFor && (
+          <IconPicker
+            anchor={iconFor.anchor}
+            name={iconFor.name}
+            value={catIconKey(iconFor.name, s.catIcons)}
+            onPick={(key) => {
+              const icons = { ...s.catIcons };
+              if (isDefaultIcon(iconFor.name, key)) delete icons[iconFor.name];
+              else icons[iconFor.name] = key;
+              setS({ ...s, catIcons: icons });
+              setIconFor(null);
+            }}
+            onClose={() => setIconFor(null)}
+          />
+        )}
       </section>
 
       <section className="fz-block">
@@ -250,15 +327,33 @@ function SettingsForm({ initial }: { initial: Settings }) {
             <Database size={16} /> Tus datos
           </h3>
         </header>
-        <div className="fz-data-actions">
-          <button type="button" className="fz-btn ghost" onClick={() => setImporting(true)}>
-            <Upload size={15} /> Importar extracto (CSV)
+        <div className="fz-data-list">
+          <button type="button" onClick={() => setImporting(true)}>
+            <span className="fz-data-ico">
+              <Upload size={16} />
+            </span>
+            <span>
+              <b>Importar extracto</b>
+              <small>Un CSV de tu banco: los movimientos entran revisados.</small>
+            </span>
           </button>
-          <button type="button" className="fz-btn ghost" onClick={exportAll} disabled={!moves.length}>
-            <Download size={15} /> Movimientos en CSV (Excel)
+          <button type="button" onClick={exportAll} disabled={!moves.length}>
+            <span className="fz-data-ico">
+              <Download size={16} />
+            </span>
+            <span>
+              <b>Movimientos en CSV</b>
+              <small>Para abrir en Excel o Sheets.</small>
+            </span>
           </button>
-          <button type="button" className="fz-btn ghost" onClick={backup} disabled={!fin.items?.length}>
-            <Download size={15} /> Respaldo de deudas, inversiones y cartas (JSON)
+          <button type="button" onClick={backup} disabled={!fin.items?.length}>
+            <span className="fz-data-ico">
+              <Download size={16} />
+            </span>
+            <span>
+              <b>Respaldo completo</b>
+              <small>Deudas, inversiones, cartas, listas y ajustes (JSON).</small>
+            </span>
           </button>
         </div>
       </section>
@@ -278,6 +373,72 @@ function SettingsForm({ initial }: { initial: Settings }) {
       {reconcile && <ReconcileSheet account={reconcile} settings={s} expected={balances.find((b) => b.name === reconcile)?.balance ?? 0} onClose={() => setReconcile(null)} />}
       {importing && <ImportSheet onClose={() => setImporting(false)} />}
     </div>
+  );
+}
+
+/** Elegir el ícono de una categoría: una cuadrícula con buscador; «Predeterminado» vuelve al de Nexo. */
+function IconPicker({
+  anchor,
+  name,
+  value,
+  onPick,
+  onClose,
+}: {
+  anchor: HTMLElement;
+  name: string;
+  value: string;
+  onPick: (key: string) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState('');
+  const needle = normalizeText(q.trim());
+  const keys = Object.keys(catIconSet).filter(
+    (k) => !needle || normalizeText(catIconSet[k].label).includes(needle) || k.includes(needle),
+  );
+  const fallback = catIconKey(name);
+  return (
+    <Popover anchor={anchor} label={`Ícono de ${name}`} className="fz-catpick fz-iconpick" onClose={onClose}>
+      <header className="fz-catpick-head">
+        <label className="fz-catpick-search">
+          <Search size={14} />
+          <input value={q} autoFocus placeholder={`Ícono para «${name}»`} aria-label="Buscar un ícono" onChange={(e) => setQ(e.target.value)} />
+        </label>
+      </header>
+      <div className="fz-iconpick-grid" role="radiogroup" aria-label={`Ícono de ${name}`}>
+        {keys.map((k) => {
+          const Icon = catIconSet[k].icon;
+          const on = k === value;
+          return (
+            <button
+              type="button"
+              role="radio"
+              aria-checked={on}
+              aria-label={catIconSet[k].label}
+              title={catIconSet[k].label}
+              key={k}
+              className={on ? 'on' : ''}
+              onClick={() => onPick(k)}
+            >
+              <Icon size={17} />
+              {on && (
+                <i aria-hidden="true">
+                  <Check size={9} strokeWidth={3.4} />
+                </i>
+              )}
+            </button>
+          );
+        })}
+        {!keys.length && <p className="fz-catpick-none">Nada con «{q}».</p>}
+      </div>
+      <footer className="fz-catpick-foot">
+        <small>Se guarda con «Guardar cambios».</small>
+        {value !== fallback && (
+          <button type="button" className="fz-btn ghost sm" onClick={() => onPick(fallback)}>
+            Predeterminado
+          </button>
+        )}
+      </footer>
+    </Popover>
   );
 }
 

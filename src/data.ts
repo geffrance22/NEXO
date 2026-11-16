@@ -595,8 +595,13 @@ export type EntryDetails = {
   asset?: boolean;
   /** AAAA-MM-DD: hasta cuándo tiene garantía. */
   warrantyUntil?: string;
-  /** ¿Valió la pena? 1: me hizo feliz; -1: me arrepiento. */
+  /**
+   * ¿Valió la pena? 1: me hizo feliz · 0.5: valió la pena · 0: ni bien ni mal · -0.5: pudo
+   * esperar · -1: me arrepiento (ver `worthScale`).
+   */
   worth?: number;
+  /** Gastos y ahorro: el ingreso del que salió esta plata (para ver cuánto queda de él). */
+  fromIncome?: string;
   /** Deducible en la declaración de renta. */
   deductible?: boolean;
   /** Pagaste tú y se dividió: en cuántas partes y cuánto era lo tuyo. */
@@ -621,6 +626,13 @@ export type EntryDetails = {
    * (se convierte en el cobro y su id pasa a `chargeId`).
    */
   chargeNew?: ChargeDraft;
+  /**
+   * Solo mientras se guarda un ingreso: las partes que se van a una meta, un bolsillo de ahorro o
+   * una inversión. No quedan en la base: se convierten en movimientos de ahorro anexados a él.
+   */
+  allotNew?: AllotDraft[];
+  /** Solo mientras se guarda un ingreso: gastos que ya hiciste con él (se crean anexados). */
+  spendsNew?: SpendDraft[];
   /**
    * Cápsula del tiempo (entradas del diario): queda sellada y oculta hasta `opensOn`
    * (AAAA-MM-DD). `once`: se ve una sola vez y se borra al cerrarla. `seenAt` (ISO): cuándo la
@@ -659,6 +671,25 @@ export type ChargeDraft = {
   nextAmount?: number;
   /** Crear un pendiente «espero» para no olvidar cobrarlo. */
   task?: boolean;
+};
+
+/**
+ * Una parte de un ingreso que se guarda en otro lado: un porcentaje (`pct`) o un valor fijo
+ * (`amount`). `id` es la meta, el bolsillo o la inversión («new»: un bolsillo «Ahorro» nuevo).
+ */
+export type AllotDraft = {
+  to: "meta" | "bolsillo" | "inversion";
+  id: string;
+  pct?: number;
+  amount?: number;
+};
+
+/** Un gasto que ya hiciste con un ingreso, escrito en el mismo formulario. */
+export type SpendDraft = {
+  key: string;
+  title: string;
+  amount: number;
+  category?: string;
 };
 
 /** Una carpeta propia del diario. */

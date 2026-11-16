@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Pencil,
   Plus,
+  PiggyBank,
   ShoppingBag,
   Trash2,
   Wallet,
@@ -51,6 +52,13 @@ export function PocketsTab() {
   const added = active.reduce((s, p) => s + (stats.get(p.id)?.added ?? 0), 0);
   const taken = active.reduce((s, p) => s + (stats.get(p.id)?.taken ?? 0), 0);
   const positive = active.filter((p) => (stats.get(p.id)?.balance ?? 0) > 0);
+  // El ahorro y las carteras para gastar, cada uno en su grupo (con su total).
+  const groups = (['ahorro', 'gasto'] as const)
+    .map((use) => {
+      const list = active.filter((p) => p.data.use === use);
+      return { use, list, sum: list.reduce((s, p) => s + (stats.get(p.id)?.balance ?? 0), 0) };
+    })
+    .filter((g) => g.list.length > 0);
 
   const remove = async (p: FinItem<'bolsillo'>) => {
     const r = await removeItem(p);
@@ -64,7 +72,7 @@ export function PocketsTab() {
         <section className="fz-block fz-pockets-empty">
           <header className="fz-block-head">
             <h3>
-              <Wallet size={16} /> Bolsillos y carteras
+              <PiggyBank size={16} /> Ahorro y bolsillos
             </h3>
             <button type="button" className="fz-btn primary sm" onClick={() => setEditing({})}>
               <Plus size={14} /> Nuevo bolsillo
@@ -140,8 +148,17 @@ export function PocketsTab() {
         </div>
       </section>
 
-      <div className="fz-pocket-grid">
-        {active.map((p) => {
+      {groups.map((g) => (
+        <section key={g.use} className="fz-pocket-group">
+          {groups.length > 1 && (
+            <header className="fz-pocket-group-head">
+              <h4>{g.use === 'ahorro' ? 'Ahorro' : 'Carteras para gastar'}</h4>
+              <b>{money(g.sum)}</b>
+              <small>{g.use === 'ahorro' ? 'Crece con lo que guardas' : 'Se recargan y se vacían con cada gasto'}</small>
+            </header>
+          )}
+          <div className="fz-pocket-grid">
+        {g.list.map((p) => {
           const s = stats.get(p.id)!;
           const saving = p.data.use === 'ahorro';
           const ep = p.data.episodeId ? workspace.episodes.find((e) => e.id === p.data.episodeId) : undefined;
@@ -233,7 +250,9 @@ export function PocketsTab() {
             </article>
           );
         })}
-      </div>
+          </div>
+        </section>
+      ))}
 
       {archived.length > 0 && (
         <div className="fz-closed">

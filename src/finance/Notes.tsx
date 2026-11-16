@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   Check,
   CheckCheck,
+  ChevronDown,
   Copy,
   Link2,
   NotebookPen,
@@ -13,17 +14,21 @@ import {
   PinOff,
   Plus,
   Search,
+  Tag,
   Trash2,
   X,
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { useDismiss } from '../hooks/useDismiss';
+import { expenseCategories, incomeCategories } from '../composer/logic';
 import { guessCategory } from '../lib/captureCategories';
 import { friendlyDate, money, normalizeText, todayInputValue } from '../lib/format';
+import { CatIcon } from './catIcons';
+import { CategoryPanel } from './CategoryPicker';
 import { itemsOf, noteTints, type FinItem, type FinNote, type NoteTint } from './model';
 import { calcNote, noteSegments, noteTitle, type NoteHit } from './noteCalc';
 import { dayOf, moneyShort, signed } from './money';
-import { createItem, financeState, removeItem, restoreItem, updateItem, useFinance } from './store';
+import { createItem, financeState, removeItem, restoreItem, settingsOf, updateItem, useFinance } from './store';
 import { Empty, EpisodeSelect, FinSheet, moneyInput } from './ui';
 
 const OPEN_KEY = 'nexo-fin-note';
@@ -489,24 +494,38 @@ function NoteEditor({ item, onBack, onLive }: { item: FinItem<'apunte'>; onBack:
     const g = guessCategory({ local: h.label, clause: line, whole: text, direction: dir, entries: workspace.entries });
     return g.category !== 'Otro' ? g.category : undefined;
   };
+  /** Las categorías que elegiste para un monto al registrarlo en lote (si no, la que se adivina). */
+  const [batchCats, setBatchCats] = useState<Record<string, string[]>>({});
+  const catsFor = (h: NoteHit, dir: 'egreso' | 'ingreso') => {
+    const chosen = batchCats[h.key];
+    if (chosen) return chosen;
+    const g = categoryOf(h, dir);
+    return g ? [g] : [];
+  };
   /** Cómo se detectó: con «-» es un gasto; sin él, un ingreso. */
   const dirOf = (h: NoteHit): 'egreso' | 'ingreso' => (h.value < 0 ? 'egreso' : 'ingreso');
-  const inputFor = (h: NoteHit, dir: 'egreso' | 'ingreso') => {
-    const category = categoryOf(h, dir);
-    return moneyInput({
+  const inputFor = (h: NoteHit, dir: 'egreso' | 'ingreso', cats = catsFor(h, dir)) =>
+    moneyInput({
       title: h.label.slice(0, 180),
       amount: Math.abs(h.value),
       direction: dir,
       date: todayInputValue(),
-      tags: category ? [category] : [],
+      tags: cats,
       details: { flow: dir === 'egreso' ? 'gasto' : 'ingreso', ...(item.data.pocketId && { pocketId: item.data.pocketId }) },
       episodeId: item.data.episodeId,
     });
-  };
+  const settings = settingsOf(fin.items);
+  const catOptions = (dir: 'egreso' | 'ingreso') =>
+    dir === 'egreso'
+      ? [...expenseCategories.filter((x) => x !== 'Ahorro' && x !== 'Otro'), ...settings.extraOut, 'Otro']
+      : [...incomeCategories.filter((x) => x !== 'Reembolso' && x !== 'Otro'), ...settings.extraIn, 'Otro'];
+  /** Elegir la categoría: al registrar un monto (`batch` falso) o al cambiarla en el lote. */
+  const [catAsk, setCatAsk] = useState<{ h: NoteHit; dir: 'egreso' | 'ingreso'; anchor: HTMLElement; batch: boolean } | null>(null);
 
-  const register = async (h: NoteHit, dir: 'egreso' | 'ingreso') => {
+  const register = async (h: NoteHit, dir: 'egreso' | 'ingreso', cats?: string[]) => {
     setAsking(null);
-    const e = await createEntry(inputFor(h, dir), true);
+    setCatAsk(null);
+    const e = await createEntry(inputFor(h, dir, cats), true);
     if (!e) return;
     const now = itemsOf(financeState().items, 'apunte').find((n) => n.id === item.id) ?? item;
     await updateItem(now, { data: { done: { ...now.data.done, [h.key]: e.id } } });
@@ -739,7 +758,7 @@ function NoteEditor({ item, onBack, onLive }: { item: FinItem<'apunte'>; onBack:
                 if (picking && !done) {
                   const on = picking.has(h.key);
                   const dir = dirOf(h);
-                  const cat = categoryOf(h, dir);
+                  const cats = catsFor(h, dir);
                   return (
                     <li key={h.key + h.start} className={'pick' + (on ? ' on' : '')}>
                       <button type="button" role="checkbox" aria-checked={on} className="fz-note-hit-btn" onClick={() => toggle(h.key)}>
@@ -750,10 +769,20 @@ function NoteEditor({ item, onBack, onLive }: { item: FinItem<'apunte'>; onBack:
                           {h.label}
                           <small className="fz-note-hit-kind">
                             <em className={dir === 'egreso' ? 'out' : 'in'}>{dir === 'egreso' ? 'Gasto' : 'Ingreso'}</em>
-                            {cat && ` · ${cat}`}
                           </small>
                         </span>
                         <b className={h.value < 0 ? 'out' : 'in'}>{signed(h.value)}</b>
+                      </button>
+                      <button
+                        type="button"
+                        className={'fz-note-hit-cat' + (cats.length ? '' : ' none')}
+                        title="Cambiar la categoría"
+                        aria-haspopup="dialog"
+                        onClick={(ev) => setCatAsk({ h, dir, anchor: ev.currentTarget, batch: true })}
+                      >
+                        {cats.length ? <CatIcon name={cats[0]} size={11} plain /> : <Tag size={11} />}
+                        {cats.length ? cats.join(' · ') : 'Sin categoría'}
+                        <ChevronDown size={11} />
                       </button>
                     </li>
                   );
@@ -771,10 +800,20 @@ function NoteEditor({ item, onBack, onLive }: { item: FinItem<'apunte'>; onBack:
                       </button>
                     ) : asking === h.key ? (
                       <span className="fz-note-ask">
-                        <button type="button" className="out" onClick={() => void register(h, 'egreso')}>
+                        <button
+                          type="button"
+                          className={'out' + (catAsk?.h.key === h.key && catAsk.dir === 'egreso' ? ' on' : '')}
+                          aria-haspopup="dialog"
+                          onClick={(ev) => setCatAsk({ h, dir: 'egreso', anchor: ev.currentTarget, batch: false })}
+                        >
                           <ArrowUpRight size={12} /> Gasto
                         </button>
-                        <button type="button" className="in" onClick={() => void register(h, 'ingreso')}>
+                        <button
+                          type="button"
+                          className={'in' + (catAsk?.h.key === h.key && catAsk.dir === 'ingreso' ? ' on' : '')}
+                          aria-haspopup="dialog"
+                          onClick={(ev) => setCatAsk({ h, dir: 'ingreso', anchor: ev.currentTarget, batch: false })}
+                        >
                           <ArrowDownLeft size={12} /> Ingreso
                         </button>
                       </span>
@@ -801,6 +840,27 @@ function NoteEditor({ item, onBack, onLive }: { item: FinItem<'apunte'>; onBack:
                 {batchBusy ? 'Registrando…' : `Registrar ${chosen.length}`}
               </button>
             </div>
+          )}
+          {catAsk && (
+            <CategoryPanel
+              key={catAsk.h.key + catAsk.dir + catAsk.batch}
+              compact
+              context={`${catAsk.h.label.slice(0, 40)} · ${signed(catAsk.h.value)}`}
+              anchor={catAsk.anchor}
+              align="end"
+              options={catOptions(catAsk.dir)}
+              value={catsFor(catAsk.h, catAsk.dir)}
+              createIn={catAsk.dir === 'egreso' ? 'out' : 'in'}
+              title={catAsk.dir === 'egreso' ? 'Categoría del gasto' : 'Categoría del ingreso'}
+              confirmLabel={catAsk.batch ? 'Listo' : 'Registrar'}
+              onConfirm={(list) => {
+                if (catAsk.batch) {
+                  setBatchCats((m) => ({ ...m, [catAsk.h.key]: list }));
+                  setCatAsk(null);
+                } else void register(catAsk.h, catAsk.dir, list);
+              }}
+              onClose={() => setCatAsk(null)}
+            />
           )}
         </aside>
       </div>

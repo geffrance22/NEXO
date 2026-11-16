@@ -31,6 +31,8 @@ export type Settings = {
   /** Categorías propias de gasto y de ingreso. */
   extraOut: string[];
   extraIn: string[];
+  /** El ícono que elegiste para cada categoría (nombre → clave de `catIconSet`). */
+  catIcons: Record<string, string>;
 };
 
 export type Payment = { id: string; d: string; amount: number; note?: string; entryId?: string };
@@ -387,6 +389,7 @@ export const defaultSettings: Settings = {
   accounts: [],
   extraOut: [],
   extraIn: [],
+  catIcons: {},
 };
 
 // ───────────────────────── Datos sanos al leer ─────────────────────────
@@ -417,6 +420,14 @@ export function fixData<K extends FinKind>(kind: K, raw: unknown): FinData[K] {
             : [],
           extraOut: strs(r.extraOut),
           extraIn: strs(r.extraIn),
+          catIcons:
+            r.catIcons && typeof r.catIcons === 'object'
+              ? Object.fromEntries(
+                  Object.entries(r.catIcons as Raw).filter(
+                    (x): x is [string, string] => typeof x[1] === 'string' && x[1].length <= 40,
+                  ),
+                )
+              : {},
         } satisfies Settings;
       }
       case 'deuda':

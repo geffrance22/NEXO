@@ -3,10 +3,11 @@ import { Frown, Hourglass, Pencil, PiggyBank, Plus, ShieldCheck, ShoppingBag, Sm
 import { useApp } from '../AppContext';
 import { Segmented } from '../composer/controls';
 import { addDays, friendlyDate, money, todayInputValue } from '../lib/format';
+import { worthIcons } from './catIcons';
 import { Progress } from './charts';
 import { defaultAccounts, goalSaved, itemsOf, type FinItem, type Goal } from './model';
 import { ShoppingLists } from './Shopping';
-import { costOf, daysBetween, dayOf, flowOf, isMoney, moneyShort, percent } from './money';
+import { costOf, daysBetween, dayOf, flowOf, isMoney, moneyShort, percent, worthOf, worthScale } from './money';
 import { createItem, removeItem, restoreItem, settingsOf, updateItem, useFinance } from './store';
 import { Empty, Field, FinSheet, MoneyField, moneyInput, relDays } from './ui';
 
@@ -35,8 +36,11 @@ export function GoalsTab() {
   const assets = moves
     .filter((e) => e.details.asset && flowOf(e) === 'gasto')
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
-  const happy = moves.filter((e) => e.details.worth === 1).sort((a, b) => costOf(b) - costOf(a));
-  const regret = moves.filter((e) => e.details.worth === -1).sort((a, b) => costOf(b) - costOf(a));
+  // ¿Valió la pena? Cinco respuestas: lo bueno (me hizo feliz, valió la pena) y lo que no tanto.
+  const rated = moves.filter((e) => worthOf(e.details.worth));
+  const ratedTotal = rated.reduce((s, e) => s + costOf(e), 0);
+  const happy = rated.filter((e) => e.details.worth! > 0).sort((a, b) => b.details.worth! - a.details.worth! || costOf(b) - costOf(a));
+  const regret = rated.filter((e) => e.details.worth! < 0).sort((a, b) => a.details.worth! - b.details.worth! || costOf(b) - costOf(a));
 
   const addWish = async () => {
     if (!wish.title.trim() || !(wish.price > 0)) return;
@@ -246,15 +250,32 @@ export function GoalsTab() {
         )}
       </section>
 
-      {(happy.length > 0 || regret.length > 0) && (
+      {rated.length > 0 && (
         <section className="fz-block fz-worth">
           <header className="fz-block-head">
             <h3>¿Valió la pena?</h3>
+            <small>Cómo te sentiste con lo que compraste: márcalo en «Más detalles» de cada gasto.</small>
           </header>
+          <div className="fz-worth-scale">
+            {worthScale.map((w) => {
+              const list = rated.filter((e) => e.details.worth === w.value);
+              const Icon = worthIcons[w.tone];
+              const total = list.reduce((s, e) => s + costOf(e), 0);
+              return (
+                <div key={w.value} className={'fz-worth-step ' + w.tone + (list.length ? '' : ' empty')} title={w.hint}>
+                  <Icon size={18} />
+                  <strong>{w.label}</strong>
+                  <b>{list.length ? moneyShort(total) : '—'}</b>
+                  <small>{list.length ? `${list.length} ${list.length === 1 ? 'compra' : 'compras'}` : 'Ninguna'}</small>
+                  <i style={{ width: ratedTotal ? (total / ratedTotal) * 100 + '%' : 0 }} />
+                </div>
+              );
+            })}
+          </div>
           <div className="fz-worth-cols">
             <div>
               <h4 className="good">
-                <Smile size={15} /> Te hicieron feliz · {moneyShort(happy.reduce((s, e) => s + costOf(e), 0))}
+                <Smile size={15} /> Valieron la pena · {moneyShort(happy.reduce((s, e) => s + costOf(e), 0))}
               </h4>
               <ul>
                 {happy.slice(0, 6).map((e) => (
@@ -269,7 +290,7 @@ export function GoalsTab() {
             </div>
             <div>
               <h4 className="bad">
-                <Frown size={15} /> Te arrepientes · {moneyShort(regret.reduce((s, e) => s + costOf(e), 0))}
+                <Frown size={15} /> No tanto · {moneyShort(regret.reduce((s, e) => s + costOf(e), 0))}
               </h4>
               <ul>
                 {regret.slice(0, 6).map((e) => (

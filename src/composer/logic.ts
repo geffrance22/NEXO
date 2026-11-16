@@ -1,4 +1,18 @@
-import type { Direction, Entry, EntryDetails, EntryInput, Kind } from "../data";
+import type {
+  AllotDraft,
+  Direction,
+  Entry,
+  EntryDetails,
+  EntryInput,
+  Kind,
+  SpendDraft,
+} from "../data";
+
+/** Cuánto es una parte destinada de un ingreso (un porcentaje o un valor fijo). */
+export const allotAmount = (a: AllotDraft, income: number) =>
+  a.pct ? Math.round((income * a.pct) / 100) : Math.max(0, a.amount ?? 0);
+export const allotTotal = (list: AllotDraft[] | undefined, income: number) =>
+  (list ?? []).reduce((s, a) => s + allotAmount(a, income), 0);
 
 /** Qué detalles se guardan según el tipo: lo que sobre (p. ej. al cambiar de tipo) se descarta. */
 export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
@@ -65,6 +79,7 @@ export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
     "asset",
     "warrantyUntil",
     "worth",
+    "fromIncome",
     "deductible",
     "split",
     "repeat",
@@ -74,6 +89,8 @@ export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
     "pocketId",
     "chargeId",
     "chargeNew",
+    "allotNew",
+    "spendsNew",
   ],
   Pendiente: [
     "priority",
@@ -178,6 +195,21 @@ export function cleanDetails(kind: Kind, details: EntryDetails): EntryDetails {
     if (out.chargeId) delete out.chargeNew;
     const draft = out.chargeNew as EntryDetails["chargeNew"];
     if (draft && !(draft.total > 0)) delete out.chargeNew;
+    // Destinar una parte y anexar gastos: solo a un ingreso que ya llegó.
+    if ((out.flow && out.flow !== "ingreso") || out.pending === true) {
+      delete out.allotNew;
+      delete out.spendsNew;
+    }
+    const allot = ((out.allotNew ?? []) as AllotDraft[]).filter(
+      (a) => a.id && ((a.pct ?? 0) > 0 || (a.amount ?? 0) > 0),
+    );
+    if (allot.length) out.allotNew = allot;
+    else delete out.allotNew;
+    const spends = ((out.spendsNew ?? []) as SpendDraft[]).filter(
+      (s) => s.amount > 0,
+    );
+    if (spends.length) out.spendsNew = spends;
+    else delete out.spendsNew;
     if (!out.currency || out.currency === "COP") {
       delete out.currency;
       delete out.original;
@@ -188,7 +220,10 @@ export function cleanDetails(kind: Kind, details: EntryDetails): EntryDetails {
       delete out.warrantyUntil;
     }
     if (out.deductible !== true) delete out.deductible;
-    if (out.worth !== 1 && out.worth !== -1) delete out.worth;
+    if (![1, 0.5, 0, -0.5, -1].includes(out.worth as number)) delete out.worth;
+    // Solo un gasto (o un ahorro) sale de un ingreso.
+    if (out.flow && out.flow !== "gasto" && out.flow !== "ahorro") delete out.fromIncome;
+    if (typeof out.fromIncome !== "string" || !out.fromIncome) delete out.fromIncome;
     const split = out.split as EntryDetails["split"];
     if (!split || !(split.n > 1)) delete out.split;
   }
@@ -330,6 +365,11 @@ export function problemFor(kind: Kind, f: ProblemFields): string | null {
         return "Elige de qué cuenta sale y a cuál llega.";
       if (f.details.split && !f.personIds.length)
         return "Agrega con quién lo dividiste.";
+      if (
+        f.details.pending !== true &&
+        allotTotal(f.details.allotNew, f.amount) > f.amount
+      )
+        return "Lo que destinas supera el ingreso.";
       return null;
     case "Pendiente":
       return has(f.title) ? null : "Escribe qué tienes que hacer.";

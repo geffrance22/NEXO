@@ -6,11 +6,11 @@ import {
   ListOrdered,
   NotebookPen,
   PenLine,
+  PiggyBank,
   Plus,
   Settings2,
   Target,
   TrendingUp,
-  Wallet,
 } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { DebtsTab } from '../finance/Debts';
@@ -38,7 +38,7 @@ const tabList: { key: FinTab; label: string; short?: string; icon: typeof Plus; 
   { key: 'resumen', label: 'Resumen', icon: LayoutDashboard, iconOnly: true },
   { key: 'movimientos', label: 'Movimientos', icon: ListOrdered },
   { key: 'apuntes', label: 'Apuntes', icon: NotebookPen },
-  { key: 'bolsillos', label: 'Bolsillos', icon: Wallet },
+  { key: 'bolsillos', label: 'Ahorro y bolsillos', short: 'Ahorro', icon: PiggyBank },
   { key: 'proyeccion', label: 'Carta del mes', short: 'Carta', icon: PenLine },
   { key: 'deudas', label: 'Cobros y deudas', short: 'Cobros', icon: HandCoins },
   { key: 'inversiones', label: 'Inversiones', icon: TrendingUp },

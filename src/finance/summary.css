@@ -63,6 +63,8 @@
 .fz-stat {
   display: flex;
   flex-direction: column;
+  /* Como botón trae «align-items: flex-start» del navegador: cada línea ocupa el ancho. */
+  align-items: stretch;
   gap: 4px;
   min-width: 0;
   padding: 13px 16px 14px;

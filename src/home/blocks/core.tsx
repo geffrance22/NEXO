@@ -237,11 +237,11 @@ export function CaptureBlock({ opts }: BlockProps) {
         className="cap-launch"
         aria-haspopup="dialog"
         aria-label="Escribir un instante"
-        aria-keyshortcuts="P"
+        aria-keyshortcuts="I"
         onClick={() => openCapture()}
       >
         <span className="cap-ph">¿Qué está pasando?</span>
-        <kbd aria-hidden="true">P</kbd>
+        <kbd aria-hidden="true">I</kbd>
       </button>
       {bool(opts, 'last', true) && lastThread && latest ? (
         <button

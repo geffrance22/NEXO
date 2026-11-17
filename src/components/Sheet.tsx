@@ -6,6 +6,7 @@ import {
   type RefObject,
 } from 'react';
 import { useMobile } from '../hooks/useMobile';
+import { holdTouchScroll, lockScroll } from '../lib/scrollLock';
 
 const FOCUSABLE =
   'a[href],button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -99,6 +100,7 @@ export function Sheet({
   children: ReactNode;
 }) {
   const sheet = useRef<HTMLDivElement>(null);
+  const backdrop = useRef<HTMLDivElement>(null);
   const pressedOnBackdrop = useRef(false);
   const close = useRef(onRequestClose);
   close.current = onRequestClose;
@@ -109,8 +111,9 @@ export function Sheet({
 
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    // La página de atrás no se mueve: ni con la rueda ni arrastrando el dedo sobre la ventana.
+    const unlock = lockScroll();
+    const release = backdrop.current ? holdTouchScroll(backdrop.current) : null;
     sheet.current?.focus({ preventScroll: true });
 
     const onKey = (e: KeyboardEvent) => {
@@ -141,13 +144,15 @@ export function Sheet({
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previousOverflow;
+      release?.();
+      unlock();
       previousFocus?.focus?.({ preventScroll: true });
     };
   }, []);
 
   return (
     <div
+      ref={backdrop}
       className="sheet-backdrop"
       onMouseDown={(e) => {
         pressedOnBackdrop.current = e.target === e.currentTarget;
@@ -164,6 +169,14 @@ export function Sheet({
         aria-modal="true"
         aria-label={label}
         tabIndex={-1}
+        onScroll={(e) => {
+          // La ventana no se desplaza (lo hace su contenido). Si el navegador la movió para
+          // mostrar un campo enfocado, vuelve a su sitio en vez de quedar corrida y en blanco.
+          const el = e.currentTarget;
+          if (e.target === el && (el.scrollTop || el.scrollLeft)) {
+            if (getComputedStyle(el).overflowY === 'hidden') el.scrollTo(0, 0);
+          }
+        }}
       >
         {mobile && <div className="sheet-grab" aria-hidden="true" {...grab} />}
         {children}

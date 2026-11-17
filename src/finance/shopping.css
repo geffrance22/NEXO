@@ -285,6 +285,7 @@ button.fz-shop-when:hover {
 .fz-shop-name {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   min-width: 0;
   padding: 2px 0;
   text-align: left;

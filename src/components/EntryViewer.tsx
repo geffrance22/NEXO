@@ -163,6 +163,13 @@ export function EntryViewer({
   const notedLater = noted && daysBetween(happened, noted) >= 2;
 
   const wide = photos.length >= 2 || Boolean(cover);
+  // Movimientos: el comprobante se puede descargar desde el visor, con un nombre que se entiende.
+  const imageOpts =
+    entry.kind === "Movimiento"
+      ? {
+          download: `Comprobante ${entry.title || entry.tags[0] || "movimiento"} ${happened}`,
+        }
+      : undefined;
 
   return (
     <Sheet
@@ -203,7 +210,7 @@ export function EntryViewer({
                 type="button"
                 className="ev-cover"
                 aria-label="Ver la imagen"
-                onClick={() => app.openImages(images, 0)}
+                onClick={() => app.openImages(images, 0, imageOpts)}
               >
                 <img src={cover.medium ?? cover.url} alt="" />
               </button>
@@ -380,7 +387,7 @@ export function EntryViewer({
                   type="button"
                   key={img.url}
                   aria-label={`Ver foto ${i + 1}`}
-                  onClick={() => app.openImages(images, firstPhoto + i)}
+                  onClick={() => app.openImages(images, firstPhoto + i, imageOpts)}
                 >
                   <img src={img.medium ?? img.url} alt="" loading="lazy" />
                   {i === 5 && photos.length > 6 && (

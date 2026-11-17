@@ -897,8 +897,11 @@
 .fz-tracked button {
   display: flex;
   flex-direction: column;
+  /* Los botones traen «align-items: flex-start» del navegador: sin esto, el texto se sale. */
+  align-items: stretch;
   gap: 5px;
   width: 100%;
+  min-width: 0;
   padding: 8px;
   border-radius: 12px;
   text-align: left;
@@ -914,6 +917,7 @@
   gap: 10px;
 }
 .fz-tracked-top strong {
+  min-width: 0;
   overflow: hidden;
   font-size: 13.5px;
   text-overflow: ellipsis;
@@ -927,6 +931,7 @@
 }
 .fz-tracked small {
   font-size: 11.5px;
+  overflow-wrap: anywhere;
   color: var(--fz-faint);
 }
 .fz-tracked .fz-inc-bar {

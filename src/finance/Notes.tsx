@@ -393,13 +393,14 @@ export function QuickNoteSheet({ onClose, onOpenFull }: { onClose: () => void; o
                 aria-checked={noteId === n.id}
                 key={n.id}
                 className={'fz-qn-card tint-' + n.data.tint + (noteId === n.id ? ' on' : '')}
+                title={noteTitle(n.title, n.data.text)}
                 onClick={() => void pick(n)}
               >
                 <strong>{noteTitle(n.title, n.data.text)}</strong>
                 <small>
-                  {friendlyDate(dayOf({ created_at: updatedOf(n) }))}
+                  <span>{friendlyDate(dayOf({ created_at: updatedOf(n) }))}</span>
                   {c.hits.length > 0 && (
-                    <b className={c.total < 0 ? 'out' : 'in'}> · {c.total < 0 ? '−' + moneyShort(-c.total) : moneyShort(c.total)}</b>
+                    <b className={c.total < 0 ? 'out' : 'in'}>· {c.total < 0 ? '−' + moneyShort(-c.total) : moneyShort(c.total)}</b>
                   )}
                 </small>
               </button>

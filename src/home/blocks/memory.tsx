@@ -24,7 +24,7 @@ import { itemsOf, occurrences } from '../../finance/model';
 import { periodAt, totals } from '../../finance/money';
 import { isOpenTask } from '../../lib/commitments';
 import { kindLabel } from '../../lib/entries';
-import { episodeKindOf } from '../../lib/episodes';
+import { episodeKindOf, episodeMoney } from '../../lib/episodes';
 import { addDays, friendlyDate, money, todayInputValue } from '../../lib/format';
 import { daysBetween, daysToBirthday, isReachable, relativeDay } from '../../lib/people';
 import { placeKinds } from '../../lib/places';
@@ -577,16 +577,20 @@ export function PlacesBlock({ opts, zone }: BlockProps) {
 /** Episodios en curso, con lo que llevan gastado frente a su presupuesto. */
 export function EpisodesBlock({ opts, zone }: BlockProps) {
   const { workspace, go, openEpisode } = useApp();
+  const fin = useFinance();
   const status = str(opts, 'status', 'activo');
-  const rows = useMemo(() => {
-    const spent = new Map<string, Entry[]>();
-    for (const e of workspace.entries)
-      if (e.episode_id && e.kind === 'Movimiento') spent.set(e.episode_id, [...(spent.get(e.episode_id) ?? []), e]);
-    return workspace.episodes
-      .filter((ep) => status === 'todos' || ep.status === 'activo')
-      .sort((a, b) => (b.starts_on ?? b.created_at).localeCompare(a.starts_on ?? a.created_at))
-      .map((ep) => ({ ep, spent: totals(spent.get(ep.id) ?? []).spent }));
-  }, [workspace.entries, workspace.episodes, status]);
+  // Lo gastado sigue a Finanzas: cuenta también lo que sale de su cartera conectada.
+  const rows = useMemo(
+    () =>
+      workspace.episodes
+        .filter((ep) => status === 'todos' || ep.status === 'activo')
+        .sort((a, b) => (b.starts_on ?? b.created_at).localeCompare(a.starts_on ?? a.created_at))
+        .map((ep) => {
+          const m = episodeMoney(ep, workspace.entries, fin.items);
+          return { ep, spent: m.spent, budget: m.budget };
+        }),
+    [workspace.entries, workspace.episodes, fin.items, status],
+  );
   return (
     <Card
       zone={zone}
@@ -604,9 +608,9 @@ export function EpisodesBlock({ opts, zone }: BlockProps) {
       emptyText="Un viaje, un proyecto o una mudanza: crea un episodio para reunir todo lo que pase."
     >
       <ul className="hk-list">
-        {rows.slice(0, num(opts, 'count', 4)).map(({ ep, spent }) => {
+        {rows.slice(0, num(opts, 'count', 4)).map(({ ep, spent, budget }) => {
           const k = episodeKindOf(ep.kind);
-          const pct = ep.budget ? Math.min(100, Math.round((spent / ep.budget) * 100)) : null;
+          const pct = budget ? Math.min(100, Math.round((spent / budget) * 100)) : null;
           return (
             <li key={ep.id}>
               <button type="button" onClick={() => go('Episodios', ep)}>
@@ -617,7 +621,7 @@ export function EpisodesBlock({ opts, zone }: BlockProps) {
                   <strong>{ep.title}</strong>
                   <small>
                     {k.label}
-                    {spent > 0 && ` · ${money(spent)}${ep.budget ? ` de ${money(ep.budget)}` : ''}`}
+                    {spent > 0 && ` · ${money(spent)}${budget ? ` de ${money(budget)}` : ''}`}
                   </small>
                   {pct !== null && (
                     <span className={'hk-bar' + (pct >= 100 ? ' bad' : pct >= 80 ? ' warn' : '')}>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { StoredImage } from '../data';
 import { errorMessage } from '../lib/format';
-import { MAX_INPUT_BYTES, prepareImage, uploadToImgbb } from '../lib/imgbb';
+import { MAX_INPUT_BYTES, prepareImage, uploadToImgbb, uploadUrlToImgbb } from '../lib/imgbb';
 
 export type UploadItem = {
   id: string;
@@ -15,7 +15,45 @@ export type UploadItem = {
   file?: File;
   /** Si `preview` es una URL local que hay que liberar. */
   local?: boolean;
+  /** La dirección web de donde se trajo (para reintentar). */
+  source?: string;
+  /** No se pudo copiar a ImgBB: quedó enlazada a su dirección original. */
+  linked?: boolean;
 };
+
+const isWebUrl = (s: string) => /^https?:\/\/[^\s/]+\.[^\s]+$/i.test(s) && s.length <= 2000;
+
+/** Carga la dirección como imagen: así se sabe que de verdad lo es (y que se ve). */
+function opensAsImage(url: string, signal: AbortSignal) {
+  return new Promise<boolean>((resolve) => {
+    const img = new Image();
+    const done = (ok: boolean) => {
+      window.clearTimeout(timer);
+      img.onload = img.onerror = null;
+      resolve(ok);
+    };
+    const timer = window.setTimeout(() => done(false), 15_000);
+    img.onload = () => done(img.naturalWidth > 0);
+    img.onerror = () => done(false);
+    signal.addEventListener('abort', () => done(false));
+    img.src = url;
+  });
+}
+
+/** Descarga la imagen en el navegador (solo si el sitio lo permite); si no, null. */
+async function download(url: string, signal: AbortSignal): Promise<File | null> {
+  try {
+    const res = await fetch(url, { signal, mode: 'cors', credentials: 'omit' });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    if (!blob.type.startsWith('image/') || blob.size > MAX_INPUT_BYTES) return null;
+    const ext = blob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+    return new File([blob], `imagen.${ext}`, { type: blob.type });
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') throw e;
+    return null;
+  }
+}
 
 const safeName = (file: File) => file.name.replace(/[^\w.-]+/g, '_').slice(0, 60) || 'foto.jpg';
 
@@ -73,6 +111,51 @@ export function useImageUploads(initial: StoredImage[], max = 8) {
     [patch],
   );
 
+  /**
+   * Una imagen desde la web: se descarga y se sube como cualquier foto; si el sitio no lo
+   * permite, ImgBB la copia desde su dirección; y si tampoco, queda enlazada tal cual.
+   */
+  const startUrl = useCallback(
+    async (id: string, url: string) => {
+      const controller = new AbortController();
+      controllers.current.set(id, controller);
+      const { signal } = controller;
+      try {
+        const ok = await opensAsImage(url, signal);
+        if (signal.aborted) return;
+        if (!ok) throw Error('Esa dirección no abre una imagen. Copia la dirección de la imagen.');
+        const file = await download(url, signal);
+        let image: StoredImage | null = null;
+        if (file) {
+          const blob = await prepareImage(file);
+          if (signal.aborted) return;
+          image = await uploadToImgbb(blob, nameFor(file, blob), {
+            signal,
+            onProgress: (progress) => patch(id, { progress }),
+          });
+        } else {
+          image = await uploadUrlToImgbb(url, { signal }).catch((e: Error) => {
+            if (e.name === 'AbortError') throw e;
+            return null;
+          });
+        }
+        if (signal.aborted) return;
+        patch(
+          id,
+          image
+            ? { status: 'done', progress: 1, image }
+            : { status: 'done', progress: 1, image: { url }, linked: true },
+        );
+      } catch (e) {
+        if ((e as Error).name === 'AbortError') return;
+        patch(id, { status: 'error', error: errorMessage(e) });
+      } finally {
+        controllers.current.delete(id);
+      }
+    },
+    [patch],
+  );
+
   const discard = useCallback((item: UploadItem) => {
     controllers.current.get(item.id)?.abort();
     controllers.current.delete(item.id);
@@ -109,6 +192,35 @@ export function useImageUploads(initial: StoredImage[], max = 8) {
     [max, start, discard],
   );
 
+  /** Agrega una imagen desde su dirección web. Devuelve false si la dirección no sirve. */
+  const addUrl = useCallback(
+    (raw: string, replace = false) => {
+      setNotice('');
+      const url = raw.trim();
+      if (!isWebUrl(url)) {
+        setNotice('Pega la dirección completa de la imagen (https://…).');
+        return false;
+      }
+      if (!replace && latest.current.length >= max) {
+        setNotice(`Máximo ${max} fotos.`);
+        return false;
+      }
+      if (replace) latest.current.forEach(discard);
+      const item: UploadItem = {
+        id: crypto.randomUUID(),
+        preview: url,
+        status: 'uploading',
+        progress: 0,
+        source: url,
+      };
+      setItems((list) => [...(replace ? [] : list), item]);
+      setTouched(true);
+      void startUrl(item.id, url);
+      return true;
+    },
+    [max, discard, startUrl],
+  );
+
   const remove = useCallback(
     (id: string) => {
       const item = latest.current.find((i) => i.id === id);
@@ -123,11 +235,12 @@ export function useImageUploads(initial: StoredImage[], max = 8) {
   const retry = useCallback(
     (id: string) => {
       const item = latest.current.find((i) => i.id === id);
-      if (!item?.file) return;
-      patch(id, { status: 'uploading', progress: 0, error: undefined });
-      void start(id, item.file);
+      if (!item?.file && !item?.source) return;
+      patch(id, { status: 'uploading', progress: 0, error: undefined, linked: undefined });
+      if (item.file) void start(id, item.file);
+      else if (item.source) void startUrl(id, item.source);
     },
-    [patch, start],
+    [patch, start, startUrl],
   );
 
   /** Vacía la lista (p. ej. después de guardar una nota) sin tocar lo ya subido. */
@@ -150,6 +263,7 @@ export function useImageUploads(initial: StoredImage[], max = 8) {
   return {
     items,
     add,
+    addUrl,
     remove,
     retry,
     reset,

@@ -814,10 +814,82 @@
 
 /* Comprobante: discreto */
 .fm-receipt {
+  /* El campo de archivo oculto se queda aquí dentro (no se posiciona contra la ventana). */
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 10px;
+  min-width: 0;
+}
+.fm-receipt-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fm-receipt-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 11px;
+  background: #f4f6f1;
+  font-size: 13px;
+  font-weight: 600;
+  color: #5f6a55;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.fm-receipt-opt:hover {
+  background: #edf1e8;
+  color: var(--ink);
+}
+.fm-receipt-opt.on {
+  background: var(--soft);
+  color: var(--ink);
+}
+.fm-receipt-link {
+  display: flex;
+  flex-basis: 100%;
+  gap: 6px;
+  min-width: 0;
+  animation: cp-swap 0.18s ease-out;
+}
+.fm-receipt-link input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #e2e7da;
+  border-radius: 11px;
+  outline: 0;
+  background: #fff;
+  font-size: 13.5px;
+  color: #2f382b;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.fm-receipt-link input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--soft);
+}
+.fm-receipt-go {
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 11px;
+  background: var(--accent);
+  font-size: 13px;
+  font-weight: 650;
+  color: #fff;
+}
+.fm-receipt-go:disabled {
+  background: #eef1e9;
+  color: #b5bcaa;
+  cursor: default;
 }
 .fm-receipt-add {
   display: inline-flex;
@@ -922,7 +994,9 @@
   color: #b4553f;
 }
 .fm-receipt-note {
+  flex-basis: 100%;
   font-size: 12px;
+  line-height: 1.4;
   color: #8a7a52;
 }
 

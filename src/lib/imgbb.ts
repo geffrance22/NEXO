@@ -65,6 +65,36 @@ export async function prepareImage(file: File): Promise<Blob> {
 
 type UploadOptions = { onProgress?: (fraction: number) => void; signal?: AbortSignal };
 
+/**
+ * Le pide a ImgBB que copie una imagen desde su dirección (para cuando el navegador no puede
+ * descargarla por su cuenta). Necesita la versión de `image-upload` que acepta `url`.
+ */
+export async function uploadUrlToImgbb(
+  url: string,
+  { signal }: Pick<UploadOptions, 'signal'> = {},
+): Promise<StoredImage> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw Error('Inicia sesión para subir fotos.');
+  const form = new FormData();
+  form.append('url', url);
+  const res = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token, apikey: SUPABASE_KEY },
+    body: form,
+    signal,
+  });
+  const json: unknown = await res.json().catch(() => null);
+  if (!res.ok) {
+    const err = (json as { error?: string | { message?: string } } | null)?.error;
+    throw Error(
+      (typeof err === 'string' ? err : err?.message) ||
+        `ImgBB no pudo copiarla (error ${res.status}).`,
+    );
+  }
+  return parseImgbbResponse(json);
+}
+
 /** Sube una imagen a ImgBB (a través de Supabase) con progreso real. Se puede cancelar con `signal`. */
 export async function uploadToImgbb(
   blob: Blob,

@@ -67,8 +67,11 @@ export type AppContextValue = {
   openDraft: (draft: DiaryDraft) => void;
   /** Lectura con IA de una entrada del diario recién guardada (corre en segundo plano). */
   readDiary: (job: DiaryJob) => void;
-  /** Abre el visor de fotos en la imagen indicada. */
-  openImages: (images: StoredImage[], index?: number) => void;
+  /**
+   * Abre el visor de fotos en la imagen indicada. Con `download`, el visor ofrece descargarla
+   * con ese nombre (p. ej. el comprobante de un movimiento).
+   */
+  openImages: (images: StoredImage[], index?: number, opts?: { download?: string }) => void;
   /** Pregunta con una ventana propia (en lugar del `confirm` del navegador). */
   confirm: ConfirmFn;
   /** Aviso breve; con `action` muestra un botón (p. ej. «Deshacer»). */

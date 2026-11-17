@@ -190,7 +190,7 @@
     sans-serif;
   color: #a5ad9b;
 }
-/* Pie del selector: el consejo de las letras y, a la derecha, «Rápido de hoy». */
+/* Pie del selector: el consejo de las letras y, a la derecha, «Instante» y «Rápido de hoy». */
 .cp-picker-foot {
   display: flex;
   flex-wrap: wrap;
@@ -205,41 +205,69 @@
   font-size: 12.5px;
   color: #a5ad9b;
 }
-.cp-picker-foot:not(:has(.cp-quick)) {
+.cp-picker-foot:not(:has(.cp-picker-acts)) {
   justify-content: center;
 }
-.cp-quick {
+.cp-picker-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+/* Cada píldora con su tono: verde (instante, como Instantes) y cálido (rápido de hoy). */
+.cp-pill {
+  --pill-line: #f0e2cc;
+  --pill-bg: #fffaf1;
+  --pill-hover-line: #e7cfac;
+  --pill-hover-bg: #fdf1df;
+  --pill-ink: #8a4f3c;
+  --pill-icon: #c4705a;
+  --pill-kbd-line: #efe1c9;
+  --pill-kbd-ink: #b49b80;
   display: inline-flex;
   align-items: center;
   gap: 7px;
   height: 34px;
   padding: 0 8px 0 12px;
-  border: 1px solid #f0e2cc;
+  border: 1px solid var(--pill-line);
   border-radius: 999px;
-  background: #fffaf1;
+  background: var(--pill-bg);
   font-size: 13px;
   font-weight: 650;
-  color: #8a4f3c;
+  color: var(--pill-ink);
+  white-space: nowrap;
   transition:
     background 0.15s,
-    border-color 0.15s;
+    border-color 0.15s,
+    transform 0.15s;
 }
-.cp-quick svg {
-  color: #c4705a;
+.cp-pill.instant {
+  --pill-line: #dfe8d2;
+  --pill-bg: #f6f9f1;
+  --pill-hover-line: #cddcbc;
+  --pill-hover-bg: #edf3e4;
+  --pill-ink: #3f5a34;
+  --pill-icon: #6d8650;
+  --pill-kbd-line: #dfe8d2;
+  --pill-kbd-ink: #8fa178;
 }
-.cp-quick:hover {
-  border-color: #e7cfac;
-  background: #fdf1df;
+.cp-pill svg {
+  flex: none;
+  color: var(--pill-icon);
 }
-.cp-quick kbd {
+.cp-pill:hover {
+  border-color: var(--pill-hover-line);
+  background: var(--pill-hover-bg);
+}
+.cp-pill kbd {
   padding: 1px 7px;
-  border: 1px solid #efe1c9;
+  border: 1px solid var(--pill-kbd-line);
   border-radius: 6px;
   background: #fff;
   font:
     600 11px "DM Sans",
     sans-serif;
-  color: #b49b80;
+  color: var(--pill-kbd-ink);
 }
 
 /* ───────── Estructura del formulario ───────── */
@@ -2938,6 +2966,23 @@
 .lightbox-btn.close {
   top: 20px;
   right: 20px;
+}
+/* Descargar: junto a cerrar, un poco más pequeño y discreto. */
+.lightbox-btn.download {
+  top: 24px;
+  right: 78px;
+  width: 38px;
+  height: 38px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.86);
+}
+.lightbox-btn.download:hover {
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+.lightbox-btn.download.done {
+  background: rgba(120, 190, 140, 0.32);
+  color: #fff;
 }
 .lightbox-btn.prev {
   left: 20px;

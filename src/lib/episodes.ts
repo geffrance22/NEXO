@@ -46,7 +46,16 @@ import type {
 import { isDoneTask, isMissedTask, isOpenTask } from './commitments';
 import { normalizeText, todayInputValue } from './format';
 import { daysBetween } from './people';
-import { totals } from '../finance/money';
+import { flowOf, totals } from '../finance/money';
+import {
+  chargeStats,
+  goalSaved,
+  isOpenCharge,
+  itemsOf,
+  pocketStats,
+  type ChargeStats,
+  type FinItem,
+} from '../finance/model';
 
 export type EpisodeKindMeta = {
   label: string;
@@ -344,10 +353,258 @@ export function relatedEpisodes(ep: Episode, all: Episode[]): RelatedEpisode[] {
 
 const day = (iso: string) => todayInputValue(new Date(iso));
 
+// ───────────────────────── Episodio ↔ Finanzas ─────────────────────────
+
+/** Lo de Finanzas que se puede conectar a un episodio. */
+export type EpisodeFinItem = FinItem<'cobro'> | FinItem<'bolsillo'> | FinItem<'meta'>;
+
+/**
+ * Lo de Finanzas conectado a un episodio (trabajos por cobrar, bolsillos y carteras, metas) y lo
+ * que eso trae: los abonos de sus trabajos y los gastos que salieron de sus carteras cuentan aquí
+ * solos, sin enlazar cada movimiento ni escribir el valor dos veces.
+ */
+export function episodeFinance(
+  ep: Pick<Episode, 'id'>,
+  entries: readonly Entry[],
+  fin: readonly FinItem[] | null | undefined,
+) {
+  const chargeItems = itemsOf(fin ?? null, 'cobro').filter((x) => x.data.episodeId === ep.id);
+  const pocketItems = itemsOf(fin ?? null, 'bolsillo').filter((x) => x.data.episodeId === ep.id);
+  const goalItems = itemsOf(fin ?? null, 'meta').filter((x) => x.data.episodeId === ep.id);
+  const byCharge = new Map(chargeItems.map((c) => [c.id, c]));
+  const byPocket = new Map(pocketItems.map((p) => [p.id, p]));
+  /** Movimiento → lo de Finanzas por lo que cuenta aquí (si no tiene el episodio puesto). */
+  const via = new Map<string, string>();
+  if (byCharge.size || byPocket.size)
+    for (const e of entries) {
+      if (e.kind !== 'Movimiento' || e.episode_id) continue;
+      const c = e.details.chargeId ? byCharge.get(e.details.chargeId) : undefined;
+      if (c) {
+        via.set(e.id, c.title);
+        continue;
+      }
+      const p = e.details.pocketId ? byPocket.get(e.details.pocketId) : undefined;
+      const f = p ? flowOf(e) : null;
+      if (p && (f === 'gasto' || f === 'reembolso')) via.set(e.id, p.title);
+    }
+  // Un ingreso del episodio trae lo que le anexaste (sus gastos y lo que guardaste de él), también
+  // lo que le anexes después: no hay que enlazar cada uno.
+  const incomes = new Map<string, string>();
+  for (const e of entries)
+    if (
+      e.kind === 'Movimiento' &&
+      (e.episode_id === ep.id || via.has(e.id)) &&
+      flowOf(e) === 'ingreso'
+    )
+      incomes.set(e.id, e.title || e.tags[0] || 'Ingreso');
+  if (incomes.size)
+    for (const e of entries) {
+      if (e.kind !== 'Movimiento' || e.episode_id || via.has(e.id) || !e.details.fromIncome)
+        continue;
+      const from = incomes.get(e.details.fromIncome);
+      if (from) via.set(e.id, from);
+    }
+  const charges = chargeItems.map((item) => ({ item, s: chargeStats(item, entries) }));
+  const pockets = pocketItems.map((item) => {
+    const st = pocketStats(item, entries);
+    const spentHere = entries
+      .filter(
+        (e) =>
+          e.kind === 'Movimiento' &&
+          e.details.pocketId === item.id &&
+          !e.details.pending &&
+          flowOf(e) === 'gasto' &&
+          (!e.episode_id || e.episode_id === ep.id),
+      )
+      .reduce((n, e) => n + e.amount, 0);
+    return { item, balance: st.balance, spentHere };
+  });
+  const goals = goalItems.map((item) => ({ item, saved: goalSaved(item, entries) }));
+  // Sin presupuesto propio, el episodio usa el de su meta o el de su bolsillo de ahorro.
+  const goal = goals.find((g) => g.item.data.target > 0);
+  const saving = pockets.find((p) => p.item.data.use === 'ahorro' && p.item.data.target);
+  const budget = goal
+    ? { amount: goal.item.data.target, from: goal.item.title }
+    : saving
+      ? { amount: saving.item.data.target!, from: saving.item.title }
+      : null;
+  return {
+    charges,
+    pockets,
+    goals,
+    via,
+    budget,
+    /** Lo que falta por cobrar de sus trabajos. */
+    toCollect: charges.reduce((n, c) => n + (c.s.done ? 0 : c.s.left), 0),
+    count: charges.length + pockets.length + goals.length,
+  };
+}
+export type EpisodeFinance = ReturnType<typeof episodeFinance>;
+export type EpisodeCharge = { item: FinItem<'cobro'>; s: ChargeStats };
+
+/** El dinero de un episodio: lo enlazado a él más lo que llega por lo que tiene conectado. */
+export function episodeMoney(
+  ep: Pick<Episode, 'id' | 'budget'>,
+  entries: readonly Entry[],
+  fin: readonly FinItem[] | null | undefined,
+) {
+  const f = episodeFinance(ep, entries, fin);
+  const list = entries.filter(
+    (e) => e.kind === 'Movimiento' && (e.episode_id === ep.id || f.via.has(e.id)),
+  );
+  return { list, ...totals(list), budget: ep.budget ?? f.budget?.amount ?? null, finance: f };
+}
+
+const GENERIC = new Set([
+  'para',
+  'con',
+  'del',
+  'las',
+  'los',
+  'una',
+  'unos',
+  'unas',
+  'este',
+  'esta',
+  'como',
+  'sobre',
+  'entre',
+  'desde',
+  'hasta',
+  'abono',
+  'pago',
+  'cobro',
+  'trabajo',
+  'proyecto',
+  'gasto',
+  'ingreso',
+  'ahorro',
+  'meta',
+  'bolsillo',
+  'cartera',
+  'parte',
+  'total',
+]);
+/** Las palabras que distinguen un nombre (sin las comunes, y en singular). */
+function keyWords(text: string) {
+  const out = new Set<string>();
+  for (const raw of normalizeText(text).split(/[^a-z0-9]+/)) {
+    const w = raw.length > 4 && raw.endsWith('s') ? raw.slice(0, -1) : raw;
+    if ((w.length >= 4 || /^\d{3,}$/.test(w)) && !GENERIC.has(w)) out.add(w);
+  }
+  return out;
+}
+
+export type FinSuggestion = { item: EpisodeFinItem; why: string; score: number };
+
+/**
+ * Lo de Finanzas que parece de este episodio: el mismo nombre, la misma persona o las mismas
+ * fechas. Solo lo que aún no está en otro episodio.
+ */
+export function suggestFinance(
+  ep: Episode,
+  fin: readonly FinItem[] | null | undefined,
+  people: readonly Person[],
+  episodeIds: ReadonlySet<string>,
+): FinSuggestion[] {
+  const words = keyWords(`${ep.title} ${ep.summary ?? ''}`);
+  const from = ep.starts_on;
+  const to = ep.ends_on ?? ep.starts_on;
+  const near = (d?: string) =>
+    Boolean(from && to && d && d >= addDaysSafe(from, -14) && d <= addDaysSafe(to, 14));
+  const free = (x: EpisodeFinItem) => !x.data.episodeId || !episodeIds.has(x.data.episodeId);
+  const pool: EpisodeFinItem[] = [
+    ...itemsOf(fin ?? null, 'cobro').filter(isOpenCharge),
+    ...itemsOf(fin ?? null, 'bolsillo').filter((p) => !p.archived),
+    ...itemsOf(fin ?? null, 'meta').filter((g) => !g.archived),
+  ].filter(free);
+  const out: FinSuggestion[] = [];
+  for (const item of pool) {
+    const why: string[] = [];
+    let score = 0;
+    const shared = [...keyWords(item.title)].filter((w) => words.has(w)).length;
+    if (shared) {
+      score += Math.min(2, shared) * 3;
+      why.push('mismo nombre');
+    }
+    if (item.kind === 'cobro') {
+      const pid = item.data.personId;
+      if (pid && ep.person_ids.includes(pid)) {
+        score += 3;
+        why.push(
+          `con ${people.find((p) => p.id === pid)?.name.split(' ')[0] ?? 'la misma persona'}`,
+        );
+      }
+      if (near(item.data.start)) {
+        score += 1;
+        why.push('mismas fechas');
+      }
+    } else if (item.kind === 'meta' && near(item.data.due)) {
+      score += 1;
+      why.push('mismas fechas');
+    }
+    if (score >= 3) out.push({ item, why: why.join(' · '), score });
+  }
+  return out.sort((a, b) => b.score - a.score).slice(0, 4);
+}
+
+export type MoveSuggestion = { entry: Entry; why: string; score: number };
+
+/**
+ * Movimientos sueltos que parecen de este episodio: el mismo nombre, sus personas o sus fechas.
+ * Los anexados a un ingreso no se sugieren solos: llegan con su ingreso.
+ */
+export function suggestMoves(
+  ep: Episode,
+  entries: readonly Entry[],
+  people: readonly Person[],
+  /** Los que ya cuentan aquí (por lo conectado). */
+  counted: ReadonlySet<string> | ReadonlyMap<string, unknown>,
+): MoveSuggestion[] {
+  const words = keyWords(`${ep.title} ${ep.summary ?? ''}`);
+  const from = ep.starts_on;
+  const to = ep.ends_on ?? ep.starts_on;
+  const out: MoveSuggestion[] = [];
+  for (const e of entries) {
+    if (e.kind !== 'Movimiento' || e.episode_id || counted.has(e.id) || e.details.fromIncome)
+      continue;
+    const why: string[] = [];
+    let score = 0;
+    const text = `${e.title} ${e.tags.join(' ')} ${e.body.slice(0, 200)}`;
+    const shared = [...keyWords(text)].filter((w) => words.has(w)).length;
+    if (shared) {
+      score += Math.min(2, shared) * 3;
+      why.push('mismo nombre');
+    }
+    const d = day(e.created_at);
+    if (from && to && d >= addDaysSafe(from, -3) && d <= addDaysSafe(to, 3)) {
+      score += 2;
+      why.push('mismas fechas');
+    }
+    const with_ = e.person_ids.filter((id) => ep.person_ids.includes(id));
+    if (with_.length) {
+      score += Math.min(2, with_.length) * 2;
+      why.push(`con ${people.find((p) => p.id === with_[0])?.name.split(' ')[0] ?? 'su gente'}`);
+    }
+    if (score >= 3) out.push({ entry: e, why: why.join(' · '), score });
+  }
+  return out
+    .sort((a, b) => b.score - a.score || b.entry.created_at.localeCompare(a.entry.created_at))
+    .slice(0, 8);
+}
+
 /** Todo lo que reúne un episodio, con los totales calculados (nunca estimados). */
-export function episodeSummary(ep: Episode, entries: Entry[], people: Person[], places: Place[]) {
+export function episodeSummary(
+  ep: Episode,
+  entries: Entry[],
+  people: Person[],
+  places: Place[],
+  /** Lo de Finanzas: con él cuentan solos los abonos y gastos de lo que tiene conectado. */
+  fin?: readonly FinItem[] | null,
+) {
+  const finance = episodeFinance(ep, entries, fin);
   const items = entries
-    .filter((e) => e.episode_id === ep.id)
+    .filter((e) => e.episode_id === ep.id || finance.via.has(e.id))
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
   const money = items.filter((e) => e.kind === 'Movimiento');
   const { spent, income: earned } = totals(money);
@@ -385,6 +642,10 @@ export function episodeSummary(ep: Episode, entries: Entry[], people: Person[], 
     spent,
     earned,
     net: earned - spent,
+    finance,
+    /** El presupuesto: el propio o, si no tiene, el de su meta o bolsillo en Finanzas. */
+    budget: ep.budget ?? finance.budget?.amount ?? null,
+    budgetFrom: ep.budget ? null : (finance.budget?.from ?? null),
     open: tasks.filter(isOpenTask),
     done: tasks.filter(isDoneTask),
     missed: tasks.filter(isMissedTask),

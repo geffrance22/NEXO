@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState, type SyntheticEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle,
   ArrowRight,
   BriefcaseBusiness,
   ChevronDown,
+  ClipboardPaste,
   CornerDownLeft,
   Handshake,
   History,
+  Link2,
   LoaderCircle,
   Paperclip,
   Plus,
@@ -362,6 +364,11 @@ export function MoneyView({ c, onClose }: ViewProps) {
       c.uploads.items.length,
   );
   const [more, setMore] = useState(hasMore);
+  // Un comprobante pegado (Ctrl+V) o arrastrado sobre el formulario se ve de una.
+  const receipts = c.uploads.items.length;
+  useEffect(() => {
+    if (receipts) setMore(true);
+  }, [receipts]);
   const worth = worthOf(c.details.worth);
 
   // ── Tus categorías más usadas en este tipo (para elegir con un toque).
@@ -1143,14 +1150,62 @@ export function MoneyView({ c, onClose }: ViewProps) {
   );
 }
 
-/** El comprobante: una línea discreta para adjuntar la foto del recibo (o cambiarla y quitarla). */
+/**
+ * El comprobante: una línea discreta para adjuntar la foto del recibo, pegarla (Ctrl+V o el
+ * botón) o traerla desde una dirección web; luego se puede cambiar o quitar.
+ */
 function ReceiptAttach({ uploads }: { uploads: ImageUploads }) {
   const item = uploads.items[0];
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [link, setLink] = useState('');
+  const [hint, setHint] = useState('');
+  // El selector de archivos se abre desde un botón: el campo oculto nunca recibe el foco (al
+  // enfocarlo, el navegador corría toda la ventana para mostrarlo y la dejaba en blanco).
+  const pickFile = () => {
+    setHint('');
+    fileRef.current?.click();
+  };
+  const useLink = () => {
+    if (!uploads.addUrl(link, true)) return;
+    setLink('');
+    setLinkOpen(false);
+    setHint('');
+  };
+  const paste = async () => {
+    setHint('');
+    try {
+      if (!navigator.clipboard?.read) throw Error('sin portapapeles');
+      for (const clip of await navigator.clipboard.read()) {
+        const type = clip.types.find((t) => t.startsWith('image/'));
+        if (type) {
+          const blob = await clip.getType(type);
+          const ext = type.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
+          uploads.add([new File([blob], `recibo.${ext}`, { type })], true);
+          return;
+        }
+        if (clip.types.includes('text/plain')) {
+          const text = (await (await clip.getType('text/plain')).text()).trim();
+          if (/^https?:\/\//i.test(text)) {
+            uploads.addUrl(text, true);
+            return;
+          }
+        }
+      }
+      setHint('No hay una imagen copiada. Copia la foto o su dirección y vuelve a intentarlo.');
+    } catch {
+      setHint('El navegador no dejó leer el portapapeles: pulsa Ctrl+V aquí en el formulario.');
+    }
+  };
+
   const input = (
     <input
+      ref={fileRef}
       type="file"
       accept="image/*"
       className="cp-sr"
+      tabIndex={-1}
+      aria-hidden="true"
       onChange={(e) => {
         const files = Array.from(e.target.files ?? []);
         e.target.value = '';
@@ -1158,18 +1213,70 @@ function ReceiptAttach({ uploads }: { uploads: ImageUploads }) {
       }}
     />
   );
+  const note = hint || uploads.notice;
+
   if (!item)
     return (
       <div className="fm-receipt">
-        <label className="fm-receipt-add">
-          {input}
-          <Paperclip size={14} /> Adjuntar foto del recibo
-        </label>
-        {uploads.notice && <small className="fm-receipt-note">{uploads.notice}</small>}
+        {input}
+        <div className="fm-receipt-opts">
+          <button type="button" className="fm-receipt-add" onClick={pickFile}>
+            <Paperclip size={14} /> Adjuntar foto
+          </button>
+          <button
+            type="button"
+            className="fm-receipt-opt"
+            title="Pegar una imagen copiada (también con Ctrl+V)"
+            onClick={() => void paste()}
+          >
+            <ClipboardPaste size={14} /> Pegar
+          </button>
+          <button
+            type="button"
+            className={'fm-receipt-opt' + (linkOpen ? ' on' : '')}
+            aria-expanded={linkOpen}
+            title="Desde la dirección de una imagen en la web"
+            onClick={() => {
+              setLinkOpen((v) => !v);
+              setHint('');
+            }}
+          >
+            <Link2 size={14} /> URL
+          </button>
+        </div>
+        {linkOpen && (
+          <div className="fm-receipt-link">
+            <input
+              type="url"
+              inputMode="url"
+              autoFocus
+              value={link}
+              maxLength={2000}
+              placeholder="https://… (la dirección de la imagen)"
+              aria-label="Dirección de la imagen"
+              onChange={(e) => setLink(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  useLink();
+                } else if (e.key === 'Escape') {
+                  // Cierra solo este campo, no el formulario.
+                  e.stopPropagation();
+                  setLinkOpen(false);
+                }
+              }}
+            />
+            <button type="button" className="fm-receipt-go" disabled={!link.trim()} onClick={useLink}>
+              Usar
+            </button>
+          </div>
+        )}
+        {note && <small className="fm-receipt-note">{note}</small>}
       </div>
     );
   return (
     <div className={'fm-receipt has ' + item.status}>
+      {input}
       <span className="fm-receipt-thumb">
         <img src={item.preview} alt="" />
         {item.status === 'uploading' && (
@@ -1180,12 +1287,16 @@ function ReceiptAttach({ uploads }: { uploads: ImageUploads }) {
       </span>
       <span className="fm-receipt-info">
         <b>Comprobante</b>
-        <small>
+        <small title={item.status === 'error' ? item.error : undefined}>
           {item.status === 'uploading'
-            ? `Subiendo… ${Math.round(item.progress * 100)} %`
+            ? item.source && !item.progress
+              ? 'Trayendo la imagen…'
+              : `Subiendo… ${Math.round(item.progress * 100)} %`
             : item.status === 'error'
               ? item.error || 'No se pudo subir.'
-              : 'Listo'}
+              : item.linked
+                ? 'Listo · enlazado a la dirección web'
+                : 'Listo'}
         </small>
       </span>
       {item.status === 'error' && (
@@ -1193,10 +1304,9 @@ function ReceiptAttach({ uploads }: { uploads: ImageUploads }) {
           <RotateCw size={13} /> Reintentar
         </button>
       )}
-      <label className="fm-receipt-btn">
-        {input}
+      <button type="button" className="fm-receipt-btn" onClick={pickFile}>
         Cambiar
-      </label>
+      </button>
       <button type="button" className="fm-receipt-x" aria-label="Quitar comprobante" title="Quitar" onClick={() => uploads.remove(item.id)}>
         <X size={14} />
       </button>

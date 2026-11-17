@@ -1,6 +1,6 @@
 import { useEffect, type CSSProperties } from 'react';
 
-import { X, StickyNote, Link2, UserPlus, ScanLine, ListTodo } from 'lucide-react';
+import { X, StickyNote, Link2, UserPlus, ScanLine, ListTodo, Feather } from 'lucide-react';
 import { kinds, type Kind } from '../data';
 import { kindMeta } from './kinds';
 
@@ -11,7 +11,7 @@ export function KindPicker({
   onClose,
   onShortcut,
 }: {
-  onShortcut: (kind: 'idea' | 'link' | 'person' | 'capture' | 'quick') => void;
+  onShortcut: (kind: 'idea' | 'link' | 'person' | 'capture' | 'quick' | 'instant') => void;
   current?: Kind;
   onPick: (kind: Kind) => void;
   onClose: () => void;
@@ -56,8 +56,12 @@ export function KindPicker({
       action: () => onShortcut('capture'),
     },
   ];
-  /** «Rápido de hoy» va en el pie (no en la cuadrícula): apuntar algo al vuelo, desde cualquier lado. */
+  /**
+   * «Instante» y «Rápido de hoy» van en el pie (no en la cuadrícula): escribir o apuntar algo al
+   * vuelo, desde cualquier lado.
+   */
   const QUICK_KEY = 'R';
+  const INSTANT_KEY = 'I';
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (
@@ -77,7 +81,9 @@ export function KindPicker({
       const action =
         key === QUICK_KEY && !current
           ? () => onShortcut('quick')
-          : extras.find((e) => e.key === key)?.action;
+          : key === INSTANT_KEY && !current
+            ? () => onShortcut('instant')
+            : extras.find((e) => e.key === key)?.action;
       if (!kind && !action) return;
       event.preventDefault();
       if (kind) onPick(kind);
@@ -149,9 +155,18 @@ export function KindPicker({
       <div className="cp-picker-foot">
         <p className="cp-picker-tip">Pulsa la letra de una opción para abrirla.</p>
         {!current && (
-          <button type="button" className="cp-quick" onClick={() => onShortcut('quick')}>
-            <ListTodo size={15} /> Rápido de hoy <kbd>{QUICK_KEY}</kbd>
-          </button>
+          <div className="cp-picker-acts">
+            <button
+              type="button"
+              className="cp-pill instant"
+              onClick={() => onShortcut('instant')}
+            >
+              <Feather size={15} /> Instante <kbd>{INSTANT_KEY}</kbd>
+            </button>
+            <button type="button" className="cp-pill quick" onClick={() => onShortcut('quick')}>
+              <ListTodo size={15} /> Rápido de hoy <kbd>{QUICK_KEY}</kbd>
+            </button>
+          </div>
         )}
       </div>
     </div>

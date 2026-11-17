@@ -175,6 +175,7 @@ export function AppShell({ user }: { user: AppUser }) {
   const [viewer, setViewer] = useState<{
     images: StoredImage[];
     index: number;
+    download?: string;
   } | null>(null);
   const [quick, setQuick] = useState<{
     personId: string;
@@ -601,7 +602,8 @@ export function AppShell({ user }: { user: AppUser }) {
         init: { kind: "Nota", links: draft.personIds, draft },
       }),
     readDiary: setDiaryJob,
-    openImages: (images, index = 0) => setViewer({ images, index }),
+    openImages: (images, index = 0, opts) =>
+      setViewer({ images, index, download: opts?.download }),
     confirm,
     notify,
     openPerson: (section) => setModal({ type: "person", section }),
@@ -1107,6 +1109,7 @@ export function AppShell({ user }: { user: AppUser }) {
           <Lightbox
             images={viewer.images}
             start={viewer.index}
+            downloadName={viewer.download}
             onClose={() => setViewer(null)}
           />
         )}

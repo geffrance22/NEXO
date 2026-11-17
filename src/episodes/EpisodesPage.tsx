@@ -10,6 +10,7 @@ import {
   CircleAlert,
   CircleCheck,
   Feather,
+  HandCoins,
   History,
   Layers,
   Link2,
@@ -59,7 +60,10 @@ import { updateKinds } from '../lib/updates';
 import { Avatar } from '../people/Avatar';
 import { agoLabel, excerpt } from '../instants/model';
 import { instantsWith, useInstants } from '../instants/store';
+import { amountLook } from '../finance/Movements';
+import { useFinance } from '../finance/store';
 import { EpisodeGallery, EpisodeLog, RelatedEpisodes } from './EpisodeParts';
+import { EpisodeMoney, linkToEpisode } from './EpisodeMoney';
 import './episodes.css';
 
 const range = (from: string | null, to: string | null) => {
@@ -132,13 +136,20 @@ export function EpisodesPage() {
 /** Panel general: resumen, «En curso» y «Cerrados», búsqueda, tipos y orden. */
 function EpisodesList() {
   const { workspace, openEpisode, openCapture, experiencesMissing } = useApp();
+  const fin = useFinance();
   const today = todayInputValue();
   const year = today.slice(0, 4);
 
   const rows = useMemo<Row[]>(
     () =>
       workspace.episodes.map((ep) => {
-        const s = episodeSummary(ep, workspace.entries, workspace.people, workspace.places);
+        const s = episodeSummary(
+          ep,
+          workspace.entries,
+          workspace.people,
+          workspace.places,
+          fin.items,
+        );
         const kind = episodeKindOf(ep.kind);
         return {
           ep,
@@ -158,7 +169,7 @@ function EpisodesList() {
           ),
         };
       }),
-    [workspace],
+    [workspace, fin.items],
   );
   const counts = {
     activo: rows.filter((r) => r.ep.status === 'activo').length,
@@ -183,7 +194,7 @@ function EpisodesList() {
     .sort((a, b) => a.start.localeCompare(b.start));
   const thisYear = rows.filter((r) => r.start.startsWith(year));
   const spentYear = thisYear.reduce((sum, r) => sum + r.s.spent, 0);
-  const overBudget = active.filter((r) => r.ep.budget && r.s.spent > r.ep.budget).length;
+  const overBudget = active.filter((r) => r.s.budget && r.s.spent > r.s.budget).length;
   const openTasks = active.reduce((sum, r) => sum + r.s.open.length, 0);
   const withTasks = active.filter((r) => r.s.open.length).length;
   const daysYear = thisYear.reduce((sum, r) => sum + (r.s.days ?? 0), 0);
@@ -515,7 +526,7 @@ function EpisodeCard({ row, today }: { row: Row; today: string }) {
   const lastUpdate = [...ep.updates].sort((a, b) => b.date.localeCompare(a.date))[0];
   const status = cardStatus(ep, s, today);
   const flag = cardFlag(ep, s, last, today);
-  const budgetPct = ep.budget ? Math.round((s.spent / ep.budget) * 100) : null;
+  const budgetPct = s.budget ? Math.round((s.spent / s.budget) * 100) : null;
   return (
     <button
       type="button"
@@ -553,7 +564,7 @@ function EpisodeCard({ row, today }: { row: Row; today: string }) {
             }
           >
             <span>
-              <b>{money(s.spent)}</b> de {money(ep.budget!)}
+              <b>{money(s.spent)}</b> de {money(s.budget!)}
               <em>{budgetPct}%</em>
             </span>
             <i>
@@ -629,9 +640,10 @@ export function EpisodeDetail({
     openEntry,
     peekPerson,
   } = app;
+  const fin = useFinance();
   const s = useMemo(
-    () => episodeSummary(ep, workspace.entries, workspace.people, workspace.places),
-    [ep, workspace],
+    () => episodeSummary(ep, workspace.entries, workspace.people, workspace.places, fin.items),
+    [ep, workspace, fin.items],
   );
   // Lo que escribiste de este episodio, tal cual (el más reciente primero).
   const { list: instants } = useInstants();
@@ -654,7 +666,7 @@ export function EpisodeDetail({
   }, [s.items]);
   const shownTab = story.tabs.includes(view) ? view : 'todo';
   const shown = story.groups[shownTab];
-  const budgetPct = ep.budget ? Math.min(100, Math.round((s.spent / ep.budget) * 100)) : null;
+  const budgetPct = s.budget ? Math.min(100, Math.round((s.spent / s.budget) * 100)) : null;
   const hasMoney = s.spent > 0 || s.earned > 0;
   const duration =
     s.startsIn !== null
@@ -742,7 +754,9 @@ export function EpisodeDetail({
         <div className={'spent' + (budgetPct !== null && budgetPct >= 100 ? ' over' : '')}>
           <TrendingDown size={16} />
           <b>{money(s.spent)}</b>
-          <span>{ep.budget ? `gastado de ${money(ep.budget)}` : 'gastado'}</span>
+          <span title={s.budgetFrom ? `Presupuesto de «${s.budgetFrom}» (Finanzas)` : undefined}>
+            {s.budget ? `gastado de ${money(s.budget)}` : 'gastado'}
+          </span>
           {budgetPct !== null && (
             <i className="ep-budget-bar">
               <em style={{ width: budgetPct + '%' }} />
@@ -754,6 +768,13 @@ export function EpisodeDetail({
           <b>{money(s.earned)}</b>
           <span>ingresos</span>
         </div>
+        {s.finance.toCollect > 0 && (
+          <div className="warn">
+            <HandCoins size={16} />
+            <b>{money(s.finance.toCollect)}</b>
+            <span>por cobrar</span>
+          </div>
+        )}
         {hasMoney && (
           <div className={s.net < 0 ? 'over' : 'good'}>
             <Scale size={16} />
@@ -838,6 +859,7 @@ export function EpisodeDetail({
                       {d !== prev && <span className="ep-day">{friendlyDate(d)}</span>}
                       <TimelineRow
                         entry={e}
+                        via={s.finance.via.get(e.id)}
                         onOpen={() => viewEntry(e)}
                         onUnlink={() => void linkEntries([e.id], null)}
                       />
@@ -876,36 +898,7 @@ export function EpisodeDetail({
             </section>
           )}
 
-          {s.money.length > 0 && (
-            <section className="ep-panel">
-              <h3>Dinero</h3>
-              <div className="ep-money">
-                <span>
-                  Gastos <b>{money(s.spent)}</b>
-                </span>
-                {s.earned > 0 && (
-                  <span>
-                    Ingresos <b>{money(s.earned)}</b>
-                  </span>
-                )}
-                {s.earned > 0 && (
-                  <span>
-                    Neto <b className={s.net < 0 ? 'neg' : ''}>{money(s.net)}</b>
-                  </span>
-                )}
-              </div>
-              {s.money.map((e) => (
-                <button type="button" key={e.id} className="ep-mov" onClick={() => viewEntry(e)}>
-                  <span>{e.title}</span>
-                  <b className={e.direction}>
-                    {e.direction === 'ingreso' ? '+' : '−'}
-                    {money(e.amount)}
-                  </b>
-                </button>
-              ))}
-              <small className="ep-muted">Calculado desde los movimientos de este episodio.</small>
-            </section>
-          )}
+          <EpisodeMoney episode={ep} s={s} />
 
           <RelatedEpisodes episode={ep} />
 
@@ -1027,9 +1020,12 @@ export function EpisodeDetail({
 function TimelineRow({
   entry: e,
   onOpen,
+  via,
   onUnlink,
 }: {
   entry: Entry;
+  /** Llega por algo conectado de Finanzas (no se quita aquí: se desconecta eso). */
+  via?: string;
   onOpen: () => void;
   onUnlink: () => void;
 }) {
@@ -1045,8 +1041,8 @@ function TimelineRow({
         <strong>{e.title}</strong>
         <small>
           {e.kind}
-          {e.kind === 'Movimiento' &&
-            ` · ${e.direction === 'ingreso' ? '+' : '−'}${money(e.amount)}`}
+          {e.kind === 'Movimiento' && ` · ${amountLook(e).sign}${money(e.amount)}`}
+          {via && ` · de «${via}»`}
           {e.kind === 'Pendiente' &&
             ` · ${commitmentKinds[commitmentOf(e)].short}${e.status === 'completado' ? ' · hecho' : e.status === 'no_realizado' ? ' · soltado' : ''}`}
           {e.details.place && ` · ${e.details.place}`}
@@ -1060,15 +1056,17 @@ function TimelineRow({
         )}
         {e.images.length > 0 && <PhotoThumbs images={e.images} />}
       </button>
-      <button
-        type="button"
-        className="ep-row-x"
-        title="Quitar del episodio"
-        aria-label="Quitar del episodio"
-        onClick={onUnlink}
-      >
-        <Unlink size={13} />
-      </button>
+      {!via && (
+        <button
+          type="button"
+          className="ep-row-x"
+          title="Quitar del episodio"
+          aria-label="Quitar del episodio"
+          onClick={onUnlink}
+        >
+          <Unlink size={13} />
+        </button>
+      )}
     </div>
   );
 }
@@ -1113,7 +1111,8 @@ function TaskRow({
 
 /** Enlaza recuerdos sueltos: primero los de esas fechas y personas; también por búsqueda. */
 function LinkPicker({ episode }: { episode: Episode }) {
-  const { workspace, linkEntries } = useApp();
+  const app = useApp();
+  const { workspace } = app;
   const [q, setQ] = useState('');
   const [picked, setPicked] = useState<string[]>([]);
   const list = candidateEntries(episode, workspace.entries, q);
@@ -1167,7 +1166,9 @@ function LinkPicker({ episode }: { episode: Episode }) {
           type="button"
           className="pp-btn dark"
           onClick={async () => {
-            if (await linkEntries(picked, episode.id)) setPicked([]);
+            // Lo que tengan anexado (gastos de un ingreso, el trabajo de un abono) llega con ellos.
+            const list = workspace.entries.filter((e) => picked.includes(e.id));
+            if (await linkToEpisode(app, episode, list)) setPicked([]);
           }}
         >
           <Link2 size={14} /> Enlazar {picked.length}

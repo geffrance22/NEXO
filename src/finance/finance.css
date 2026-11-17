@@ -487,6 +487,8 @@ button.fz-pulse-card:hover {
 .fz-pulse-card.stack > button {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
   gap: 6px;
   padding: 14px 18px;
   text-align: left;
@@ -1215,6 +1217,7 @@ button.fz-pulse-card:hover {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 3px;
   text-align: left;
 }
@@ -1756,6 +1759,7 @@ button.fz-pulse-card:hover {
 .fz-inv-name {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   min-width: 0;
   text-align: left;
 }

@@ -203,7 +203,7 @@ export function InstantsPanel({ focus, onClose }: { focus?: string; onClose: () 
                 <MyFace size={36} />
               </span>
               <span className="ipn-compose-text">¿Qué está pasando?</span>
-              <kbd>P</kbd>
+              <kbd>I</kbd>
             </button>
           )}
           {missing && <p className="ipn-note warn">{instantsHint}</p>}

@@ -131,6 +131,7 @@ export function ComposeModal({
     workspace,
     confirm,
     openPerson,
+    openCapture,
     notify,
     createPerson,
     patchPerson,
@@ -643,7 +644,11 @@ export function ComposeModal({
         <KindPicker
           onShortcut={(key) => {
             if (key === "person") openPerson();
-            else setShortcut(key);
+            else if (key === "instant") {
+              // El instante tiene su propia ventana: esta se cierra y se abre aquella.
+              onClose();
+              openCapture();
+            } else setShortcut(key);
           }}
           current={hasChosen ? c.kind : undefined}
           onClose={requestClose}

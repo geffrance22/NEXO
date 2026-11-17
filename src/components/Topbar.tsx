@@ -28,8 +28,9 @@ export function Topbar({ menuOpen, onToggleMenu }: { menuOpen: boolean; onToggle
   const mobile = useMobile();
   const themeLabel = dark ? 'Desactivar modo oscuro' : 'Activar modo oscuro';
 
-  // Atajos desde cualquier sección: «N» abre «¿Qué quieres guardar?»; «P» (o «W») escribe un
-  // instante; «F» abre el feed de Instantes (y, con el feed abierto, él mismo lo cierra).
+  // Atajos desde cualquier sección: «N» abre «¿Qué quieres guardar?»; «I» (o «W») escribe un
+  // instante, la misma letra que tiene en esa ventana; «F» abre el feed de Instantes (y, con el
+  // feed abierto, él mismo lo cierra).
   const open = useRef(openEntry);
   open.current = openEntry;
   const write = useRef(openCapture);
@@ -40,7 +41,7 @@ export function Topbar({ menuOpen, onToggleMenu }: { menuOpen: boolean; onToggle
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
       const key = e.key.toLowerCase();
-      if (key !== 'n' && key !== 'p' && key !== 'w' && key !== 'f') return;
+      if (key !== 'n' && key !== 'i' && key !== 'w' && key !== 'f') return;
       if (key === 'f') {
         // Ya abierto, lo cierra su propio panel (con su animación). Nunca si se escribe o si hay
         // cualquier ventana, menú o visor encima: ahí la «f» es de ellos.

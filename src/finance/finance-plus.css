@@ -454,6 +454,8 @@
 .fz-note-card {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
   gap: 5px;
   width: 100%;
   padding: 12px 14px;
@@ -481,6 +483,7 @@
   color: var(--fz-faint);
 }
 .fz-note-card-head strong {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1883,6 +1886,7 @@ html[data-theme='dark'] .sheet-backdrop:has(> .sheet.fz-moves) {
 .fz-mv-main {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 3px;
   min-width: 0;
   padding: 0;
@@ -3062,7 +3066,15 @@ button.fz-mv-main:hover strong {
 .fz-qn-card.on {
   box-shadow: inset 0 0 0 2px var(--accent);
 }
+/* El texto nunca sale de la tarjeta: el título se corta con «…» y el total siempre se ve. */
+.fz-qn-recent .fz-qn-card {
+  align-items: stretch;
+  overflow: hidden;
+}
 .fz-qn-card strong {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3070,11 +3082,22 @@ button.fz-mv-main:hover strong {
   color: var(--fz-ink);
 }
 .fz-qn-card small {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 11.5px;
+  white-space: nowrap;
+  color: var(--fz-faint);
+}
+.fz-qn-card small > span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11.5px;
-  color: var(--fz-faint);
+}
+.fz-qn-card small > b {
+  flex: none;
 }
 .fz-qn-paper {
   display: flex;

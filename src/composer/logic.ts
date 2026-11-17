@@ -82,6 +82,7 @@ export const detailKeys: Record<Kind, (keyof EntryDetails)[]> = {
     "fromIncome",
     "deductible",
     "split",
+    "paidTo",
     "repeat",
     "recurringId",
     "goalId",
@@ -226,6 +227,13 @@ export function cleanDetails(kind: Kind, details: EntryDetails): EntryDetails {
     if (typeof out.fromIncome !== "string" || !out.fromIncome) delete out.fromIncome;
     const split = out.split as EntryDetails["split"];
     if (!split || !(split.n > 1)) delete out.split;
+    // «Se lo pagué a…»: solo en un gasto que no se dividió (sí o no; lo elegido manda).
+    if (
+      typeof out.paidTo !== "boolean" ||
+      (out.flow && out.flow !== "gasto") ||
+      out.split
+    )
+      delete out.paidTo;
   }
   // Anclar solo se guarda cuando está activo.
   if (out.follow !== true) delete out.follow;

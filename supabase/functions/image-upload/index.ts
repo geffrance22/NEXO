@@ -38,13 +38,19 @@ Deno.serve(async (req) => {
 
     const form = await req.formData().catch(() => null);
     const image = form?.get('image');
-    if (!(image instanceof File)) return json({ error: 'No llegó ninguna imagen.' }, 400);
-    if (!image.type.startsWith('image/')) return json({ error: 'El archivo no es una imagen.' }, 400);
-    if (image.size > MAX_BYTES) return json({ error: 'La imagen pasa de 32 MB.' }, 413);
+    // O la dirección de una imagen en la web: ImgBB la descarga y la guarda (nada pasa por aquí).
+    const link = form?.get('url');
+    const url = typeof link === 'string' ? link.trim() : '';
 
     const upstream = new FormData();
     upstream.append('key', key);
-    upstream.append('image', image, image.name || 'foto.jpg');
+    if (image instanceof File) {
+      if (!image.type.startsWith('image/')) return json({ error: 'El archivo no es una imagen.' }, 400);
+      if (image.size > MAX_BYTES) return json({ error: 'La imagen pasa de 32 MB.' }, 413);
+      upstream.append('image', image, image.name || 'foto.jpg');
+    } else if (/^https?:\/\/[^\s/]+\.[^\s]+$/i.test(url) && url.length <= 2000) {
+      upstream.append('image', url);
+    } else return json({ error: 'No llegó ninguna imagen.' }, 400);
     const res = await fetch('https://api.imgbb.com/1/upload', {
       method: 'POST',
       body: upstream,

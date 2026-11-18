@@ -1,7 +1,8 @@
 /**
- * «Escuchar» fuera de la página: controles en la pantalla bloqueada, en las notificaciones y con
- * las teclas multimedia (Media Session). La voz del sistema sola no los muestra: hace falta un
- * audio sonando, así que mientras se escucha corre en bucle uno en silencio.
+ * «Escuchar» fuera de la página: controles en la pantalla bloqueada, en las notificaciones, en los
+ * auriculares y con las teclas multimedia (Media Session). Con una voz neuronal ya suena audio de
+ * verdad (neuralVoice.ts). La voz del sistema sola no los muestra: hace falta un audio sonando,
+ * así que mientras se escucha corre en bucle uno en silencio.
  */
 
 type Controls = {
@@ -41,24 +42,51 @@ function silence(seconds = 10, rate = 8000) {
   return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
 }
 
-/** El audio en silencio. `play` debe llamarse desde un toque (o desde los propios controles). */
+let silent = '';
+/** El mismo audio en silencio para todo (se crea una vez). */
+export const silentUrl = () => (silent ||= silence());
+
+/** Pausas que pide Nexo (las demás las hizo el sistema: auriculares desconectados, una llamada…). */
+let ours = false;
+let onInterrupt: (() => void) | null = null;
+
+/**
+ * El audio en silencio de la voz del sistema. `play` debe llamarse desde un toque (o desde los
+ * propios controles). `interrupted`: el sistema lo pausó por su cuenta.
+ */
 export const track = {
   play() {
     if (!audio) {
-      audio = new Audio(silence());
+      audio = new Audio(silentUrl());
       audio.loop = true;
+      audio.addEventListener('pause', () => {
+        if (ours) {
+          ours = false;
+          return;
+        }
+        onInterrupt?.();
+      });
     }
     void audio.play().catch(() => {
       /* sin permiso para reproducir: la voz sigue, solo sin controles fuera de la página */
     });
   },
   pause() {
-    audio?.pause();
+    if (!audio || audio.paused) return;
+    ours = true;
+    audio.pause();
   },
   stop() {
     if (!audio) return;
-    audio.pause();
+    if (!audio.paused) {
+      ours = true;
+      audio.pause();
+    }
     audio.currentTime = 0;
+  },
+  /** Qué hacer si el sistema lo pausa (p. ej. al desconectar los auriculares). */
+  interrupted(fn: (() => void) | null) {
+    onInterrupt = fn;
   },
 };
 

@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { useMedia } from "../hooks/useMobile";
 import {
   AlignJustify,
   AlignLeft,
@@ -197,6 +198,9 @@ export function ReaderSettings({
 }) {
   const { prefs, change, reset } = api;
   const [open, setOpen] = useState(false);
+  // Celular (Lecturas en una columna): el panel es una hoja abajo, a todo el ancho y con los
+  // nombres de cada ajuste. Anclado al botón no cabía y se cortaba por la izquierda.
+  const sheet = useMedia("(max-width: 760px)");
   // La barra del artículo se desplaza en horizontal y recortaría el panel: va en un portal,
   // anclado bajo el botón.
   const [at, setAt] = useState<{ top: number; right: number } | null>(null);
@@ -207,10 +211,15 @@ export function ReaderSettings({
     if (!open) return;
     const place = () => {
       const r = button.current?.getBoundingClientRect();
+      const w = pop.current?.offsetWidth ?? 268;
       if (r)
         setAt({
           top: r.bottom + 8,
-          right: Math.max(8, window.innerWidth - r.right),
+          // Nunca más allá del borde izquierdo de la ventana.
+          right: Math.min(
+            Math.max(8, window.innerWidth - r.right),
+            Math.max(8, window.innerWidth - w - 8),
+          ),
         });
     };
     place();
@@ -271,15 +280,30 @@ export function ReaderSettings({
         <ALargeSmall size={17} />
       </button>
       {open &&
-        at &&
+        (at || sheet) &&
         createPortal(
           <div
             ref={pop}
-            className="rd-rs-pop"
+            className={"rd-rs-pop" + (sheet ? " sheet" : "")}
             role="dialog"
             aria-label="Ajustes de lectura"
-            style={{ top: at.top, right: at.right }}
+            style={sheet || !at ? undefined : { top: at.top, right: at.right }}
           >
+            {sheet && (
+              <div className="rd-rs-sheet-head">
+                <strong>Ajustes de lectura</strong>
+                <button
+                  type="button"
+                  className="rd-rs-done"
+                  onClick={() => {
+                    close();
+                    button.current?.focus();
+                  }}
+                >
+                  Listo
+                </button>
+              </div>
+            )}
             <div className="rd-rs-row">
               <span className="rd-rs-label">Tamaño</span>
               <div className="rd-rs-size">

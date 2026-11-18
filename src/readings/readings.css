@@ -2360,6 +2360,30 @@
   line-height: 1.45;
   color: #8a8799;
 }
+/* Neuronales y del celular, cada grupo con su título dentro de la misma lista. */
+.rd-lp-group {
+  display: block;
+  padding: 8px 10px 3px;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.35;
+  color: #8a8799;
+}
+.rd-lp-group:first-child {
+  padding-top: 2px;
+}
+.rd-lp-voices button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+@media (max-width: 760px) {
+  .rd-lp-voices {
+    max-height: min(320px, 46dvh);
+  }
+  .rd-lp-voices button {
+    min-height: 42px;
+  }
+}
 
 /* ════════ Panel izquierdo de Lecturas ════════ */
 .readings > aside {
@@ -3715,6 +3739,89 @@
 }
 .rd-rs-pop .rd-rs-reset:hover {
   color: #2f5a4c;
+}
+.rd-rs-sheet-head {
+  display: none;
+}
+/* Celular: una hoja abajo, a todo el ancho (encima de la barra inferior), con los nombres de cada
+   ajuste a la izquierda y botones cómodos para el dedo. Así no tapa el texto que vas ajustando. */
+@media (max-width: 760px) {
+  .rd-rs-pop.sheet {
+    top: auto;
+    right: 8px;
+    bottom: calc(8px + max(var(--bnav-space, 0px), env(safe-area-inset-bottom, 0px)));
+    left: 8px;
+    width: auto;
+    max-height: calc(100dvh - var(--bnav-space, 0px) - 90px);
+    gap: 12px;
+    padding: 14px 16px 16px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 22px;
+    font-size: 14px;
+    box-shadow:
+      0 -6px 40px -12px rgba(20, 35, 25, 0.35),
+      0 2px 10px rgba(20, 35, 25, 0.1);
+    transform-origin: bottom center;
+    animation: rd-rs-up 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.05);
+  }
+  .rd-rs-pop.sheet .rd-rs-sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2px;
+  }
+  .rd-rs-pop.sheet .rd-rs-sheet-head strong {
+    font: 700 15px/1.2 'Manrope', 'DM Sans', sans-serif;
+  }
+  .rd-rs-pop.sheet .rd-rs-done {
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: 999px;
+    background: rgba(77, 127, 110, 0.12);
+    color: #2f5a4c;
+    font-weight: 650;
+  }
+  .rd-rs-pop.sheet .rd-rs-label {
+    flex: none;
+    min-width: 78px;
+    font-size: 13px;
+  }
+  .rd-rs-pop.sheet .rd-rs-seg,
+  .rd-rs-pop.sheet .rd-rs-size {
+    flex: 1 1 auto;
+    max-width: 236px;
+    padding: 3px;
+    border-radius: 12px;
+  }
+  .rd-rs-pop.sheet .rd-rs-seg button,
+  .rd-rs-pop.sheet .rd-rs-size button {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 38px;
+    border-radius: 9px;
+  }
+  .rd-rs-pop.sheet .rd-rs-size output {
+    flex: 1 1 0;
+    font-size: 15px;
+  }
+  .rd-rs-pop.sheet .rd-rs-paper {
+    gap: 14px;
+  }
+  .rd-rs-pop.sheet .rd-rs-swatch {
+    width: 34px;
+    height: 34px;
+  }
+  .rd-rs-pop.sheet .rd-rs-reset {
+    min-height: 34px;
+    font-size: 13px;
+  }
+}
+@keyframes rd-rs-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
 }
 
 /* ── Hipervínculos dentro del artículo ── */
@@ -5578,6 +5685,61 @@
     font-size: clamp(1.6rem, 7vw, 2rem);
     overflow-wrap: break-word;
   }
+}
+
+/* ── Android: selección propia del artículo (touchSelect.ts) ──
+   El texto no es seleccionable para el sistema (así Chrome no abre su barra de Google al
+   mantener pulsado); Nexo pinta la selección y sus dos asas. */
+.readings article.rd-touch-select {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+::highlight(rd-touch-sel) {
+  background-color: rgba(77, 127, 110, 0.3);
+}
+.rd-th {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 70;
+  width: 44px;
+  height: 44px;
+  touch-action: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+.rd-th.on,
+.rd-th.drag {
+  opacity: 1;
+  pointer-events: auto;
+}
+.rd-th.start {
+  margin-left: -44px;
+}
+.rd-th > i {
+  position: absolute;
+  top: 0;
+  width: 22px;
+  height: 22px;
+  background: #4d7f6e;
+  box-shadow: 0 1px 4px rgba(20, 35, 25, 0.3);
+  transition: transform 0.12s;
+}
+/* Una gota con la punta en el borde de la selección, como las del sistema. */
+.rd-th.start > i {
+  right: 0;
+  border-radius: 50% 0 50% 50%;
+  transform-origin: top right;
+}
+.rd-th.end > i {
+  left: 0;
+  border-radius: 0 50% 50% 50%;
+  transform-origin: top left;
+}
+.rd-th.drag > i {
+  transform: scale(1.12);
 }
 
 /* ── Celular: Lecturas sin conexión (offline.ts) ── */

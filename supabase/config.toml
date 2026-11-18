@@ -17,3 +17,6 @@ verify_jwt = false
 verify_jwt = false
 [functions.fediverse]
 verify_jwt = false
+
+[functions.tts]
+verify_jwt = false

@@ -81,6 +81,11 @@ import { touchFirst, useMedia } from "../hooks/useMobile";
 import { useWakeLock } from "../hooks/useWakeLock";
 import { useOnline } from "../hooks/useOnline";
 import { usePinchSize } from "./pinch";
+import {
+  touchSelectSupported,
+  useTouchSelect,
+  type TouchSelection,
+} from "./touchSelect";
 import { ReadProgress } from "./ReadProgress";
 import {
   OFFLINE_CHANGED,
@@ -305,6 +310,9 @@ export function Readings({
   // Qué abrió la barra: una selección nueva o un resaltado existente (se lee sin esperar render).
   const mode = useRef<"selection" | "mark" | null>(null);
   const articleRef = useRef<HTMLElement>(null);
+  // Android: Nexo selecciona el texto por su cuenta (sin la barra de búsqueda de Google).
+  const touchSel = useRef<TouchSelection | null>(null);
+  const [customSelect] = useState(touchSelectSupported);
   function inspect(m: Mark, rect?: DOMRect) {
     if (rect) anchor(rect);
     mode.current = "mark";
@@ -319,6 +327,8 @@ export function Readings({
   function closeEditor(clear = false) {
     if (clear && mode.current === "selection")
       window.getSelection()?.removeAllRanges();
+    // La selección propia (Android) no la quita el sistema: se quita aquí.
+    if (mode.current === "selection") touchSel.current?.clear();
     mode.current = null;
     setSpan(null);
     setEditing(null);
@@ -813,6 +823,22 @@ export function Readings({
       );
     },
   );
+  // Android: mantener pulsado selecciona con la selección de Nexo (sin la barra de Google).
+  useTouchSelect({
+    on: customSelect && Boolean(article) && !annotations && !trimming,
+    articleId: id,
+    article: articleRef,
+    pane: () => document.querySelector<HTMLElement>(".readings > main"),
+    content: article?.content ?? "",
+    api: touchSel,
+    onSelect: (range) => live.current.readSelection(range),
+    onDismiss: () => {
+      const writing =
+        live.current.noteOpen || live.current.askOpen || live.current.shareOpen;
+      if (mode.current !== "selection") touchSel.current?.clear();
+      else if (!writing) live.current.closeEditor();
+    },
+  });
   // Celular: pellizcar el artículo agranda o achica la letra (la misma de «Aa»).
   usePinchSize({
     on: compact && Boolean(article) && !annotations && !trimming,
@@ -1004,11 +1030,16 @@ export function Readings({
     () => marks.filter((m) => m.reading_id === id),
     [marks, id],
   );
-  function readSelection() {
+  /** La selección del sistema o, en Android, la que hace Nexo (`given`). */
+  function readSelection(given?: Range) {
     const root = articleRef.current;
-    const s = window.getSelection();
-    if (!root || !s?.rangeCount || s.isCollapsed) return;
-    const r = s.getRangeAt(0);
+    if (!root) return;
+    let r = given ?? null;
+    if (!r) {
+      const s = window.getSelection();
+      if (!s?.rangeCount || s.isCollapsed) return;
+      r = s.getRangeAt(0);
+    }
     if (!r.intersectsNode(root)) return;
     const raw = selectionSpan(root, r);
     const next = raw && article ? snapToWords(article.content, raw) : null;
@@ -1087,6 +1118,8 @@ export function Readings({
     };
     const change = () => {
       window.clearTimeout(timer);
+      // Con la selección propia (Android), la del sistema no cuenta.
+      if (touchSel.current?.active()) return;
       const s = window.getSelection();
       if (!s?.rangeCount || s.isCollapsed) {
         if (performance.now() - toolbarAt < 800) return;
@@ -1109,8 +1142,10 @@ export function Readings({
         const current = live.current.span;
         if (!current) return;
         const s = window.getSelection();
-        const rect =
-          mode.current === "selection" && s?.rangeCount && !s.isCollapsed
+        const own = mode.current === "selection" ? touchSel.current?.range() : null;
+        const rect = own
+          ? boxOfRange(own)
+          : mode.current === "selection" && s?.rangeCount && !s.isCollapsed
             ? boxOfRange(s.getRangeAt(0))
             : (articleRef.current
                 ?.querySelector(`[data-offset="${current.start}"]`)
@@ -2935,6 +2970,7 @@ export function Readings({
               <>
                 <article
                   ref={articleRef}
+                  className={customSelect ? "rd-touch-select" : undefined}
                   onContextMenu={(e) => {
                     /*
                      * Con el dedo, mantener pulsado es para seleccionar y resaltar con la barra de
